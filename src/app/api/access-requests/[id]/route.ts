@@ -56,7 +56,7 @@ export async function PATCH(
         await getSupabaseAdmin().auth.admin.generateLink({
           type: "invite",
           email: accessRequest.email,
-          options: { redirectTo: `${APP_URL}/dashboard` },
+          options: { redirectTo: `${APP_URL}/update-password` },
         });
 
       if (linkError) {
@@ -65,7 +65,7 @@ export async function PATCH(
         const { data: magicData } = await getSupabaseAdmin().auth.admin.generateLink({
           type: "magiclink",
           email: accessRequest.email,
-          options: { redirectTo: `${APP_URL}/dashboard` },
+          options: { redirectTo: `${APP_URL}/update-password` },
         });
         if (magicData?.user) {
           supabaseUserId = magicData.user.id;

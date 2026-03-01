@@ -12,13 +12,12 @@ export default function ForgotPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
 
-    const form = e.target as HTMLFormElement;
-    const email = (form.elements.namedItem("email") as HTMLInputElement).value;
+    const email = (e.currentTarget.elements.namedItem("email") as HTMLInputElement).value;
 
     const supabase = createSupabaseBrowserClient();
     if (!supabase) {
@@ -28,7 +27,7 @@ export default function ForgotPasswordPage() {
     }
 
     const { error: authError } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/login`,
+      redirectTo: `${window.location.origin}/update-password`,
     });
 
     setLoading(false);
