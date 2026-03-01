@@ -10,10 +10,11 @@ interface PageProps {
 export default async function CandidateProfilePage({ params }: PageProps) {
   const session = await getSession();
   const orgId = session?.user.orgId ?? undefined;
+  const userRole = session?.user.role ?? undefined;
   const { id } = await params;
   const data = await getCandidateData(id, orgId);
 
   if (!data) notFound();
 
-  return <ProfileClient {...data} />;
+  return <ProfileClient {...data} userRole={userRole} />;
 }

@@ -426,6 +426,9 @@ async function main() {
           roleId: roleRecords[slug],
           constructId: c.id,
           weight: weights[c.id],
+          version: 1,
+          source: "RESEARCH_VALIDATED",
+          effectiveFrom: new Date(),
         },
       });
     }

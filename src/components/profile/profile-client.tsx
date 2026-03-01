@@ -13,11 +13,15 @@ import { InterviewGuide } from "./interview-guide";
 import { RoleMismatch } from "./role-mismatch";
 import { CONSTRUCTS, LAYER_INFO, type LayerType } from "@/lib/constructs";
 import { AlertTriangle, TrendingUp, TrendingDown, Shield, FileDown, FileText, ClipboardList } from "lucide-react";
+import { RecordOutcomeForm } from "./record-outcome-form";
+
+const OUTCOME_ROLES = ["RECRUITING_MANAGER", "TA_LEADER", "ADMIN"];
 
 interface ProfileClientProps {
   candidate: any;
   allRoles: any[];
   cutlines: any[];
+  userRole?: string;
 }
 
 function generateExecutiveSummary(
@@ -104,7 +108,7 @@ function generateExecutiveSummary(
   };
 }
 
-export function ProfileClient({ candidate, allRoles, cutlines }: ProfileClientProps) {
+export function ProfileClient({ candidate, allRoles, cutlines, userRole }: ProfileClientProps) {
   const [selectedRoleSlug, setSelectedRoleSlug] = useState(candidate.primaryRole.slug);
   const [showAnimation, setShowAnimation] = useState(false);
   const previousWeightsRef = useRef<Record<string, number>>({});
@@ -337,6 +341,13 @@ export function ProfileClient({ candidate, allRoles, cutlines }: ProfileClientPr
           />
 
           <PredictionsGrid prediction={predictions} />
+
+          {userRole && OUTCOME_ROLES.includes(userRole) && candidate.status === "RECOMMENDED" && (
+            <RecordOutcomeForm
+              candidateId={candidate.id}
+              existingOutcomes={candidate.outcomes || []}
+            />
+          )}
 
           <NotesPanel notes={candidate.notes || []} candidateId={candidate.id} />
         </div>

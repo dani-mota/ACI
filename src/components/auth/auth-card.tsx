@@ -28,7 +28,7 @@ export function AuthCard({ title, subtitle, children, footer }: AuthCardProps) {
         {children}
       </div>
       {footer && (
-        <div className="text-center mt-4 text-xs text-white/60">
+        <div className="text-center mt-4 text-xs text-white/60 relative z-10">
           {footer}
         </div>
       )}

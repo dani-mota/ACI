@@ -1,16 +1,106 @@
 import { NextRequest, NextResponse } from "next/server";
+import prisma from "@/lib/prisma";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { construct, prompt, candidateResponse } = body;
+  const {
+    construct,
+    prompt,
+    assessmentId,
+    sequenceOrder,
+    triggerItemId,
+    // Second-call fields (candidate response submission)
+    interactionId,
+    candidateResponse,
+    responseTimeMs,
+  } = body;
 
-  if (!construct || !candidateResponse) {
-    return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+  if (!construct) {
+    return NextResponse.json({ error: "Missing construct" }, { status: 400 });
   }
 
-  // For MVP, generate a contextual follow-up without Anthropic API
-  // This will be replaced with actual Claude API calls when ANTHROPIC_API_KEY is configured
+  // ── Second call: candidate submitted a response ──────────────────────────
+  if (interactionId && candidateResponse) {
+    // Update the AIInteraction with the candidate's response
+    const interaction = await prisma.aIInteraction.findUnique({
+      where: { id: interactionId },
+    });
+
+    if (!interaction) {
+      return NextResponse.json({ error: "Interaction not found" }, { status: 404 });
+    }
+
+    // Analyze the response with Claude (or fallback)
+    let aiAnalysis: string | null = null;
+    let evidenceFor: string[] = [];
+    let confidenceLevel: number | null = null;
+
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (apiKey) {
+      try {
+        const response = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": apiKey,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: "claude-haiku-4-5-20251001",
+            max_tokens: 300,
+            messages: [
+              {
+                role: "user",
+                content: `Analyze this candidate response for construct: ${construct}.
+Question: "${interaction.aiPrompt}"
+Response: "${candidateResponse}"
+
+Return JSON only (no other text):
+{"evidenceFor":[],"evidenceAgainst":[],"confidenceLevel":0.5,"insight":""}`,
+              },
+            ],
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const text = data.content?.[0]?.text || "";
+          try {
+            const parsed = JSON.parse(text);
+            aiAnalysis = text;
+            evidenceFor = parsed.evidenceFor || [];
+            confidenceLevel = typeof parsed.confidenceLevel === "number" ? parsed.confidenceLevel : null;
+          } catch {
+            // JSON parse failed — store raw text
+            aiAnalysis = text;
+          }
+        }
+      } catch (err) {
+        console.error("Anthropic API error during analysis:", err);
+      }
+    }
+
+    await prisma.aIInteraction.update({
+      where: { id: interactionId },
+      data: {
+        candidateResponse,
+        responseTimeMs: responseTimeMs || null,
+        aiAnalysis,
+        evidenceFor: evidenceFor as any,
+        confidenceLevel,
+      },
+    });
+
+    return NextResponse.json({ success: true });
+  }
+
+  // ── First call: generate a follow-up question ────────────────────────────
+  if (!prompt) {
+    return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
+  }
+
   const apiKey = process.env.ANTHROPIC_API_KEY;
+  let followUp = generateFallbackFollowUp(construct);
 
   if (apiKey) {
     try {
@@ -29,7 +119,7 @@ export async function POST(request: NextRequest) {
               role: "user",
               content: `You are an assessment proctor. A candidate is being assessed on ${construct}.
 The original question was: "${prompt}"
-The candidate responded: "${candidateResponse}"
+The candidate responded: "${body.candidateResponse || "(no prior response)"}"
 
 Generate ONE short, probing follow-up question (1-2 sentences) that digs deeper into their reasoning or tests the boundary of their understanding. Be professional and neutral. Only output the question, nothing else.`,
             },
@@ -39,16 +129,34 @@ Generate ONE short, probing follow-up question (1-2 sentences) that digs deeper 
 
       if (response.ok) {
         const data = await response.json();
-        const followUp = data.content?.[0]?.text || generateFallbackFollowUp(construct);
-        return NextResponse.json({ followUp });
+        followUp = data.content?.[0]?.text || followUp;
       }
     } catch (err) {
       console.error("Anthropic API error:", err);
     }
   }
 
-  // Fallback: generate a static follow-up
-  return NextResponse.json({ followUp: generateFallbackFollowUp(construct) });
+  // Store the AIInteraction record if assessmentId is provided
+  let createdInteractionId: string | undefined;
+  if (assessmentId) {
+    try {
+      const created = await prisma.aIInteraction.create({
+        data: {
+          assessmentId,
+          construct: construct as any,
+          sequenceOrder: sequenceOrder ?? 1,
+          triggerItemId: triggerItemId || null,
+          aiPrompt: followUp,
+        },
+      });
+      createdInteractionId = created.id;
+    } catch (err) {
+      console.error("Failed to create AIInteraction record:", err);
+      // Non-fatal — assessment delivery continues
+    }
+  }
+
+  return NextResponse.json({ followUp, interactionId: createdInteractionId });
 }
 
 function generateFallbackFollowUp(construct: string): string {

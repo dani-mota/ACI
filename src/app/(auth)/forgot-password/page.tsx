@@ -1,13 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { AuthCard } from "@/components/auth/auth-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
-export default function ForgotPasswordPage() {
+function ForgotPasswordForm() {
+  const searchParams = useSearchParams();
+  const linkExpired = searchParams.get("error") === "link_expired";
+
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,7 +31,7 @@ export default function ForgotPasswordPage() {
     }
 
     const { error: authError } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/update-password`,
+      redirectTo: `${window.location.origin}/auth/callback?next=/update-password`,
     });
 
     setLoading(false);
@@ -64,6 +68,11 @@ export default function ForgotPasswordPage() {
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
+          {linkExpired && !error && (
+            <div className="p-3 bg-aci-amber/10 border border-aci-amber/20 text-xs text-aci-amber">
+              Your setup link has expired. Enter your email to receive a new one.
+            </div>
+          )}
           {error && (
             <div className="p-3 bg-aci-red/10 border border-aci-red/20 text-xs text-aci-red">
               {error}
@@ -79,5 +88,13 @@ export default function ForgotPasswordPage() {
         </form>
       )}
     </AuthCard>
+  );
+}
+
+export default function ForgotPasswordPage() {
+  return (
+    <Suspense>
+      <ForgotPasswordForm />
+    </Suspense>
   );
 }

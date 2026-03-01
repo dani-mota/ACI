@@ -81,6 +81,9 @@ export async function getCandidateData(id: string, orgId?: string) {
           aiInteractions: true,
         },
       },
+      outcomes: {
+        orderBy: { observedAt: "desc" },
+      },
     },
   });
 

@@ -2,7 +2,7 @@
 
 export function AnimatedGrid() {
   return (
-    <div className="absolute inset-0 overflow-hidden opacity-15">
+    <div className="absolute inset-0 overflow-hidden opacity-15 pointer-events-none">
       <div className="absolute inset-0" style={{
         backgroundImage: `
           linear-gradient(rgba(197, 168, 76, 0.2) 1px, transparent 1px),

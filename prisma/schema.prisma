@@ -33,6 +33,7 @@ model User {
   notes            Note[]
   invitations      AssessmentInvitation[]
   reviewedRequests AccessRequest[]        @relation("ReviewedRequests")
+  recordedOutcomes OutcomeRecord[]
   createdAt        DateTime              @default(now())
 }
 
@@ -79,14 +80,24 @@ model Cutline {
 }
 
 model CompositeWeight {
-  id          String   @id @default(cuid())
-  roleId      String
-  role        Role     @relation(fields: [roleId], references: [id])
-  constructId String
-  weight      Float
-  createdAt   DateTime @default(now())
+  id            String       @id @default(cuid())
+  roleId        String
+  role          Role         @relation(fields: [roleId], references: [id])
+  constructId   String
+  weight        Float
+  version       Int          @default(1)
+  source        WeightSource @default(RESEARCH_VALIDATED)
+  effectiveFrom DateTime     @default(now())
+  effectiveTo   DateTime?
+  createdAt     DateTime     @default(now())
 
-  @@unique([roleId, constructId])
+  @@unique([roleId, constructId, version])
+}
+
+enum WeightSource {
+  RESEARCH_VALIDATED
+  EMPIRICALLY_ADJUSTED
+  CLIENT_CUSTOMIZED
 }
 
 // ──────────────────────────────────────────────
@@ -107,6 +118,7 @@ model Candidate {
   assessment    Assessment?
   invitations   AssessmentInvitation[]
   notes         Note[]
+  outcomes      OutcomeRecord[]
   createdAt     DateTime              @default(now())
   updatedAt     DateTime              @updatedAt
 }
@@ -400,4 +412,55 @@ model AccessRequest {
   rejectionReason String?
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
+}
+
+// ──────────────────────────────────────────────
+// DATA REFINEMENT
+// ──────────────────────────────────────────────
+
+model OutcomeRecord {
+  id          String        @id @default(cuid())
+  candidateId String
+  candidate   Candidate     @relation(fields: [candidateId], references: [id])
+  metricType  OutcomeMetric
+  metricValue Float
+  notes       String?
+  recordedBy  String
+  recorder    User          @relation(fields: [recordedBy], references: [id])
+  observedAt  DateTime
+  createdAt   DateTime      @default(now())
+
+  @@index([candidateId])
+  @@index([metricType])
+}
+
+enum OutcomeMetric {
+  TRAINING_COMPLETION_DAYS
+  RAMP_TIME_MONTHS
+  NINETY_DAY_RETENTION
+  SUPERVISOR_RATING
+  QUALITY_SCORE
+  SAFETY_INCIDENT
+  TRAINING_TEST_SCORE
+  PROMOTION
+}
+
+model ItemCalibration {
+  id             String    @id @default(cuid())
+  itemId         String
+  construct      Construct
+  version        Int
+  difficulty     Float
+  discrimination Float
+  guessing       Float
+  sampleSize     Int
+  fitStatistic   Float?
+  flagged        Boolean   @default(false)
+  flagReason     String?
+  calibratedAt   DateTime
+  createdAt      DateTime  @default(now())
+
+  @@unique([itemId, version])
+  @@index([construct])
+  @@index([flagged])
 }

@@ -49,36 +49,41 @@ export async function PATCH(
     // generateLink with type "invite" creates the user (if not exists) and
     // returns an action_link the user clicks to set their password.
     let supabaseUserId: string | null = null;
-    let setupUrl = `${APP_URL}/login`;
+    // Fallback: direct user to forgot-password so they can generate their own link
+    let setupUrl = `${APP_URL}/forgot-password`;
+
+    const callbackUrl = `${APP_URL}/auth/callback?next=/update-password`;
 
     try {
       const { data: linkData, error: linkError } =
         await getSupabaseAdmin().auth.admin.generateLink({
           type: "invite",
           email: accessRequest.email,
-          options: { redirectTo: `${APP_URL}/update-password` },
+          options: { redirectTo: callbackUrl },
         });
 
       if (linkError) {
-        // If the user already exists in Supabase, generate a magic link instead
+        // User already exists in Supabase — generate a magic link instead
         console.error("generateLink (invite) failed:", linkError.message);
-        const { data: magicData } = await getSupabaseAdmin().auth.admin.generateLink({
-          type: "magiclink",
-          email: accessRequest.email,
-          options: { redirectTo: `${APP_URL}/update-password` },
-        });
-        if (magicData?.user) {
+        const { data: magicData, error: magicError } =
+          await getSupabaseAdmin().auth.admin.generateLink({
+            type: "magiclink",
+            email: accessRequest.email,
+            options: { redirectTo: callbackUrl },
+          });
+        if (magicError) {
+          console.error("generateLink (magiclink) also failed:", magicError.message);
+        } else if (magicData?.user) {
           supabaseUserId = magicData.user.id;
           setupUrl = magicData.properties.action_link;
         }
-        // If both fail, setupUrl stays as the login page — user can use "Forgot Password"
       } else if (linkData) {
         supabaseUserId = linkData.user.id;
         setupUrl = linkData.properties.action_link;
       }
     } catch (err) {
       console.error("Supabase admin API error:", err);
-      // Non-fatal — proceed with approval, user can reset password manually
+      // Non-fatal — proceed with approval, user can reset password via forgot-password
     }
 
     // Step 2: Prisma transaction — create org (if new) + user + update request
