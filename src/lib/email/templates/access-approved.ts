@@ -1,10 +1,12 @@
 interface AccessApprovedParams {
   userName: string;
-  loginUrl: string;
+  setupUrl: string;   // One-time invite/magic link to set up their password
+  loginUrl: string;   // Fallback login page URL
 }
 
 export function buildAccessApprovedEmail({
   userName,
+  setupUrl,
   loginUrl,
 }: AccessApprovedParams): { subject: string; html: string } {
   const subject = "Your ACI Access Has Been Approved";
@@ -36,19 +38,25 @@ export function buildAccessApprovedEmail({
                 Welcome aboard, ${userName}!
               </h1>
               <p style="margin: 0 0 24px; font-size: 14px; color: #52525b; line-height: 1.6;">
-                Your access request to the Arklight Cognitive Index platform has been approved. You can now sign in and start using the assessment dashboard.
+                Your access request to the Arklight Cognitive Index platform has been approved. Click the button below to set up your password and access your dashboard.
               </p>
 
               <!-- CTA -->
-              <table cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
+              <table cellpadding="0" cellspacing="0" style="margin-bottom: 16px;">
                 <tr>
                   <td style="background-color: #c9a227; padding: 12px 32px;">
-                    <a href="${loginUrl}" style="color: #0a1628; font-size: 14px; font-weight: 700; text-decoration: none; text-transform: uppercase; letter-spacing: 1px;">
-                      Sign In to ACI
+                    <a href="${setupUrl}" style="color: #0a1628; font-size: 14px; font-weight: 700; text-decoration: none; text-transform: uppercase; letter-spacing: 1px;">
+                      Set Up Your Account
                     </a>
                   </td>
                 </tr>
               </table>
+
+              <p style="margin: 0 0 24px; font-size: 11px; color: #a1a1aa; line-height: 1.6;">
+                This link expires in <strong>24 hours</strong>. If it expires, use the
+                <a href="${loginUrl}" style="color: #52525b;">"Forgot password"</a>
+                option on the login page to set up your account.
+              </p>
 
               <p style="margin: 0; font-size: 11px; color: #a1a1aa; line-height: 1.6;">
                 If you have any questions, reach out to your account administrator.
