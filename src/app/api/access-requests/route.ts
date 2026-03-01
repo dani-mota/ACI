@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const { email, firstName, lastName, companyName, requestedRole, supabaseId } = body;
 
-  if (!email || !firstName || !lastName || !companyName || !requestedRole || !supabaseId) {
+  if (!email || !firstName || !lastName || !companyName || !requestedRole) {
     return NextResponse.json({ error: "All fields are required" }, { status: 400 });
   }
 

@@ -392,7 +392,7 @@ model AccessRequest {
   lastName        String
   companyName     String
   requestedRole   UserRole
-  supabaseId      String              @unique
+  supabaseId      String?             @unique
   status          AccessRequestStatus @default(PENDING)
   reviewedBy      String?
   reviewer        User?               @relation("ReviewedRequests", fields: [reviewedBy], references: [id])
