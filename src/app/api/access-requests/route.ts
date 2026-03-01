@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { sendEmail } from "@/lib/email/smtp";
+import { sendEmail } from "@/lib/email/resend";
 import { accessRequestNotificationEmail } from "@/lib/email/templates/access-request-notification";
 
 const VALID_ROLES = [
