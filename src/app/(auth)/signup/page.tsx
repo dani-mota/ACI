@@ -16,35 +16,44 @@ export default function SignupPage() {
     setError(null);
     setLoading(true);
 
-    const formData = new FormData(e.currentTarget);
-    const email = (formData.get("email") as string).trim();
-    const firstName = (formData.get("firstName") as string).trim();
-    const lastName = (formData.get("lastName") as string).trim();
-    const company = (formData.get("company") as string).trim();
-    const role = formData.get("role") as string;
+    try {
+      const formData = new FormData(e.currentTarget);
+      const email = ((formData.get("email") as string) ?? "").trim();
+      const firstName = ((formData.get("firstName") as string) ?? "").trim();
+      const lastName = ((formData.get("lastName") as string) ?? "").trim();
+      const company = ((formData.get("company") as string) ?? "").trim();
+      const role = formData.get("role") as string;
 
-    if (!firstName || !lastName || !company || !role || !email) {
-      setError("Please fill in all fields.");
+      if (!firstName || !lastName || !company || !role || !email) {
+        setError("Please fill in all fields.");
+        setLoading(false);
+        return;
+      }
+
+      const res = await fetch("/api/access-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, firstName, lastName, companyName: company, requestedRole: role }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (res.status === 409 && data.error?.includes("already has an account")) {
+          setError(data.error);
+        } else {
+          setError(data.error ?? "Something went wrong. Please try again.");
+        }
+        setLoading(false);
+        return;
+      }
+
+      setSuccess(true);
+    } catch {
+      setError("Something went wrong. Please check your connection and try again.");
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const res = await fetch("/api/access-requests", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, firstName, lastName, companyName: company, requestedRole: role }),
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      setError(data.error ?? "Something went wrong. Please try again.");
-      setLoading(false);
-      return;
-    }
-
-    setSuccess(true);
-    setLoading(false);
   };
 
   return (
@@ -76,7 +85,10 @@ export default function SignupPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
             <div className="p-3 bg-aci-red/10 border border-aci-red/20 text-xs text-aci-red">
-              {error}
+              {error}{" "}
+              {error.includes("already has an account") && (
+                <Link href="/login" className="underline font-medium">Sign in</Link>
+              )}
             </div>
           )}
           <div className="grid grid-cols-2 gap-3">
