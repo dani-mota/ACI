@@ -3,8 +3,20 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { UserPlus, Sparkles } from "lucide-react";
+import { InviteButton } from "@/components/invitation/invite-button";
 
-export function EmptyState() {
+interface Role {
+  id: string;
+  name: string;
+  slug: string;
+  compositeWeights: { constructId: string; weight: number }[];
+}
+
+interface EmptyStateProps {
+  roles: Role[];
+}
+
+export function EmptyState({ roles }: EmptyStateProps) {
   return (
     <div className="bg-card border border-dashed border-border p-12 text-center">
       <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-aci-gold/10 flex items-center justify-center">
@@ -21,10 +33,7 @@ export function EmptyState() {
         or explore the tutorial demo to see ACI in action with sample data.
       </p>
       <div className="flex items-center justify-center gap-3">
-        <Button variant="gold" className="gap-2">
-          <UserPlus className="w-4 h-4" />
-          Invite a Candidate
-        </Button>
+        <InviteButton roles={roles} />
         <Link href="/tutorial/dashboard">
           <Button variant="outline" className="gap-2">
             <Sparkles className="w-4 h-4" />

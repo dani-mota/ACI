@@ -32,7 +32,7 @@ export default async function DashboardPage() {
             Overview of your talent assessment pipeline
           </p>
         </div>
-        <EmptyState />
+        <EmptyState roles={serializedRoles} />
       </div>
     );
   }
