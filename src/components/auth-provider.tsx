@@ -15,7 +15,7 @@ interface AuthContextType {
   user: AuthUser;
 }
 
-const AuthContext = createContext<AuthContextType | null>(null);
+export const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({
   user,

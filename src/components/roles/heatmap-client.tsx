@@ -3,8 +3,10 @@
 import React, { useState, useMemo, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, ChevronUp, ChevronDown, Download, Image } from "lucide-react";
+import { ArrowRight, ChevronUp, ChevronDown, Download, Image, Plus } from "lucide-react";
 import { useBasePath } from "@/components/base-path-provider";
+import { useContext } from "react";
+import { AuthContext } from "@/components/auth-provider";
 import { CONSTRUCTS, LAYER_INFO, type LayerType } from "@/lib/constructs";
 import { getScoreTier } from "@/lib/format";
 import { downloadCSV, captureElementAsPNG } from "@/lib/export";
@@ -38,6 +40,8 @@ const CONSTRUCT_COPY: Record<string, string> = {
 export function HeatmapClient({ candidates, roles, weights, cutlines }: HeatmapClientProps) {
   const router = useRouter();
   const basePath = useBasePath();
+  const auth = useContext(AuthContext);
+  const canCreateRole = auth ? ["TA_LEADER", "ADMIN"].includes(auth.user.role) : false;
   const tableRef = useRef<HTMLDivElement>(null);
   const [selectedRoleSlug, setSelectedRoleSlug] = useState(roles[0]?.slug || "");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -191,6 +195,15 @@ export function HeatmapClient({ candidates, roles, weights, cutlines }: HeatmapC
         </div>
 
         <div className="flex items-center gap-2">
+          {canCreateRole && (
+            <Link
+              href={`${basePath}/roles/new`}
+              className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-aci-gold border border-aci-gold/30 hover:bg-aci-gold/5 transition-colors"
+            >
+              <Plus className="w-3 h-3" />
+              New Role
+            </Link>
+          )}
           {selectedIds.size >= 2 && (
             <button
               onClick={handleCompare}

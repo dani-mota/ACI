@@ -3,6 +3,8 @@
 import { useMemo } from "react";
 import { CONSTRUCTS, LAYER_INFO, type LayerType } from "@/lib/constructs";
 import { calculateComposite, evaluateCutline, determineStatus, getCutlineFailures } from "@/lib/scoring";
+import { useContext } from "react";
+import { AuthContext } from "@/components/auth-provider";
 import { RoleTabSelector } from "./role-tab-selector";
 import { RoleHeader } from "./role-header";
 import { ConstructImportance } from "./construct-importance";
@@ -16,6 +18,9 @@ interface RoleDetailClientProps {
 }
 
 export function RoleDetailClient({ role, allRoles, candidates }: RoleDetailClientProps) {
+  const auth = useContext(AuthContext);
+  const canCreateRole = auth ? ["TA_LEADER", "ADMIN"].includes(auth.user.role) : false;
+
   const processed = useMemo(() => {
     const cutline = role.cutlines?.[0] ?? null;
     const weights = role.compositeWeights || [];
@@ -107,7 +112,7 @@ export function RoleDetailClient({ role, allRoles, candidates }: RoleDetailClien
 
   return (
     <div className="p-6 space-y-4">
-      <RoleTabSelector roles={allRoles} currentSlug={role.slug} />
+      <RoleTabSelector roles={allRoles} currentSlug={role.slug} canCreateRole={canCreateRole} />
 
       <RoleHeader role={role} stats={processed.stats} />
 

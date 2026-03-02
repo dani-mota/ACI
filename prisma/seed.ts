@@ -395,6 +395,8 @@ async function main() {
         slug: ROLE_SLUGS[i],
         description: ROLE_DESCRIPTIONS[i],
         orgId: org.id,
+        isCustom: false,
+        sourceType: "SYSTEM_DEFAULT",
       },
     });
     roleRecords[ROLE_SLUGS[i]] = role.id;

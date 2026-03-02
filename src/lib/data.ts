@@ -36,6 +36,9 @@ export async function getDashboardData(orgId?: string) {
     return {
       slug: role.slug,
       name: role.name,
+      isCustom: role.isCustom,
+      complexityLevel: role.complexityLevel,
+      sourceType: role.sourceType,
       total: roleCandidates.length,
       recommended: roleCandidates.filter((c) => c.status === "RECOMMENDED").length,
       review: roleCandidates.filter((c) => c.status === "REVIEW_REQUIRED").length,

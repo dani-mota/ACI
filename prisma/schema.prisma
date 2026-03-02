@@ -50,17 +50,28 @@ enum UserRole {
 // ──────────────────────────────────────────────
 
 model Role {
-  id               String                @id @default(cuid())
-  name             String
-  slug             String                @unique
-  description      String?
-  orgId            String
-  org              Organization          @relation(fields: [orgId], references: [id])
-  cutlines         Cutline[]
-  compositeWeights CompositeWeight[]
-  candidates       Candidate[]
-  invitations      AssessmentInvitation[]
-  createdAt        DateTime              @default(now())
+  id                 String                @id @default(cuid())
+  name               String
+  slug               String                @unique
+  description        String?
+  orgId              String
+  org                Organization          @relation(fields: [orgId], references: [id])
+  cutlines           Cutline[]
+  compositeWeights   CompositeWeight[]
+  candidates         Candidate[]
+  invitations        AssessmentInvitation[]
+  createdAt          DateTime              @default(now())
+  // Role Builder fields
+  isCustom           Boolean               @default(false)
+  complexityLevel    ComplexityLevel?
+  sourceType         RoleSourceType?
+  jobDescriptionText String?
+  onetCodes          String[]
+  researchRationale  Json?
+  confidenceScores   Json?
+  hiringIntelligence Json?
+  createdBy          String?
+  versions           RoleVersion[]
 }
 
 model Cutline {
@@ -98,6 +109,36 @@ enum WeightSource {
   RESEARCH_VALIDATED
   EMPIRICALLY_ADJUSTED
   CLIENT_CUSTOMIZED
+}
+
+model RoleVersion {
+  id            String   @id @default(cuid())
+  roleId        String
+  role          Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  versionNumber Int
+  weights       Json
+  cutlines      Json
+  rationale     Json?
+  changedBy     String
+  changeNote    String?
+  createdAt     DateTime @default(now())
+
+  @@unique([roleId, versionNumber])
+  @@index([roleId])
+}
+
+enum ComplexityLevel {
+  LOW
+  MEDIUM
+  MEDIUM_HIGH
+  HIGH
+}
+
+enum RoleSourceType {
+  SYSTEM_DEFAULT
+  JD_UPLOAD
+  TEMPLATE_CLONE
+  MANUAL_ENTRY
 }
 
 // ──────────────────────────────────────────────
