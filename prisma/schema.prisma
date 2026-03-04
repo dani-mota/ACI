@@ -70,6 +70,8 @@ model Role {
   researchRationale  Json?
   confidenceScores   Json?
   hiringIntelligence Json?
+  jdContext          Json?
+  isGeneric          Boolean               @default(false)
   createdBy          String?
   versions           RoleVersion[]
 }
@@ -160,8 +162,11 @@ model Candidate {
   invitations   AssessmentInvitation[]
   notes         Note[]
   outcomes      OutcomeRecord[]
+  resultsEmailSentAt DateTime?
   createdAt     DateTime              @default(now())
   updatedAt     DateTime              @updatedAt
+
+  @@unique([email, orgId])
 }
 
 enum CandidateStatus {

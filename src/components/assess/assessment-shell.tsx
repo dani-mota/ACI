@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { useAssessmentStore } from "@/stores/assessment-store";
 import { ProgressBar } from "./progress-bar";
 import { BlockInterstitial } from "./block-interstitial";
@@ -10,6 +9,7 @@ import { MultipleChoice } from "./item-types/multiple-choice";
 import { LikertScale } from "./item-types/likert-scale";
 import { OpenResponse } from "./item-types/open-response";
 import { TimedSequence } from "./item-types/timed-sequence";
+import { AiProbe } from "./item-types/ai-probe";
 import { ASSESSMENT_BLOCKS } from "@/lib/assessment/blocks";
 import type { AssessmentItem } from "@/lib/assessment/items";
 
@@ -18,16 +18,17 @@ interface AssessmentShellProps {
   assessmentId: string;
   blockIndex: number;
   items: AssessmentItem[];
+  roleId?: string;
 }
 
-export function AssessmentShell({ token, assessmentId, blockIndex, items }: AssessmentShellProps) {
-  const router = useRouter();
+export function AssessmentShell({ token, assessmentId, blockIndex, items, roleId }: AssessmentShellProps) {
+  const initBlock = useAssessmentStore((state) => state.initBlock);
   const store = useAssessmentStore();
   const [state, setState] = useState<"item" | "interstitial" | "complete">("item");
 
   useEffect(() => {
-    store.initBlock(token, assessmentId, blockIndex, items);
-  }, [token, assessmentId, blockIndex, items, store]);
+    initBlock(token, assessmentId, blockIndex, items, roleId);
+  }, [token, assessmentId, blockIndex, items, roleId, initBlock]);
 
   const currentItem = store.items[store.itemIndex];
   const { current, total } = store.getProgress();
@@ -103,6 +104,17 @@ export function AssessmentShell({ token, assessmentId, blockIndex, items }: Asse
             prompt={currentItem.prompt}
             options={currentItem.options}
             timeLimit={currentItem.timeLimit}
+            onSubmit={handleSubmit}
+          />
+        )}
+
+        {currentItem.itemType === "AI_PROBE" && (
+          <AiProbe
+            key={currentItem.id}
+            prompt={currentItem.prompt}
+            token={token}
+            construct={currentItem.construct}
+            previousResponse=""
             onSubmit={handleSubmit}
           />
         )}

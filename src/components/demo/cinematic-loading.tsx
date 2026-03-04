@@ -78,7 +78,7 @@ export function CinematicLoading({ onComplete }: CinematicLoadingProps) {
             className="h-full transition-all duration-300 ease-out"
             style={{
               width: `${Math.min(progress, 100)}%`,
-              background: "linear-gradient(90deg, #C9A84C, #E8D48B)",
+              background: "linear-gradient(90deg, #0EA5E9, #38BDF8)",
             }}
           />
         </div>

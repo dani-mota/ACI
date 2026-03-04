@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { runScoringPipeline } from "@/lib/assessment/pipeline";
 
 interface RouteParams {
   params: Promise<{ token: string }>;
@@ -51,6 +52,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       where: { id: invitation.candidateId },
       data: { status: "SCORING" },
     });
+  });
+
+  // Run scoring pipeline asynchronously — don't block the candidate's completion response
+  runScoringPipeline(assessment.id).catch((err) => {
+    console.error(`Scoring pipeline failed for assessment ${assessment.id}:`, err);
   });
 
   return NextResponse.json({ success: true, durationMinutes });

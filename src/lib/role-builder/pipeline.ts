@@ -5,6 +5,7 @@ import { deriveWeightsFromOnet } from "@/lib/onet/weights";
 
 export interface ExtractedJD {
   title: string;
+  description?: string;
   level: "ENTRY" | "MID" | "SENIOR" | "LEAD";
   technicalSkills: string[];
   behavioralRequirements: string[];
@@ -112,6 +113,9 @@ async function callClaude(
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not configured");
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30_000); // 30s timeout
+
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -125,7 +129,9 @@ async function callClaude(
       system: systemPrompt,
       messages: [{ role: "user", content: userMessage }],
     }),
+    signal: controller.signal,
   });
+  clearTimeout(timeoutId);
 
   if (!response.ok) {
     const err = await response.text();
@@ -152,6 +158,7 @@ Respond with ONLY valid JSON — no markdown, no explanations, no preamble.`;
 
 const EXTRACTION_SCHEMA = `{
   "title": "string",
+  "description": "1-2 sentence role summary",
   "level": "ENTRY | MID | SENIOR | LEAD",
   "technicalSkills": ["array of specific technical skills"],
   "behavioralRequirements": ["array of behavioral/soft skill requirements"],
@@ -183,6 +190,7 @@ const EXTRACTION_SCHEMA = `{
 async function extractJD(rawText: string): Promise<ExtractedJD> {
   const fallback: ExtractedJD = {
     title: "Manufacturing Technician",
+    description: "",
     level: "MID",
     technicalSkills: [],
     behavioralRequirements: [],
@@ -218,6 +226,7 @@ function buildExtractedFromForm(
   };
   return {
     title: form.title,
+    description: form.description ?? "",
     level: levelMap[form.experienceLevel?.toLowerCase() ?? "mid"] ?? "MID",
     technicalSkills: form.skills ? form.skills.split(/[,\n]/).map((s) => s.trim()).filter(Boolean) : [],
     behavioralRequirements: [],
@@ -244,15 +253,16 @@ function buildExtractedFromForm(
 // Build ExtractedJD from a template clone
 function buildExtractedFromTemplate(templateSlug: string): ExtractedJD {
   const templateMeta: Record<string, Partial<ExtractedJD>> = {
-    "factory-technician":       { title: "Factory Technician",       level: "ENTRY", environment: { setting: "FLOOR",     physicalDemands: "HIGH",     shiftWork: true  }, consequenceOfError: { safetyCritical: false, qualityCritical: true,  costImpact: "MEDIUM" } },
-    "cnc-machinist":            { title: "CNC Machinist",            level: "MID",   environment: { setting: "FLOOR",     physicalDemands: "MODERATE", shiftWork: true  }, consequenceOfError: { safetyCritical: false, qualityCritical: true,  costImpact: "MEDIUM" } },
-    "cam-programmer":           { title: "CAM Programmer",           level: "MID",   environment: { setting: "OFFICE",    physicalDemands: "LOW",      shiftWork: false }, consequenceOfError: { safetyCritical: false, qualityCritical: true,  costImpact: "HIGH"   } },
-    "cmm-programmer":           { title: "CMM Programmer",           level: "MID",   environment: { setting: "CLEANROOM", physicalDemands: "LOW",      shiftWork: false }, consequenceOfError: { safetyCritical: false, qualityCritical: true,  costImpact: "HIGH"   } },
-    "manufacturing-engineer":   { title: "Manufacturing Engineer",   level: "SENIOR",environment: { setting: "MIXED",     physicalDemands: "LOW",      shiftWork: false }, consequenceOfError: { safetyCritical: false, qualityCritical: true,  costImpact: "HIGH"   } },
+    "factory-technician":       { title: "Factory Technician",       description: "Entry-level production role operating machinery on the factory floor.", level: "ENTRY", environment: { setting: "FLOOR",     physicalDemands: "HIGH",     shiftWork: true  }, consequenceOfError: { safetyCritical: false, qualityCritical: true,  costImpact: "MEDIUM" } },
+    "cnc-machinist":            { title: "CNC Machinist",            description: "Precision machining role programming and operating CNC equipment.", level: "MID",   environment: { setting: "FLOOR",     physicalDemands: "MODERATE", shiftWork: true  }, consequenceOfError: { safetyCritical: false, qualityCritical: true,  costImpact: "MEDIUM" } },
+    "cam-programmer":           { title: "CAM Programmer",           description: "Technical role creating toolpaths and programs for CNC manufacturing.", level: "MID",   environment: { setting: "OFFICE",    physicalDemands: "LOW",      shiftWork: false }, consequenceOfError: { safetyCritical: false, qualityCritical: true,  costImpact: "HIGH"   } },
+    "cmm-programmer":           { title: "CMM Programmer",           description: "Quality-focused role programming coordinate measuring machines for inspection.", level: "MID",   environment: { setting: "CLEANROOM", physicalDemands: "LOW",      shiftWork: false }, consequenceOfError: { safetyCritical: false, qualityCritical: true,  costImpact: "HIGH"   } },
+    "manufacturing-engineer":   { title: "Manufacturing Engineer",   description: "Senior engineering role designing and optimizing manufacturing processes.", level: "SENIOR",environment: { setting: "MIXED",     physicalDemands: "LOW",      shiftWork: false }, consequenceOfError: { safetyCritical: false, qualityCritical: true,  costImpact: "HIGH"   } },
   };
 
   const base: ExtractedJD = {
     title: templateSlug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+    description: "",
     level: "MID",
     technicalSkills: [],
     behavioralRequirements: [],

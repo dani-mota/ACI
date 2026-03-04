@@ -9,6 +9,7 @@ interface Role {
   id: string;
   name: string;
   slug: string;
+  isGeneric?: boolean;
   compositeWeights: { constructId: string; weight: number }[];
 }
 

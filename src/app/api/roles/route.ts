@@ -49,10 +49,16 @@ export async function POST(request: NextRequest) {
       researchRationale?: unknown;
       confidenceScores?: unknown;
       hiringIntelligence?: unknown;
+      jdContext?: unknown;
     };
 
     if (!body.name?.trim()) {
       return NextResponse.json({ error: "Role name is required" }, { status: 400 });
+    }
+
+    // Validate jdContext size to prevent oversized JSON storage
+    if (body.jdContext && JSON.stringify(body.jdContext).length > 10000) {
+      return NextResponse.json({ error: "jdContext payload too large" }, { status: 413 });
     }
     if (!body.weights || Object.keys(body.weights).length !== 12) {
       return NextResponse.json({ error: "Exactly 12 construct weights are required" }, { status: 400 });
@@ -81,6 +87,7 @@ export async function POST(request: NextRequest) {
           researchRationale: body.researchRationale ?? undefined,
           confidenceScores: body.confidenceScores ?? undefined,
           hiringIntelligence: body.hiringIntelligence ?? undefined,
+          jdContext: body.jdContext ?? undefined,
           createdBy: session.user.id,
         },
       });

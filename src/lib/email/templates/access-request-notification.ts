@@ -39,7 +39,7 @@ export function accessRequestNotificationEmail(data: AccessRequestNotificationDa
           <!-- Header -->
           <tr>
             <td style="background-color:#0a1628;padding:32px 40px;">
-              <p style="margin:0;font-size:11px;font-weight:600;letter-spacing:2px;color:#c9a84c;text-transform:uppercase;">Arklight Cognitive Index</p>
+              <p style="margin:0;font-size:11px;font-weight:600;letter-spacing:2px;color:#0ea5e9;text-transform:uppercase;">Arklight Cognitive Index</p>
               <p style="margin:8px 0 0;font-size:20px;font-weight:700;color:#ffffff;">New Access Request</p>
             </td>
           </tr>
@@ -80,7 +80,7 @@ export function accessRequestNotificationEmail(data: AccessRequestNotificationDa
               <!-- CTA Button -->
               <table cellpadding="0" cellspacing="0">
                 <tr>
-                  <td style="background-color:#c9a84c;padding:0;">
+                  <td style="background-color:#0ea5e9;padding:0;">
                     <a href="${data.adminUrl}" style="display:inline-block;padding:12px 28px;font-size:13px;font-weight:600;color:#0a1628;text-decoration:none;letter-spacing:0.5px;">Review Request &rarr;</a>
                   </td>
                 </tr>

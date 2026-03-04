@@ -27,7 +27,7 @@ export const ITEM_BANK: AssessmentItem[] = [
   },
   {
     id: "fr-002", construct: "FLUID_REASONING", blockIndex: 0, itemType: "MULTIPLE_CHOICE", difficulty: 4,
-    prompt: "A factory produces 120 units in 8 hours with 5 machines. If 2 machines break down, how many hours are needed to produce 120 units?",
+    prompt: "A team of 5 analysts processes 120 reports in 8 hours. If 2 analysts are reassigned to another project, how many hours will it take the remaining team to process 120 reports?",
     options: ["13.3 hours", "12 hours", "20 hours", "10 hours"],
     correctAnswer: "13.3 hours",
   },
@@ -45,21 +45,21 @@ export const ITEM_BANK: AssessmentItem[] = [
   },
   {
     id: "cf-001", construct: "COGNITIVE_FLEXIBILITY", blockIndex: 0, itemType: "OPEN_RESPONSE", difficulty: 4,
-    prompt: "A manufacturing process that has worked for 5 years suddenly produces 15% defective output. Your initial investigation ruled out material quality and machine calibration. What alternative factors would you investigate, and why?",
+    prompt: "A business process that has worked reliably for 5 years suddenly shows a 15% error rate. Your initial investigation ruled out staffing changes and software updates. What alternative factors would you investigate, and why?",
   },
 
   // ── Block 1: Technical Aptitude ──
   {
     id: "qr-001", construct: "QUANTITATIVE_REASONING", blockIndex: 1, itemType: "MULTIPLE_CHOICE", difficulty: 3,
-    prompt: "A part requires a tolerance of ±0.005 inches. If the nominal dimension is 2.500 inches, what is the acceptable range?",
-    options: ["2.495 to 2.505", "2.490 to 2.510", "2.500 to 2.505", "2.495 to 2.500"],
-    correctAnswer: "2.495 to 2.505",
+    prompt: "A data entry process has an acceptable error margin of ±0.005%. If the baseline accuracy is 99.500%, what is the acceptable accuracy range?",
+    options: ["99.495% to 99.505%", "99.490% to 99.510%", "99.500% to 99.505%", "99.495% to 99.500%"],
+    correctAnswer: "99.495% to 99.505%",
   },
   {
     id: "qr-002", construct: "QUANTITATIVE_REASONING", blockIndex: 1, itemType: "MULTIPLE_CHOICE", difficulty: 4,
-    prompt: "A CNC mill operates at 3,500 RPM with a 4-flute end mill, feed rate 0.003 inches per tooth. What is the table feed rate in inches per minute?",
-    options: ["42 IPM", "10.5 IPM", "14 IPM", "52.5 IPM"],
-    correctAnswer: "42 IPM",
+    prompt: "A server has 4 processing threads, each independently handling 3,500 requests per second. Each request processes 0.003 MB of data. What is the total data throughput in MB per second?",
+    options: ["42 MB/s", "10.5 MB/s", "14 MB/s", "52.5 MB/s"],
+    correctAnswer: "42 MB/s",
   },
   {
     id: "sv-001", construct: "SPATIAL_VISUALIZATION", blockIndex: 1, itemType: "TIMED_SEQUENCE", difficulty: 3, timeLimit: 45,
@@ -75,21 +75,21 @@ export const ITEM_BANK: AssessmentItem[] = [
   },
   {
     id: "mr-001", construct: "MECHANICAL_REASONING", blockIndex: 1, itemType: "MULTIPLE_CHOICE", difficulty: 3,
-    prompt: "In a gear train, Gear A (20 teeth) drives Gear B (60 teeth). If Gear A rotates at 900 RPM clockwise, what is Gear B's speed and direction?",
-    options: ["300 RPM counter-clockwise", "300 RPM clockwise", "2700 RPM counter-clockwise", "2700 RPM clockwise"],
-    correctAnswer: "300 RPM counter-clockwise",
+    prompt: "System A (capacity 20 units) feeds into System B (capacity 60 units). If System A processes at 900 units/hour and each unit from A requires 3 units of capacity in B, what is System B's effective processing rate and does it create a bottleneck?",
+    options: ["300 units/hour, no bottleneck", "300 units/hour, creates bottleneck", "2700 units/hour, no bottleneck", "2700 units/hour, creates bottleneck"],
+    correctAnswer: "300 units/hour, no bottleneck",
   },
 
   // ── Block 2: Processing & Diagnostics ──
   {
     id: "sd-001", construct: "SYSTEMS_DIAGNOSTICS", blockIndex: 2, itemType: "MULTIPLE_CHOICE", difficulty: 4,
-    prompt: "A production line shows: Station 1 (OK) → Station 2 (OK) → Station 3 (intermittent fails) → Station 4 (OK) → Station 5 (consistent fails). Where should you look first?",
-    options: ["Station 3 — intermittent failures indicate developing problems", "Station 5 — it has consistent failures", "Between Stations 2 and 3 — the transition point", "Station 1 — start from the beginning"],
-    correctAnswer: "Station 3 — intermittent failures indicate developing problems",
+    prompt: "A five-step workflow shows: Step 1 (OK) → Step 2 (OK) → Step 3 (intermittent errors) → Step 4 (OK) → Step 5 (consistent failures). Where should you investigate first?",
+    options: ["Step 3 — intermittent errors indicate a developing problem", "Step 5 — it has consistent failures", "Between Steps 2 and 3 — the transition point", "Step 1 — start from the beginning"],
+    correctAnswer: "Step 3 — intermittent errors indicate a developing problem",
   },
   {
     id: "sd-002", construct: "SYSTEMS_DIAGNOSTICS", blockIndex: 2, itemType: "OPEN_RESPONSE", difficulty: 4,
-    prompt: "A hydraulic press cycles 200 times per shift. Lately, pressure drops 5 PSI every 50 cycles but recovers after a 10-minute idle. What is your diagnosis and proposed corrective action?",
+    prompt: "A system processes 200 transactions per shift. Recently, performance degrades by 5% every 50 transactions but recovers after a 10-minute cool-down. What is your diagnosis and proposed corrective action?",
   },
   {
     id: "pr-001", construct: "PATTERN_RECOGNITION", blockIndex: 2, itemType: "TIMED_SEQUENCE", difficulty: 3, timeLimit: 30,
@@ -99,8 +99,8 @@ export const ITEM_BANK: AssessmentItem[] = [
   },
   {
     id: "pr-002", construct: "PATTERN_RECOGNITION", blockIndex: 2, itemType: "MULTIPLE_CHOICE", difficulty: 3,
-    prompt: "Defect data from 5 shifts: Mon (3), Tue (1), Wed (5), Thu (2), Fri (8). Which pattern is most likely?",
-    options: ["Increasing fatigue through the week", "Random variation within normal limits", "Equipment degradation with partial recovery", "Operator skill variation between shifts"],
+    prompt: "Error counts from a team's weekly output: Mon (3), Tue (1), Wed (5), Thu (2), Fri (8). Which pattern is most likely?",
+    options: ["Increasing fatigue through the week", "Random variation within normal limits", "Process degradation with partial recovery", "Skill variation between team members"],
     correctAnswer: "Increasing fatigue through the week",
   },
 
@@ -112,27 +112,27 @@ export const ITEM_BANK: AssessmentItem[] = [
   },
   {
     id: "prr-002", construct: "PROCEDURAL_RELIABILITY", blockIndex: 3, itemType: "MULTIPLE_CHOICE", difficulty: 3,
-    prompt: "You discover that a batch of parts passed inspection but you noticed a minor surface scratch on 3 of 50 pieces. The scratches are cosmetic and within spec. What do you do?",
-    options: ["Document the observation and inform the lead", "Re-inspect the entire batch to the higher standard", "Let it pass since it meets spec", "Separate the 3 pieces and continue"],
+    prompt: "You discover that a batch of 50 deliverables passed review, but you noticed minor formatting errors in 3 of them. The errors are cosmetic and technically within guidelines. What do you do?",
+    options: ["Document the observation and inform the lead", "Re-review the entire batch to a higher standard", "Let it pass since it meets guidelines", "Separate the 3 items and continue"],
     correctAnswer: "Document the observation and inform the lead",
   },
   {
     id: "ej-001", construct: "ETHICAL_JUDGMENT", blockIndex: 3, itemType: "MULTIPLE_CHOICE", difficulty: 4,
-    prompt: "A senior colleague asks you to sign off on a quality report for parts you didn't personally inspect. They say 'everyone does it when we're behind schedule.' What do you do?",
+    prompt: "A senior colleague asks you to sign off on a report for work you didn't personally review. They say 'everyone does it when we're behind schedule.' What do you do?",
     options: ["Refuse and explain you can only sign for work you verified", "Sign it since a senior colleague vouches for quality", "Ask to quickly verify a sample before signing", "Report the request to management immediately"],
     correctAnswer: "Refuse and explain you can only sign for work you verified",
   },
   {
     id: "ej-002", construct: "ETHICAL_JUDGMENT", blockIndex: 3, itemType: "OPEN_RESPONSE", difficulty: 4,
-    prompt: "You discover that your company's production process, while legal, creates more waste than necessary due to outdated equipment. A $50K upgrade would reduce waste by 60% but management says the budget is frozen. What steps would you take?",
+    prompt: "You discover that your company's current process, while compliant, generates significantly more waste than necessary due to outdated systems. A $50K upgrade would reduce waste by 60% but management says the budget is frozen. What steps would you take?",
   },
 
   // ── Block 4: Learning & Adaptation ──
   {
     id: "lv-001", construct: "LEARNING_VELOCITY", blockIndex: 4, itemType: "MULTIPLE_CHOICE", difficulty: 3,
-    prompt: "You are introduced to a new CNC control system you've never used. The manual is 200 pages. What is your first step?",
-    options: ["Run through the tutorial program to get hands-on experience", "Read the manual cover to cover before touching the machine", "Ask a colleague to show you the basics, then explore", "Watch online videos about the system"],
-    correctAnswer: "Run through the tutorial program to get hands-on experience",
+    prompt: "You are introduced to a new software platform you've never used. The documentation is 200 pages. What is your first step?",
+    options: ["Run through the tutorial to get hands-on experience", "Read the documentation cover to cover before using the system", "Ask a colleague to show you the basics, then explore", "Watch online videos about the platform"],
+    correctAnswer: "Run through the tutorial to get hands-on experience",
   },
   {
     id: "lv-002", construct: "LEARNING_VELOCITY", blockIndex: 4, itemType: "OPEN_RESPONSE", difficulty: 4,
@@ -158,9 +158,9 @@ export const ITEM_BANK: AssessmentItem[] = [
   },
   {
     id: "int-002", construct: "FLUID_REASONING", blockIndex: 5, itemType: "MULTIPLE_CHOICE", difficulty: 4,
-    prompt: "A factory must decide between Machine A ($100K, 500 units/day, 2% defect rate) and Machine B ($150K, 600 units/day, 0.5% defect rate). Each defect costs $20 to fix. Over 250 working days, which machine is more cost-effective?",
-    options: ["Machine B saves $47,500 over Machine A", "Machine A saves $50,000 over Machine B", "They cost the same over the period", "Machine B saves $25,000 over Machine A"],
-    correctAnswer: "Machine B saves $47,500 over Machine A",
+    prompt: "A company must choose between Vendor A ($100K/year, processes 500 orders/day, 2% error rate) and Vendor B ($150K/year, processes 600 orders/day, 0.5% error rate). Each error costs $20 to resolve. Over 250 working days, which vendor is more cost-effective?",
+    options: ["Vendor A saves $15,000 over Vendor B", "Vendor B saves $47,500 over Vendor A", "They cost the same over the period", "Vendor B saves $15,000 over Vendor A"],
+    correctAnswer: "Vendor A saves $15,000 over Vendor B",
   },
   {
     id: "int-003", construct: "ETHICAL_JUDGMENT", blockIndex: 5, itemType: "OPEN_RESPONSE", difficulty: 4,
@@ -168,8 +168,8 @@ export const ITEM_BANK: AssessmentItem[] = [
   },
   {
     id: "int-004", construct: "FLUID_REASONING", blockIndex: 5, itemType: "TIMED_SEQUENCE", difficulty: 5, timeLimit: 90,
-    prompt: "Three machines (X, Y, Z) produce widgets. X makes 40% of output with 3% defect rate. Y makes 35% with 5% defect rate. Z makes 25% with 2% defect rate. If a randomly selected widget is defective, what is the probability it came from Machine Y?",
-    options: ["52.4%", "35%", "50%", "47.6%"],
-    correctAnswer: "52.4%",
+    prompt: "Three teams (X, Y, Z) handle customer cases. X handles 40% of cases with a 3% escalation rate. Y handles 35% with a 5% escalation rate. Z handles 25% with a 2% escalation rate. If a randomly selected case was escalated, what is the probability it came from Team Y?",
+    options: ["50.7%", "35%", "52.4%", "47.6%"],
+    correctAnswer: "50.7%",
   },
 ];

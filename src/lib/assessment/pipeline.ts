@@ -5,6 +5,8 @@ import { scoreConstructs } from "./construct-scoring";
 import { calculateComposite, evaluateCutline, determineStatus } from "@/lib/scoring";
 import { generateAllPredictions } from "@/lib/predictions";
 import { getNarrativeInsight } from "./narratives";
+import { getRoleContext } from "./role-context";
+import { computeRoleFitRankings } from "./role-fit-rankings";
 
 /**
  * Full scoring pipeline: takes an assessment's item responses and produces
@@ -38,7 +40,11 @@ export async function runScoringPipeline(assessmentId: string) {
   // 3. Aggregate into construct scores
   const constructScores = scoreConstructs(scoredItems);
 
-  // 4. Save SubtestResults (with narrative insights and calibration)
+  // 4. Load role context for domain-aware narratives and predictions
+  const role = assessment.candidate.primaryRole;
+  const roleContext = await getRoleContext(role.id);
+
+  // 5. Save SubtestResults (with narrative insights and calibration)
   for (const cs of constructScores) {
     // Calibration: find confidence check item for this construct
     const confidenceItemId = `confidence-${cs.construct.toLowerCase().replace(/_/g, "-")}`;
@@ -62,7 +68,7 @@ export async function runScoringPipeline(assessmentId: string) {
       else calibrationBias = "CALIBRATED";
     }
 
-    const narrativeInsight = getNarrativeInsight(cs.construct, cs.percentile);
+    const narrativeInsight = getNarrativeInsight(cs.construct, cs.percentile, roleContext);
 
     await prisma.subtestResult.upsert({
       where: {
@@ -103,14 +109,12 @@ export async function runScoringPipeline(assessmentId: string) {
     });
   }
 
-  // 5. Calculate composites for the primary role (active weights only)
+  // 6. Calculate composites for the primary role (active weights only)
   const subtestResults = constructScores.map((cs) => ({
     construct: cs.construct,
     layer: cs.layer,
     percentile: cs.percentile,
   }));
-
-  const role = assessment.candidate.primaryRole;
   const weights = await prisma.compositeWeight.findMany({
     where: { roleId: role.id, effectiveTo: null },
   });
@@ -154,6 +158,39 @@ export async function runScoringPipeline(assessmentId: string) {
       distanceFromCutline: distance,
     },
   });
+
+  // 5b. For generic roles, compute cross-role composite scores
+  if (role.isGeneric) {
+    const rankings = await computeRoleFitRankings(
+      assessment.candidate.orgId,
+      subtestResults,
+    );
+    for (const ranking of rankings) {
+      await prisma.compositeScore.upsert({
+        where: {
+          assessmentId_roleSlug: {
+            assessmentId,
+            roleSlug: ranking.roleSlug,
+          },
+        },
+        create: {
+          assessmentId,
+          roleSlug: ranking.roleSlug,
+          indexName: `${ranking.roleName} Index`,
+          score: ranking.compositeScore,
+          percentile: ranking.compositeScore,
+          passed: ranking.passed,
+          distanceFromCutline: ranking.distanceFromCutline,
+        },
+        update: {
+          score: ranking.compositeScore,
+          percentile: ranking.compositeScore,
+          passed: ranking.passed,
+          distanceFromCutline: ranking.distanceFromCutline,
+        },
+      });
+    }
+  }
 
   // 6. Generate red flags
   const totalResponses = assessment.itemResponses.length;
@@ -264,7 +301,7 @@ export async function runScoringPipeline(assessmentId: string) {
   const status = determineStatus(passed, distance, redFlags);
 
   // 8. Generate predictions
-  const predictions = generateAllPredictions(subtestResults);
+  const predictions = generateAllPredictions(subtestResults, roleContext);
 
   await prisma.prediction.upsert({
     where: { assessmentId },

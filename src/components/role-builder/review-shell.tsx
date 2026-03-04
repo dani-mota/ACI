@@ -11,6 +11,7 @@ export function ReviewShell() {
   const [result, setResult] = useState<RoleBuilderPipelineResult | null>(null);
   const [error, setError] = useState(false);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem("roleBuilderResult");
@@ -23,6 +24,7 @@ export function ReviewShell() {
       setError(true);
     }
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   if (error) {
     return (

@@ -10,16 +10,23 @@ import { useTheme } from "@/components/theme-provider";
 import { useAuth } from "@/components/auth-provider";
 import type { Notification } from "@/lib/notifications";
 
-function hoursAgo(h: number) { return new Date(Date.now() - h * 3600000); }
-function daysAgo(d: number) { return new Date(Date.now() - d * 86400000); }
+/** Fetches live notifications from the API and renders NotificationBell */
+function LiveNotificationBell() {
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
-const MOCK_NOTIFICATIONS: Notification[] = [
-  { id: "n1", type: "ASSESSMENT_COMPLETED", title: "Assessment Completed", message: "Sarah Okafor completed their CNC Machinist assessment.", timestamp: hoursAgo(2), read: false },
-  { id: "n2", type: "AWAITING_DECISION", title: "Awaiting Decision", message: "Kevin Park has been awaiting decision for 3 days.", timestamp: hoursAgo(72), read: false },
-  { id: "n3", type: "ASSESSMENT_COMPLETED", title: "Assessment Completed", message: "Maria Santos completed their Manufacturing Engineer assessment.", timestamp: hoursAgo(6), read: false },
-  { id: "n4", type: "STATUS_CHANGED", title: "Status Updated", message: "James Chen marked as Strong Fit for CAM Programmer.", timestamp: daysAgo(1), read: true },
-  { id: "n5", type: "NEW_CANDIDATE", title: "New Candidate", message: "Lisa Wong was added to the CMM Programmer pipeline.", timestamp: daysAgo(2), read: true },
-];
+  useEffect(() => {
+    fetch("/api/notifications")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: Notification[]) =>
+        setNotifications(
+          data.map((n) => ({ ...n, timestamp: new Date(n.timestamp) }))
+        )
+      )
+      .catch(() => {});
+  }, []);
+
+  return <NotificationBell notifications={notifications} />;
+}
 
 const BASE_NAV_ITEMS = [
   { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -125,7 +132,7 @@ export function TopNav({ mode = "live" }: { mode?: "live" | "tutorial" }) {
         </nav>
 
         <div className="flex items-center gap-2">
-          {!isTutorial && <NotificationBell notifications={MOCK_NOTIFICATIONS} />}
+          {!isTutorial && <LiveNotificationBell />}
           <button
             onClick={toggleTheme}
             className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"

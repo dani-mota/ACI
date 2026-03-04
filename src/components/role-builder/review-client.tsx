@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { Loader2, AlertTriangle, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { WeightVisualizer } from "./weight-visualizer";
+import { WeightExplainer } from "./weight-explainer";
 import { CutlineControls } from "./cutline-controls";
+import { CutlineExplainer } from "./cutline-explainer";
 import { HiringIntelligenceBrief } from "./hiring-intelligence-brief";
 import { ResearchRationalePanel } from "./research-rationale";
 import { RoleSummaryCard } from "./role-summary-card";
@@ -19,7 +21,7 @@ export function ReviewClient({ result }: ReviewClientProps) {
   const router = useRouter();
 
   const [name, setName] = useState(result.extracted.title || "New Role");
-  const [description, setDescription] = useState("");
+  const [description, setDescription] = useState(result.extracted.description || "");
   const [weights, setWeights] = useState<Record<string, number>>({ ...result.weights.weights });
   const [cutlines, setCutlines] = useState<{
     technicalAptitude: number;
@@ -61,6 +63,7 @@ export function ReviewClient({ result }: ReviewClientProps) {
           researchRationale: result.rationale,
           confidenceScores: result.weights.confidenceScores,
           hiringIntelligence: result.hiringIntelligence,
+          jdContext: result.extracted,
         }),
       });
 
@@ -137,6 +140,7 @@ export function ReviewClient({ result }: ReviewClientProps) {
         {/* Section B — Construct Weights */}
         <section>
           <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">B. Construct Weights</p>
+          <WeightExplainer />
           <div className="bg-card border border-border p-4">
             <WeightVisualizer
               weights={weights}
@@ -149,6 +153,7 @@ export function ReviewClient({ result }: ReviewClientProps) {
         {/* Section C — Cutlines */}
         <section>
           <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">C. Cutline Thresholds</p>
+          <CutlineExplainer />
           <div className="bg-card border border-border p-4">
             <CutlineControls
               cutlines={cutlines}

@@ -14,6 +14,7 @@ import { RoleMismatch } from "./role-mismatch";
 import { CONSTRUCTS, LAYER_INFO, type LayerType } from "@/lib/constructs";
 import { AlertTriangle, TrendingUp, TrendingDown, Shield, FileDown, FileText, ClipboardList } from "lucide-react";
 import { RecordOutcomeForm } from "./record-outcome-form";
+import { RoleFitRankings } from "./role-fit-rankings";
 
 const OUTCOME_ROLES = ["RECRUITING_MANAGER", "TA_LEADER", "ADMIN"];
 
@@ -158,9 +159,17 @@ export function ProfileClient({ candidate, allRoles, cutlines, userRole }: Profi
   );
   const cutline = cutlines.find((c: any) => c.roleId === selectedRole?.id);
 
-  const subtestResults = candidate.assessment?.subtestResults || [];
+  const subtestResults = useMemo(
+    () => candidate.assessment?.subtestResults || [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [candidate.assessment?.subtestResults]
+  );
   const predictions = candidate.assessment?.predictions;
-  const redFlags = candidate.assessment?.redFlags || [];
+  const redFlags = useMemo(
+    () => candidate.assessment?.redFlags || [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [candidate.assessment?.redFlags]
+  );
 
   const summary = useMemo(
     () => generateExecutiveSummary(candidate, compositeScore, selectedRole?.name, subtestResults, predictions, redFlags),
@@ -360,6 +369,12 @@ export function ProfileClient({ candidate, allRoles, cutlines, userRole }: Profi
             onSelect={handleRoleSelect}
             compositeScores={candidate.assessment?.compositeScores || []}
           />
+          {candidate.primaryRole?.isGeneric && (
+            <RoleFitRankings
+              compositeScores={candidate.assessment?.compositeScores || []}
+              roles={allRoles}
+            />
+          )}
           <RoleMismatch
             compositeScores={candidate.assessment?.compositeScores || []}
             primaryRoleSlug={candidate.primaryRole.slug}

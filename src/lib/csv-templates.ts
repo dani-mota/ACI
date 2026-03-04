@@ -2,7 +2,8 @@ export const CSV_TEMPLATE_HEADER = "first_name,last_name,email,phone,role_slug";
 
 export const CSV_TEMPLATE_EXAMPLE = `${CSV_TEMPLATE_HEADER}
 John,Doe,john@example.com,+1-555-0100,cnc-machinist
-Jane,Smith,jane@example.com,,manufacturing-engineer`;
+Jane,Smith,jane@example.com,,manufacturing-engineer
+Sam,Jones,sam@example.com,,`;
 
 interface CsvRow {
   first_name: string;
@@ -61,9 +62,8 @@ export function validateCsvRows(
     }
     seenEmails.add(email);
 
-    if (!roleSlug) {
-      errors.push("Role slug is required");
-    } else if (!validRoleSlugs.includes(roleSlug)) {
+    // Empty role_slug defaults to generic-aptitude
+    if (roleSlug && !validRoleSlugs.includes(roleSlug)) {
       errors.push(`Unknown role: ${roleSlug}`);
     }
 

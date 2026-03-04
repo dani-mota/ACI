@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Loader2, Brain } from "lucide-react";
+import { useAssessmentStore } from "@/stores/assessment-store";
 
 interface AiProbeProps {
   prompt: string;
@@ -12,8 +13,11 @@ interface AiProbeProps {
 }
 
 export function AiProbe({ prompt, token, construct, previousResponse, onSubmit }: AiProbeProps) {
+  const roleId = useAssessmentStore((s) => s.roleId);
+  const assessmentId = useAssessmentStore((s) => s.assessmentId);
   const [text, setText] = useState("");
   const [aiQuestion, setAiQuestion] = useState<string | null>(null);
+  const [interactionId, setInteractionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [phase, setPhase] = useState<"initial" | "follow-up">("initial");
 
@@ -30,12 +34,15 @@ export function AiProbe({ prompt, token, construct, previousResponse, onSubmit }
           prompt,
           previousResponse,
           candidateResponse: text,
+          roleId,
+          assessmentId,
         }),
       });
 
       if (res.ok) {
         const data = await res.json();
         setAiQuestion(data.followUp);
+        if (data.interactionId) setInteractionId(data.interactionId);
         setPhase("follow-up");
         setText("");
       } else {
@@ -49,7 +56,24 @@ export function AiProbe({ prompt, token, construct, previousResponse, onSubmit }
     setLoading(false);
   };
 
-  const handleFollowUpSubmit = () => {
+  const handleFollowUpSubmit = async () => {
+    // Submit the follow-up response to the AI probe API for analysis
+    if (interactionId) {
+      try {
+        await fetch("/api/assess/ai-probe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            construct,
+            interactionId,
+            candidateResponse: text,
+            token,
+          }),
+        });
+      } catch {
+        // Non-fatal — continue even if analysis fails
+      }
+    }
     onSubmit(`${previousResponse}\n---\nAI Follow-up: ${aiQuestion}\nResponse: ${text}`);
   };
 

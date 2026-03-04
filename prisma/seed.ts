@@ -401,7 +401,21 @@ async function main() {
     });
     roleRecords[ROLE_SLUGS[i]] = role.id;
   }
-  console.log("  Created", ROLE_SLUGS.length, "roles.");
+
+  // Generic Aptitude role (equal weights, moderate cutlines)
+  const genericRole = await prisma.role.create({
+    data: {
+      name: "Generic Aptitude",
+      slug: "generic-aptitude",
+      description: "General cognitive and behavioral aptitude assessment. Not tied to a specific role — results can be compared across all roles.",
+      orgId: org.id,
+      isCustom: false,
+      isGeneric: true,
+      sourceType: "SYSTEM_DEFAULT",
+    },
+  });
+  roleRecords["generic-aptitude"] = genericRole.id;
+  console.log("  Created", ROLE_SLUGS.length + 1, "roles (including Generic Aptitude).");
 
   // 4. Cutlines
   for (const slug of ROLE_SLUGS) {
@@ -417,6 +431,17 @@ async function main() {
       },
     });
   }
+  // Generic Aptitude cutline (moderate 25th percentile thresholds)
+  await prisma.cutline.create({
+    data: {
+      roleId: genericRole.id,
+      orgId: org.id,
+      technicalAptitude: 25,
+      behavioralIntegrity: 25,
+      learningVelocity: 25,
+      overallMinimum: 25,
+    },
+  });
   console.log("  Created cutlines for all roles.");
 
   // 5. Composite Weights
@@ -435,7 +460,20 @@ async function main() {
       });
     }
   }
-  console.log("  Created composite weights (", ROLE_SLUGS.length * CONSTRUCTS.length, "entries).");
+  // Generic Aptitude weights (equal 1/12 per construct)
+  for (const c of CONSTRUCTS) {
+    await prisma.compositeWeight.create({
+      data: {
+        roleId: genericRole.id,
+        constructId: c.id,
+        weight: Math.round((100 / 12) * 100) / 100, // ~8.33
+        version: 1,
+        source: "RESEARCH_VALIDATED",
+        effectiveFrom: new Date(),
+      },
+    });
+  }
+  console.log("  Created composite weights (", (ROLE_SLUGS.length + 1) * CONSTRUCTS.length, "entries).");
 
   // 6. Candidates + Assessments
   let candidateCount = 0;

@@ -1,18 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { getSession } from "@/lib/auth";
+
+const SORTABLE_FIELDS = ["createdAt", "lastName", "firstName", "status", "email"] as const;
 
 export async function GET(request: NextRequest) {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { searchParams } = new URL(request.url);
   const search = searchParams.get("search") || "";
   const status = searchParams.get("status") || "";
   const role = searchParams.get("role") || "";
-  const sortBy = searchParams.get("sortBy") || "createdAt";
+  const rawSortBy = searchParams.get("sortBy") || "createdAt";
+  const sortBy = (SORTABLE_FIELDS as readonly string[]).includes(rawSortBy) ? rawSortBy : "createdAt";
   const sortDir = searchParams.get("sortDir") || "desc";
   const page = parseInt(searchParams.get("page") || "1");
-  const pageSize = parseInt(searchParams.get("pageSize") || "25");
+  const pageSize = Math.min(parseInt(searchParams.get("pageSize") || "25"), 100);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const where: any = {};
+  const where: any = { orgId: session.user.orgId };
 
   if (search) {
     where.OR = [

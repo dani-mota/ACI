@@ -1,3 +1,5 @@
+import type { RoleContext } from "./assessment/role-context";
+
 interface SubtestScore {
   construct: string;
   percentile: number;
@@ -11,7 +13,7 @@ function getScore(results: SubtestScore[], construct: string): number {
   return results.find(r => r.construct === construct)?.percentile ?? 50;
 }
 
-export function predictRampTime(results: SubtestScore[]): {
+export function predictRampTime(results: SubtestScore[], roleContext?: RoleContext | null): {
   weeks: number;
   confidence: number;
   label: string;
@@ -38,11 +40,15 @@ export function predictRampTime(results: SubtestScore[]): {
     weeks,
     confidence: Math.round(confidence),
     label,
-    description: `Estimated ${weeks} weeks to full productivity based on learning velocity (${lv}th percentile), executive control (${ec}th), and systems diagnostics (${sd}th).`,
+    description: `Estimated ${weeks} weeks to full productivity based on learning velocity (${lv}th percentile), executive control (${ec}th), and systems diagnostics (${sd}th).${
+      roleContext && !roleContext.isGeneric
+        ? ` In the ${roleContext.environment.toLowerCase()} environment for ${roleContext.roleName}, this accounts for domain-specific onboarding requirements.`
+        : ""
+    }`,
   };
 }
 
-export function predictSupervision(results: SubtestScore[]): {
+export function predictSupervision(results: SubtestScore[], roleContext?: RoleContext | null): {
   level: SupervisionLevel;
   label: string;
   description: string;
@@ -77,12 +83,16 @@ export function predictSupervision(results: SubtestScore[]): {
   return {
     level,
     label,
-    description: `Based on metacognitive calibration (${mc}th), procedural reliability (${prl}th), ethical judgment (${ej}th), and executive control (${ec}th).`,
+    description: `Based on metacognitive calibration (${mc}th), procedural reliability (${prl}th), ethical judgment (${ej}th), and executive control (${ec}th).${
+      roleContext && !roleContext.isGeneric
+        ? ` Given ${roleContext.roleName} responsibilities, this reflects expected autonomy in day-to-day operations.`
+        : ""
+    }`,
     confidence: Math.round(confidence),
   };
 }
 
-export function predictCeiling(results: SubtestScore[]): {
+export function predictCeiling(results: SubtestScore[], roleContext?: RoleContext | null): {
   level: CeilingLevel;
   label: string;
   description: string;
@@ -117,12 +127,16 @@ export function predictCeiling(results: SubtestScore[]): {
   return {
     level,
     label,
-    description: `Growth trajectory based on fluid reasoning (${fr}th), learning velocity (${lv}th), systems diagnostics (${sd}th), and self-awareness (${mc}th).`,
+    description: `Growth trajectory based on fluid reasoning (${fr}th), learning velocity (${lv}th), systems diagnostics (${sd}th), and self-awareness (${mc}th).${
+      roleContext && !roleContext.isGeneric
+        ? ` Relative to the ${roleContext.roleName} growth trajectory within ${roleContext.domain.toLowerCase()}.`
+        : ""
+    }`,
     confidence: Math.round(confidence),
   };
 }
 
-export function predictAttrition(results: SubtestScore[]): {
+export function predictAttrition(results: SubtestScore[], roleContext?: RoleContext | null): {
   risk: RiskLevel;
   label: string;
   description: string;
@@ -166,17 +180,21 @@ export function predictAttrition(results: SubtestScore[]): {
   return {
     risk,
     label,
-    description: `Attrition risk assessment based on behavioral indicators and role fit patterns.`,
+    description: `Attrition risk assessment based on behavioral indicators and role fit patterns.${
+      roleContext && !roleContext.isGeneric
+        ? ` Assessed in the context of ${roleContext.roleName} within ${roleContext.domain.toLowerCase()} environments.`
+        : ""
+    }`,
     confidence: Math.min(85, 50 + factors.length * 8),
     factors: factors.length > 0 ? factors : ["No significant risk factors identified"],
   };
 }
 
-export function generateAllPredictions(results: SubtestScore[]) {
+export function generateAllPredictions(results: SubtestScore[], roleContext?: RoleContext | null) {
   return {
-    rampTime: predictRampTime(results),
-    supervision: predictSupervision(results),
-    ceiling: predictCeiling(results),
-    attrition: predictAttrition(results),
+    rampTime: predictRampTime(results, roleContext),
+    supervision: predictSupervision(results, roleContext),
+    ceiling: predictCeiling(results, roleContext),
+    attrition: predictAttrition(results, roleContext),
   };
 }

@@ -2,7 +2,9 @@ export type NotificationType =
   | "ASSESSMENT_COMPLETED"
   | "AWAITING_DECISION"
   | "STATUS_CHANGED"
-  | "NEW_CANDIDATE";
+  | "NEW_CANDIDATE"
+  | "RED_FLAG_DETECTED"
+  | "ACCESS_REQUEST_PENDING";
 
 export interface Notification {
   id: string;
@@ -12,6 +14,7 @@ export interface Notification {
   timestamp: Date;
   read: boolean;
   candidateId?: string;
+  linkTo?: string;
 }
 
 function hoursAgo(hours: number): Date {

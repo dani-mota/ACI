@@ -144,17 +144,30 @@ export function WeightVisualizer({ weights, recommendations, onChange }: WeightV
                     </div>
 
                     {/* Slider + ACI marker */}
-                    <div className="relative flex items-center">
+                    <div className="relative">
                       {/* ACI recommendation diamond */}
                       {rec > 0 && (
                         <div
-                          className="absolute -top-2 text-aci-gold text-[8px] -translate-x-1/2 pointer-events-none select-none"
-                          style={{ left: `${rec}%` }}
+                          className="absolute -top-2 text-aci-gold text-[8px] -translate-x-1/2 pointer-events-none select-none z-10"
+                          style={{ left: `${((rec - 2) / 23) * 100}%` }}
                           title={`ACI recommendation: ${rec}%`}
                         >
                           ◆
                         </div>
                       )}
+
+                      {/* Styled track */}
+                      <div className={`relative h-6 bg-muted overflow-hidden rounded-sm ${isLocked ? "opacity-40" : ""}`}>
+                        <div
+                          className="absolute top-0 bottom-0 left-0"
+                          style={{ width: `${((value - 2) / 23) * 100}%`, backgroundColor: layerInfo.color, opacity: 0.2 }}
+                        />
+                        <div
+                          className="absolute top-0 bottom-0 w-0.5"
+                          style={{ left: `${((value - 2) / 23) * 100}%`, backgroundColor: layerInfo.color }}
+                        />
+                      </div>
+
                       <input
                         type="range"
                         min={2}
@@ -163,12 +176,7 @@ export function WeightVisualizer({ weights, recommendations, onChange }: WeightV
                         value={value}
                         disabled={isLocked}
                         onChange={(e) => handleChange(constructId, Number(e.target.value))}
-                        className="w-full h-1.5 rounded-full appearance-none bg-muted disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
-                        style={{
-                          background: isLocked
-                            ? undefined
-                            : `linear-gradient(to right, ${layerInfo.color} 0%, ${layerInfo.color} ${((value - 2) / 23) * 100}%, var(--muted) ${((value - 2) / 23) * 100}%, var(--muted) 100%)`,
-                        }}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
                       />
                     </div>
 

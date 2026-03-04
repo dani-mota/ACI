@@ -73,7 +73,7 @@ export function ConstructImportance({ constructs, roleSlug }: ConstructImportanc
                             className="h-full transition-all duration-500"
                             style={{
                               width: `${barWidth}%`,
-                              backgroundColor: c.isCritical ? "#C9A84C" : info.color,
+                              backgroundColor: c.isCritical ? "#0EA5E9" : info.color,
                               opacity: c.isCritical ? 0.8 : 0.6,
                             }}
                           />

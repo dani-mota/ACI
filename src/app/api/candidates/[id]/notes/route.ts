@@ -1,32 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { getSession } from "@/lib/auth";
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { id: candidateId } = await params;
+
+  // Verify candidate belongs to the caller's org
+  const candidate = await prisma.candidate.findUnique({
+    where: { id: candidateId },
+    select: { orgId: true },
+  });
+  if (!candidate || candidate.orgId !== session.user.orgId) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const body = await request.json();
-  const { content, authorId } = body;
+  const { content } = body;
 
   if (!content?.trim()) {
     return NextResponse.json({ error: "Content is required" }, { status: 400 });
   }
 
-  // If no authorId provided, use the first user in the system
-  let resolvedAuthorId = authorId;
-  if (!resolvedAuthorId) {
-    const firstUser = await prisma.user.findFirst();
-    if (!firstUser) {
-      return NextResponse.json({ error: "No users found" }, { status: 500 });
-    }
-    resolvedAuthorId = firstUser.id;
-  }
-
   const note = await prisma.note.create({
     data: {
       candidateId,
-      authorId: resolvedAuthorId,
+      authorId: session.user.id,
       content: content.trim(),
     },
     include: { author: true },

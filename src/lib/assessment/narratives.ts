@@ -2,7 +2,11 @@
  * Template-driven narrative insights for SubtestResult records.
  * Each construct × percentile band maps to a 1–2 sentence professional insight.
  * Bands: 0–24 (concern), 25–49 (below), 50–74 (average), 75–100 (strong)
+ *
+ * When a RoleContext is provided, a domain-specific sentence is appended.
  */
+
+import type { RoleContext } from "./role-context";
 
 type Band = "concern" | "below" | "average" | "strong";
 
@@ -57,40 +61,63 @@ const NARRATIVES: Record<string, Record<Band, string>> = {
     concern: "Low pattern recognition scores indicate a meaningful risk for inspection or monitoring roles. Automated checks and secondary review are advisable.",
   },
   QUANTITATIVE_REASONING: {
-    strong: "Handles numerical and spatial reasoning with precision. Comfortable with tolerances, calculations, and data interpretation without need for verification support.",
-    average: "Sufficient numerical competency for standard manufacturing tasks. Complex calculations or tight-tolerance work may benefit from documented procedures.",
-    below: "Quantitative reasoning is developing. Measurement, tolerance, and data tasks should be proceduralized and spot-checked during early tenure.",
-    concern: "Quantitative scores indicate significant risk for precision measurement or calculation-intensive roles. Additional technical training and close oversight are recommended.",
+    strong: "Handles numerical reasoning with precision. Comfortable with calculations, data interpretation, and accuracy-sensitive tasks without need for verification support.",
+    average: "Sufficient numerical competency for standard operational tasks. Complex calculations or high-precision work may benefit from documented procedures.",
+    below: "Quantitative reasoning is developing. Numerical and data tasks should be proceduralized and spot-checked during early tenure.",
+    concern: "Quantitative scores indicate significant risk for calculation-intensive or precision-dependent roles. Additional training and close oversight are recommended.",
   },
   SPATIAL_VISUALIZATION: {
-    strong: "Excellent ability to mentally manipulate 3D objects, interpret technical drawings, and reason about geometric relationships without physical aids.",
-    average: "Adequate spatial reasoning for most manufacturing contexts. Complex assemblies or multi-view drawings may benefit from physical models or CAD visualization.",
-    below: "Spatial reasoning is below average; may struggle with interpreting GD&T or complex assembly drawings. Supplemental tooling and reference materials are advisable.",
-    concern: "Spatial visualization deficit detected. Roles requiring frequent interpretation of technical drawings or 3D models may be significantly challenging.",
+    strong: "Excellent ability to mentally manipulate 3D objects, interpret visual diagrams, and reason about geometric relationships without physical aids.",
+    average: "Adequate spatial reasoning for most professional contexts. Complex diagrams or multi-view representations may benefit from supplemental visualization tools.",
+    below: "Spatial reasoning is below average; may struggle with interpreting complex diagrams or spatial layouts. Supplemental tools and reference materials are advisable.",
+    concern: "Spatial visualization deficit detected. Roles requiring frequent interpretation of visual diagrams or spatial models may be significantly challenging.",
   },
   MECHANICAL_REASONING: {
-    strong: "Strong intuition for mechanical systems, force, motion, and material behavior. Likely to troubleshoot mechanical issues intuitively and understand tooling trade-offs.",
-    average: "Solid foundation in applied mechanical concepts. Performance on novel or complex mechanical scenarios may vary; standard training should suffice.",
-    below: "Mechanical reasoning is developing. Formal training on relevant equipment and systems is recommended before independent operation of complex machinery.",
-    concern: "Mechanical reasoning scores are a concern for equipment-intensive roles. Foundational training and extended supervised operation are strongly advised.",
+    strong: "Strong intuition for systems, cause-and-effect relationships, and operational trade-offs. Likely to troubleshoot issues intuitively and understand technical constraints.",
+    average: "Solid foundation in applied reasoning about systems and processes. Performance on novel or complex scenarios may vary; standard training should suffice.",
+    below: "Mechanical reasoning is developing. Formal training on relevant systems is recommended before independent handling of complex operational tasks.",
+    concern: "Mechanical reasoning scores are a concern for technically demanding roles. Foundational training and extended supervised operation are strongly advised.",
   },
   PROCEDURAL_RELIABILITY: {
     strong: "Highly disciplined and consistent in following established procedures. Unlikely to skip steps under pressure; documentation and compliance habits are strong.",
     average: "Generally follows procedures reliably in routine conditions. Under high time pressure or fatigue, occasional lapses may occur.",
-    below: "Procedural adherence is inconsistent. Clear SOPs, checklists, and accountability structures are important to ensure safety and quality standards are met.",
-    concern: "Low procedural reliability is a significant concern for safety-critical or quality-sensitive roles. Intensive oversight and structured accountability systems are required.",
+    below: "Procedural adherence is inconsistent. Clear standard procedures, checklists, and accountability structures are important to ensure quality standards are met.",
+    concern: "Low procedural reliability is a significant concern for compliance-sensitive or quality-critical roles. Intensive oversight and structured accountability systems are required.",
   },
   ETHICAL_JUDGMENT: {
-    strong: "Consistently applies principled reasoning to ambiguous situations. Resists social pressure when procedures or safety standards are at stake.",
+    strong: "Consistently applies principled reasoning to ambiguous situations. Resists social pressure when procedures or standards are at stake.",
     average: "Generally makes sound ethical judgments in straightforward scenarios. Ambiguous situations with competing pressures may occasionally produce inconsistent reasoning.",
     below: "Ethical judgment shows inconsistency, particularly when social dynamics or time pressure are involved. Explicit guidance on expected conduct is important.",
-    concern: "Significant ethical judgment concerns detected. Roles involving quality sign-off, safety compliance, or autonomous decision-making warrant careful monitoring.",
+    concern: "Significant ethical judgment concerns detected. Roles involving sign-off authority, compliance oversight, or autonomous decision-making warrant careful monitoring.",
   },
 };
 
-export function getNarrativeInsight(construct: string, percentile: number): string {
+export function getNarrativeInsight(
+  construct: string,
+  percentile: number,
+  roleContext?: RoleContext | null,
+): string {
   const band = getBand(percentile);
   const constructNarratives = NARRATIVES[construct];
   if (!constructNarratives) return "";
-  return constructNarratives[band];
+
+  const base = constructNarratives[band];
+
+  // Append domain-specific context when a non-generic role context is available
+  if (!roleContext || roleContext.isGeneric || !roleContext.keyTasks.length) {
+    return base;
+  }
+
+  const DOMAIN_SUFFIXES: Record<Band, (ctx: RoleContext) => string> = {
+    strong: (ctx) =>
+      `This is particularly valuable for ${ctx.roleName} roles involving ${ctx.keyTasks[0]}.`,
+    average: (ctx) =>
+      `For ${ctx.roleName} responsibilities, structured onboarding in ${ctx.environment.toLowerCase()} contexts will help bridge any gaps.`,
+    below: (ctx) =>
+      `Given the ${ctx.roleName} role's demands around ${ctx.keyTasks[0]}, additional support during ramp-up is recommended.`,
+    concern: (ctx) =>
+      `This is a heightened concern given ${ctx.roleName} requirements in ${ctx.environment.toLowerCase()} environments.`,
+  };
+
+  return `${base} ${DOMAIN_SUFFIXES[band](roleContext)}`;
 }

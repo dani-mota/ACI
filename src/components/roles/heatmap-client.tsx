@@ -171,6 +171,7 @@ export function HeatmapClient({ candidates, roles, weights, cutlines }: HeatmapC
     return "rgba(220, 38, 38, 0.12)";
   };
 
+  // eslint-disable-next-line react-hooks/static-components
   const SortIndicator = useCallback(({ active, dir }: { active: boolean; dir: "asc" | "desc" }) => {
     if (!active) return null;
     return dir === "desc"
@@ -247,18 +248,19 @@ export function HeatmapClient({ candidates, roles, weights, cutlines }: HeatmapC
 
       {/* Heatmap */}
       <div ref={tableRef} className="bg-card border border-border overflow-x-auto relative" data-tutorial="heatmap-table">
-        <table className="w-full text-[9px] border-collapse">
+        <table className="w-full text-[9px] border-collapse table-fixed">
           <thead>
             <tr className="border-b border-border">
               <th className="sticky left-0 bg-card z-10 py-1.5 px-1.5 text-left font-medium text-muted-foreground w-7" />
-              <th className="sticky left-7 bg-card z-10 py-1.5 px-1.5 text-left font-medium text-muted-foreground uppercase tracking-wider min-w-[120px]">
+              <th className="sticky left-7 bg-card z-10 py-1.5 px-1.5 text-left font-medium text-muted-foreground uppercase tracking-wider w-[45%]">
                 Candidate
               </th>
               <th
-                className="py-1.5 px-0 text-center font-semibold text-foreground w-[34px] uppercase tracking-wider cursor-pointer hover:bg-accent/30 select-none"
+                className="py-1.5 px-0 text-center font-semibold text-foreground uppercase tracking-wider cursor-pointer hover:bg-accent/30 select-none"
                 onClick={() => handleSort("composite")}
               >
                 CI
+                {/* eslint-disable-next-line react-hooks/static-components */}
                 <SortIndicator active={sortKey === "composite"} dir={sortDir} />
               </th>
               {CONSTRUCT_ORDER.map((key) => {
@@ -269,7 +271,7 @@ export function HeatmapClient({ candidates, roles, weights, cutlines }: HeatmapC
                 return (
                   <th
                     key={key}
-                    className={`py-1.5 px-0 text-center font-medium w-[34px] cursor-pointer hover:bg-accent/30 select-none ${isHighWeight ? "border-l-2 border-l-aci-gold" : ""}`}
+                    className={`py-1.5 px-0 text-center font-medium cursor-pointer hover:bg-accent/30 select-none ${isHighWeight ? "border-l-2 border-l-aci-gold" : ""}`}
                     style={{ borderTop: `2px solid ${layerInfo.color}` }}
                     onClick={() => handleSort(key)}
                     onMouseEnter={(e) => {
@@ -320,10 +322,10 @@ export function HeatmapClient({ candidates, roles, weights, cutlines }: HeatmapC
                         className="border-border w-3 h-3"
                       />
                     </td>
-                    <td className="sticky left-7 bg-card py-0 px-1.5">
+                    <td className="sticky left-7 bg-card py-0 px-1.5 max-w-0 overflow-hidden">
                       <Link
                         href={`${basePath}/candidates/${row.id}`}
-                        className="text-[10px] font-medium text-foreground hover:text-aci-gold transition-colors"
+                        className="text-[10px] font-medium text-foreground hover:text-aci-gold transition-colors truncate block"
                       >
                         {row.name}
                       </Link>

@@ -11,6 +11,7 @@ interface Role {
   id: string;
   name: string;
   slug: string;
+  isGeneric?: boolean;
   compositeWeights: { constructId: string; weight: number }[];
 }
 
@@ -149,7 +150,8 @@ export function InviteCandidateSheet({ open, onClose, roles }: InviteCandidateSh
             <div className="space-y-4">
               <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Select Role</p>
               <div className="space-y-3">
-                {roles.map((role) => (
+                {/* Show generic aptitude role first, then org roles */}
+                {[...roles].sort((a, b) => (a.isGeneric ? -1 : b.isGeneric ? 1 : 0)).map((role) => (
                   <RoleSelectionCard
                     key={role.id}
                     role={role}
@@ -158,6 +160,15 @@ export function InviteCandidateSheet({ open, onClose, roles }: InviteCandidateSh
                   />
                 ))}
               </div>
+
+              {/* Generic assessment disclaimer */}
+              {selectedRole?.isGeneric && (
+                <div className="bg-aci-blue/5 border border-aci-blue/20 p-3 text-[10px] text-muted-foreground leading-relaxed">
+                  This assessment measures general cognitive and behavioral aptitude without role-specific context.
+                  AI follow-up questions will remain domain-neutral. Results can be compared across all roles
+                  via the Role Fit Rankings on the candidate profile.
+                </div>
+              )}
             </div>
           )}
 

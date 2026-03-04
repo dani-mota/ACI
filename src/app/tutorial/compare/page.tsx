@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getCompareData, getDemoOrgId } from "@/lib/data";
 import { CompareClient } from "@/components/compare/compare-client";
 import { redirect } from "next/navigation";
@@ -20,7 +21,7 @@ export default async function TutorialComparePage({ searchParams }: PageProps) {
           <h2 className="text-sm font-semibold text-foreground mb-2 uppercase tracking-wider">Select Candidates to Compare</h2>
           <p className="text-xs text-muted-foreground">
             Go to the{" "}
-            <a href="/tutorial/roles" className="text-aci-gold hover:underline">Role Matrix</a>{" "}
+            <Link href="/tutorial/roles" className="text-aci-gold hover:underline">Role Matrix</Link>{" "}
             and select 2-3 candidates to compare side-by-side.
           </p>
         </div>

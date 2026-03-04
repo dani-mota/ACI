@@ -29,9 +29,10 @@ const DIMENSIONS = [
     color: LAYER_INFO.BEHAVIORAL_INTEGRITY.color,
   },
   {
+    // DB field is "learningVelocity" for historical reasons; represents Cognitive Core layer average
     key: "learningVelocity" as const,
-    label: "Learning Velocity",
-    sublabel: "Construct minimum",
+    label: "Cognitive Core",
+    sublabel: "Layer 1 average minimum",
     color: LAYER_INFO.COGNITIVE_CORE.color,
   },
 ];

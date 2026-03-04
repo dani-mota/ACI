@@ -42,38 +42,49 @@ export async function POST(request: NextRequest) {
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 7);
 
-  const results = await prisma.$transaction(async (tx) => {
-    const created = [];
+  let results;
+  try {
+    results = await prisma.$transaction(async (tx) => {
+      const created = [];
 
-    for (const row of validated) {
-      const role = roleMap.get(row.role_slug)!;
+      for (const row of validated) {
+        // Default to generic-aptitude when role_slug is empty
+        const slug = row.role_slug || "generic-aptitude";
+        const role = roleMap.get(slug);
+        if (!role) {
+          throw new Error(`Role "${slug}" not found for this organization. Ensure the role exists before importing candidates.`);
+        }
 
-      const candidate = await tx.candidate.create({
-        data: {
-          firstName: row.first_name,
-          lastName: row.last_name,
-          email: row.email,
-          phone: row.phone || null,
-          orgId: session.user.orgId!,
-          primaryRoleId: role.id,
-          status: "INVITED",
-        },
-      });
+        const candidate = await tx.candidate.create({
+          data: {
+            firstName: row.first_name,
+            lastName: row.last_name,
+            email: row.email,
+            phone: row.phone || null,
+            orgId: session.user.orgId!,
+            primaryRoleId: role.id,
+            status: "INVITED",
+          },
+        });
 
-      const invitation = await tx.assessmentInvitation.create({
-        data: {
-          candidateId: candidate.id,
-          roleId: role.id,
-          invitedBy: session.user.id,
-          expiresAt,
-        },
-      });
+        const invitation = await tx.assessmentInvitation.create({
+          data: {
+            candidateId: candidate.id,
+            roleId: role.id,
+            invitedBy: session.user.id,
+            expiresAt,
+          },
+        });
 
-      created.push({ candidate, invitation, role });
-    }
+        created.push({ candidate, invitation, role });
+      }
 
-    return created;
-  });
+      return created;
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Batch import failed";
+    return NextResponse.json({ error: message }, { status: 422 });
+  }
 
   // Send emails (non-blocking — don't fail the batch if some emails fail)
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://aci-rho.vercel.app";
@@ -82,7 +93,7 @@ export async function POST(request: NextRequest) {
       const assessmentLink = `${baseUrl}/assess/${invitation.linkToken}`;
       const { subject, html } = buildInvitationEmail({
         candidateName: candidate.firstName,
-        roleName: role.name,
+        roleName: role.isGeneric ? "General Aptitude Assessment" : role.name,
         companyName: role.org.name,
         assessmentLink,
         expiresAt,

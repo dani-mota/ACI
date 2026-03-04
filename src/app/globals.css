@@ -14,7 +14,7 @@
   --color-aci-red: #DC2626;
   --color-aci-slate: #64748B;
   --color-aci-surface: #F8FAFC;
-  --color-aci-gold: #C9A84C;
+  --color-aci-gold: #0EA5E9;
 
   /* Heatmap 5-tier */
   --color-heat-exceptional: #065F46;
@@ -93,11 +93,11 @@
   --destructive: #DC2626;
   --border: #E2E8F0;
   --input: #E2E8F0;
-  --ring: #C9A84C;
+  --ring: #0EA5E9;
   --chart-1: #2563EB;
   --chart-2: #059669;
   --chart-3: #D97706;
-  --chart-4: #C9A84C;
+  --chart-4: #0EA5E9;
   --chart-5: #64748B;
   --sidebar: #F8FAFC;
   --sidebar-foreground: #0F1729;
@@ -106,11 +106,11 @@
   --sidebar-accent: #F1F5F9;
   --sidebar-accent-foreground: #0F1729;
   --sidebar-border: #E2E8F0;
-  --sidebar-ring: #C9A84C;
+  --sidebar-ring: #0EA5E9;
 }
 
 /* ═══════════════════════════════════════════
-   DARK MODE — Deep navy, gold & blue accents
+   DARK MODE — Deep navy, blue accents
    ═══════════════════════════════════════════ */
 .dark {
   --background: #080D19;
@@ -130,11 +130,11 @@
   --destructive: #EF4444;
   --border: #1E293B;
   --input: #1E293B;
-  --ring: #C9A84C;
+  --ring: #0EA5E9;
   --chart-1: #3B82F6;
   --chart-2: #10B981;
   --chart-3: #F59E0B;
-  --chart-4: #C9A84C;
+  --chart-4: #0EA5E9;
   --chart-5: #94A3B8;
   --sidebar: #0A1120;
   --sidebar-foreground: #E2E8F0;
@@ -143,7 +143,7 @@
   --sidebar-accent: #1A2332;
   --sidebar-accent-foreground: #E2E8F0;
   --sidebar-border: #1E293B;
-  --sidebar-ring: #C9A84C;
+  --sidebar-ring: #0EA5E9;
 }
 
 @layer base {

@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { getSession } from "@/lib/auth";
 
 const VALID_STATUSES = ["RECOMMENDED", "REVIEW_REQUIRED", "DO_NOT_ADVANCE", "INCOMPLETE", "SCORING"];
 
 export async function PATCH(request: NextRequest) {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const body = await request.json();
   const { candidateIds, status } = body;
 
@@ -16,7 +22,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   const result = await prisma.candidate.updateMany({
-    where: { id: { in: candidateIds } },
+    where: { id: { in: candidateIds }, orgId: session.user.orgId },
     data: { status },
   });
 

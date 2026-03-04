@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { Bell, CheckCircle2, Clock, UserPlus, ArrowRightCircle } from "lucide-react";
+import { Bell, CheckCircle2, Clock, UserPlus, ArrowRightCircle, AlertTriangle, ShieldAlert } from "lucide-react";
 import { formatRelativeDate } from "@/lib/format";
 import type { Notification, NotificationType } from "@/lib/notifications";
 
@@ -15,6 +15,8 @@ const TYPE_ICONS: Record<NotificationType, typeof Bell> = {
   AWAITING_DECISION: Clock,
   STATUS_CHANGED: ArrowRightCircle,
   NEW_CANDIDATE: UserPlus,
+  RED_FLAG_DETECTED: AlertTriangle,
+  ACCESS_REQUEST_PENDING: ShieldAlert,
 };
 
 const TYPE_COLORS: Record<NotificationType, string> = {
@@ -22,6 +24,8 @@ const TYPE_COLORS: Record<NotificationType, string> = {
   AWAITING_DECISION: "text-aci-amber",
   STATUS_CHANGED: "text-aci-blue",
   NEW_CANDIDATE: "text-aci-gold",
+  RED_FLAG_DETECTED: "text-aci-red",
+  ACCESS_REQUEST_PENDING: "text-aci-gold",
 };
 
 export function NotificationBell({ notifications: initialNotifications }: NotificationBellProps) {
@@ -117,11 +121,12 @@ export function NotificationBell({ notifications: initialNotifications }: Notifi
                   </div>
                 );
 
-                if (notif.candidateId) {
+                const href = notif.linkTo ?? (notif.candidateId ? `/candidates/${notif.candidateId}` : null);
+                if (href) {
                   return (
                     <Link
                       key={notif.id}
-                      href={`/candidates/${notif.candidateId}`}
+                      href={href}
                       onClick={() => {
                         setIsOpen(false);
                         setNotifications((prev) =>

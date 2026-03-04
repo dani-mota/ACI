@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import Link from "next/link";
 import { getCompareData } from "@/lib/data";
 import { getSession } from "@/lib/auth";
 import { CompareClient } from "@/components/compare/compare-client";
@@ -21,7 +22,7 @@ export default async function ComparePage({ searchParams }: PageProps) {
           <h2 className="text-sm font-semibold text-foreground mb-2 uppercase tracking-wider">Select Candidates to Compare</h2>
           <p className="text-xs text-muted-foreground">
             Go to the{" "}
-            <a href="/roles" className="text-aci-gold hover:underline">Role Matrix</a>{" "}
+            <Link href="/roles" className="text-aci-gold hover:underline">Role Matrix</Link>{" "}
             and select 2-3 candidates to compare side-by-side.
           </p>
         </div>

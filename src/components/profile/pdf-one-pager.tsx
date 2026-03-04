@@ -59,7 +59,7 @@ export interface PDFOnePagerProps {
 // ---------------------------------------------------------------------------
 
 const NAVY = "#0F1729";
-const GOLD = "#C9A84C";
+const GOLD = "#0EA5E9";
 const WHITE = "#FFFFFF";
 const LIGHT_GRAY = "#F1F5F9";
 const MID_GRAY = "#94A3B8";

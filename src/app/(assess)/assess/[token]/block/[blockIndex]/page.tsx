@@ -19,7 +19,7 @@ export default async function AssessmentBlockPage({ params }: PageProps) {
 
   const invitation = await prisma.assessmentInvitation.findUnique({
     where: { linkToken: token },
-    include: { candidate: true },
+    include: { candidate: { include: { primaryRole: true } } },
   });
 
   if (!invitation) notFound();
@@ -46,6 +46,7 @@ export default async function AssessmentBlockPage({ params }: PageProps) {
       assessmentId={assessment.id}
       blockIndex={blockIndex}
       items={shuffled}
+      roleId={invitation.candidate.primaryRole?.id}
     />
   );
 }

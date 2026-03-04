@@ -1,19 +1,50 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { getRoleContext, type RoleContext } from "@/lib/assessment/role-context";
+
+const ANTHROPIC_TIMEOUT_MS = 15_000;
+
+function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = ANTHROPIC_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() =>
+    clearTimeout(timeoutId),
+  );
+}
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
   const {
+    token,
     construct,
     prompt,
     assessmentId,
     sequenceOrder,
     triggerItemId,
+    roleId,
     // Second-call fields (candidate response submission)
     interactionId,
     candidateResponse,
     responseTimeMs,
   } = body;
+
+  // Validate assessment token — this endpoint is called by candidates, not authenticated users
+  if (!token) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const invitation = await prisma.assessmentInvitation.findUnique({
+    where: { linkToken: token },
+  });
+  if (!invitation || invitation.status === "EXPIRED") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Load role context for domain-aware prompts (null-safe for backward compat)
+  let roleContext: RoleContext | null = null;
+  if (roleId) {
+    roleContext = await getRoleContext(roleId);
+    if (roleContext.isGeneric) roleContext = null;
+  }
 
   if (!construct) {
     return NextResponse.json({ error: "Missing construct" }, { status: 400 });
@@ -38,7 +69,7 @@ export async function POST(request: NextRequest) {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (apiKey) {
       try {
-        const response = await fetch("https://api.anthropic.com/v1/messages", {
+        const response = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -51,7 +82,11 @@ export async function POST(request: NextRequest) {
             messages: [
               {
                 role: "user",
-                content: `Analyze this candidate response for construct: ${construct}.
+                content: `Analyze this candidate response for construct: ${construct}.${
+                  roleContext
+                    ? `\nRole context: ${roleContext.roleName} — ${roleContext.environment}. Key responsibilities include: ${roleContext.keyTasks.slice(0, 3).join(", ")}.`
+                    : ""
+                }
 Question: "${interaction.aiPrompt}"
 Response: "${candidateResponse}"
 
@@ -117,11 +152,17 @@ Return JSON only (no other text):
           messages: [
             {
               role: "user",
-              content: `You are an assessment proctor. A candidate is being assessed on ${construct}.
+              content: `You are an assessment proctor.${
+                roleContext
+                  ? ` The candidate is being assessed for the role of ${roleContext.roleName}. Domain context: ${roleContext.environment}. Key tasks include: ${roleContext.keyTasks.slice(0, 4).join(", ")}. Technical skills expected: ${roleContext.technicalSkills.slice(0, 4).join(", ")}.`
+                  : ""
+              } The construct being measured is ${construct}.
 The original question was: "${prompt}"
 The candidate responded: "${body.candidateResponse || "(no prior response)"}"
 
-Generate ONE short, probing follow-up question (1-2 sentences) that digs deeper into their reasoning or tests the boundary of their understanding. Be professional and neutral. Only output the question, nothing else.`,
+Generate ONE short, probing follow-up question (1-2 sentences) that digs deeper into their reasoning or tests the boundary of their understanding.${
+                roleContext ? " Frame the question in the context of the role's domain." : ""
+              } Be professional and neutral. Only output the question, nothing else.`,
             },
           ],
         }),

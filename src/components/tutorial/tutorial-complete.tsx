@@ -27,7 +27,7 @@ export function TutorialComplete() {
           Tutorial Complete
         </h1>
         <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
-          You've explored all the key features of ACI. You're ready to invite
+          You&apos;ve explored all the key features of ACI. You&apos;re ready to invite
           your first candidate and start running real assessments.
         </p>
         <Button
