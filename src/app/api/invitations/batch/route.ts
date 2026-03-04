@@ -47,12 +47,15 @@ export async function POST(request: NextRequest) {
     results = await prisma.$transaction(async (tx) => {
       const created = [];
 
+      // Find the generic role for this org (used as fallback when role_slug is empty)
+      const genericRole = roles.find((r) => r.isGeneric);
+
       for (const row of validated) {
-        // Default to generic-aptitude when role_slug is empty
-        const slug = row.role_slug || "generic-aptitude";
-        const role = roleMap.get(slug);
+        const role = row.role_slug
+          ? roleMap.get(row.role_slug)
+          : genericRole;
         if (!role) {
-          throw new Error(`Role "${slug}" not found for this organization. Ensure the role exists before importing candidates.`);
+          throw new Error(`Role "${row.role_slug || "generic-aptitude"}" not found for this organization. Ensure the role exists before importing candidates.`);
         }
 
         const candidate = await tx.candidate.create({
