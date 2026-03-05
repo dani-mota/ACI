@@ -9,7 +9,8 @@ interface PageProps {
 
 export default async function RoleDetailPage({ params }: PageProps) {
   const session = await getSession();
-  const orgId = session?.user.orgId ?? undefined;
+  if (!session?.user.orgId) notFound();
+  const orgId = session.user.orgId;
   const { slug } = await params;
   const data = await getRoleDetailData(slug, orgId);
 

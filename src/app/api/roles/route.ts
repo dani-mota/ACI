@@ -13,11 +13,11 @@ function generateSlug(name: string): string {
     .trim();
 }
 
-async function ensureUniqueSlug(base: string): Promise<string> {
+async function ensureUniqueSlug(base: string, orgId: string): Promise<string> {
   let slug = base;
   let attempt = 0;
   while (true) {
-    const existing = await prisma.role.findUnique({ where: { slug } });
+    const existing = await prisma.role.findUnique({ where: { slug_orgId: { slug, orgId } } });
     if (!existing) return slug;
     attempt++;
     slug = `${base}-${attempt + 1}`;
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Weights must sum to 100 (got ${weightSum})` }, { status: 400 });
     }
 
-    const slug = await ensureUniqueSlug(generateSlug(body.name.trim()));
+    const slug = await ensureUniqueSlug(generateSlug(body.name.trim()), session.user.orgId);
 
     const role = await prisma.$transaction(async (tx) => {
       // Create the role

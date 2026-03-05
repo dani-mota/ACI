@@ -31,6 +31,7 @@ interface AssessmentStageProps {
 export function AssessmentStage({
   token,
   assessmentId,
+  companyName,
 }: AssessmentStageProps) {
   // ── Subscribe to individual state slices (prevents re-render cascades) ──
   const messages = useChatAssessmentStore((s) => s.messages);
@@ -63,6 +64,19 @@ export function AssessmentStage({
   const [phase0MicCheck, setPhase0MicCheck] = useState(false);
   const nudgeRef = useRef(new NudgeManager());
 
+  // Session timer
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  useEffect(() => {
+    const interval = setInterval(() => setElapsedSeconds((s) => s + 1), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const formatTime = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  };
+
   // Initialize TTS engine (use getStore for callbacks — stable, no deps)
   useEffect(() => {
     const engine = new TTSEngine(
@@ -74,9 +88,7 @@ export function AssessmentStage({
     return () => engine.destroy();
   }, []);
 
-  // Resume AudioContext on first user interaction (click/touch/keydown).
-  // Chrome suspends AudioContext created outside a user gesture — this
-  // ensures ElevenLabs audio plays instead of falling back to SpeechSynthesis.
+  // Resume AudioContext on first user interaction
   useEffect(() => {
     const resumeAudio = () => {
       ttsRef.current?.resumeContext();
@@ -101,7 +113,7 @@ export function AssessmentStage({
 
     const s = getStore();
     s.init(token, assessmentId);
-    s.setOrbMode("processing"); // Visual feedback immediately
+    s.setOrbMode("processing");
 
     fetch(`/api/assess/${token}/chat`)
       .then((res) => res.json())
@@ -111,7 +123,6 @@ export function AssessmentStage({
 
         if (data.messages?.length > 0) {
           if (serverAct === "PHASE_0") {
-            // Recovery during Phase 0 — fast-forward to ACT_1
             phase0Ref.current = "done";
             prevActRef.current = "ACT_1";
             st.setOrbMode("processing");
@@ -127,14 +138,12 @@ export function AssessmentStage({
             return;
           }
 
-          // Normal recovery (Phase 0 already done)
           st.loadHistory(data.messages, {
             currentAct: serverAct,
             isComplete: data.state?.isComplete ?? false,
           });
           prevActRef.current = serverAct;
 
-          // Show last assistant message as context (fully revealed, no TTS)
           const lastAssistant = [...data.messages]
             .reverse()
             .find((m: { role: string }) => m.role === "assistant");
@@ -145,7 +154,6 @@ export function AssessmentStage({
           }
           st.setOrbMode("idle");
         } else {
-          // Fresh assessment — set currentAct from server, Phase 0 effect takes over
           st.loadHistory([], { currentAct: serverAct, isComplete: false });
           prevActRef.current = serverAct;
           st.setOrbMode("idle");
@@ -212,15 +220,12 @@ export function AssessmentStage({
       setPhase0MicCheck(false);
       clearMicNudgeTimers();
 
-      // Persist candidate mic-check response
       await persistPhase0Msg(text, "CANDIDATE");
 
-      // Play confirmation segment
       const confirmation = PHASE_0_SEGMENTS[3];
       await playSegmentTTS(confirmation.text);
       await persistPhase0Msg(confirmation.text, "AGENT");
 
-      // Complete Phase 0 → transition to ACT_1
       phase0Ref.current = "done";
       await fetch(`/api/assess/${token}/chat`, {
         method: "POST",
@@ -246,7 +251,6 @@ export function AssessmentStage({
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
     (async () => {
-      // Play segments 1 and 2 (introduction + format orientation)
       for (const segment of PHASE_0_SEGMENTS.slice(0, 2)) {
         if (cancelled) return;
         await playSegmentTTS(segment.text);
@@ -256,24 +260,20 @@ export function AssessmentStage({
 
       if (cancelled) return;
 
-      // Play segment 3 (mic check)
       const micSegment = PHASE_0_SEGMENTS[2];
       await playSegmentTTS(micSegment.text);
       await persistPhase0Msg(micSegment.text, "AGENT");
 
       if (cancelled) return;
 
-      // Enter mic check state — waiting for candidate
       phase0Ref.current = "mic_check";
       setPhase0MicCheck(true);
 
-      // 15s nudge: offer text alternative
       micNudgeTimers.current.t15 = setTimeout(async () => {
         if (phase0Ref.current !== "mic_check") return;
         await playSegmentTTS(MIC_NUDGE_15S);
       }, 15000);
 
-      // 30s nudge: auto-switch to text mode
       micNudgeTimers.current.t30 = setTimeout(async () => {
         if (phase0Ref.current !== "mic_check") return;
         getStore().setInputMode("text");
@@ -287,10 +287,10 @@ export function AssessmentStage({
     };
   }, [initialized, currentAct, playSegmentTTS, persistPhase0Msg, clearMicNudgeTimers]);
 
-  // ── Nudge helper: start nudge timer after Aria finishes speaking ──
+  // ── Nudge helper ──
   const startNudgeForCurrentAct = useCallback(() => {
     const act = getStore().currentAct;
-    if (act === "PHASE_0") return; // Phase 0 has its own nudge timers
+    if (act === "PHASE_0") return;
     const ctxMap: Record<string, NudgeContext> = {
       ACT_1: "act_1",
       ACT_2: "act_2",
@@ -298,7 +298,6 @@ export function AssessmentStage({
     };
     const ctx = ctxMap[act];
     if (!ctx) return;
-    // Don't nudge during interactive elements
     if (getStore().activeElement) return;
 
     nudgeRef.current.start(ctx, {
@@ -311,7 +310,6 @@ export function AssessmentStage({
           s.setInputMode("text");
           playSegmentTTS(NUDGE_SECOND[ctx]);
         } else {
-          // Final: auto-advance with a no-response marker
           playSegmentTTS(NUDGE_FINAL[ctx]).then(() => {
             getStore().setOrbMode("processing");
             getStore().sendMessage("[NO_RESPONSE]");
@@ -325,7 +323,6 @@ export function AssessmentStage({
   useEffect(() => {
     if (messages.length === 0) return;
 
-    // Find the last assistant message (might not be the very last message)
     let lastAssistant: typeof messages[number] | null = null;
     for (let i = messages.length - 1; i >= 0; i--) {
       if (messages[i].role === "assistant") {
@@ -337,18 +334,15 @@ export function AssessmentStage({
     if (!lastAssistant) return;
     if (lastAssistant.id === lastProcessedMsgId.current) return;
 
-    // Still streaming — show processing state
     if (lastAssistant.isStreaming) {
       getStore().setOrbMode("processing");
       return;
     }
 
-    // Message complete — process it
     lastProcessedMsgId.current = lastAssistant.id;
     const text = lastAssistant.content;
     if (!text) return;
 
-    // Detect if this is a history message (has createdAt) vs new streamed message
     const isHistory = !!lastAssistant.createdAt;
 
     const s = getStore();
@@ -360,14 +354,11 @@ export function AssessmentStage({
     if (wordRevealTimer.current) clearInterval(wordRevealTimer.current);
 
     if (isHistory) {
-      // History: show all words immediately, no TTS
       s.setSubtitleRevealedWords(totalWords);
       s.setOrbMode("idle");
     } else {
-      // New message: play TTS + word-by-word reveal
       s.setOrbMode("speaking");
 
-      // Dynamic timing: aim for ~6s total reveal, capped 60–200ms per word
       const msPerWord = Math.max(60, Math.min(200, 6000 / totalWords));
       let revealed = 0;
 
@@ -379,18 +370,14 @@ export function AssessmentStage({
         }
       }, msPerWord);
 
-      // Play TTS
       if (ttsRef.current) {
         ttsRef.current.speak(text, token).then(() => {
-          // Ensure all words are revealed when TTS finishes
           getStore().setSubtitleRevealedWords(totalWords);
           if (wordRevealTimer.current) clearInterval(wordRevealTimer.current);
           getStore().setOrbMode("idle");
           getStore().setAudioAmplitude(0);
-          // Start nudge timer (not during Phase 0 — it has its own timers)
           startNudgeForCurrentAct();
         }).catch(() => {
-          // TTS failed — reveal all words and go idle
           getStore().setSubtitleRevealedWords(totalWords);
           if (wordRevealTimer.current) clearInterval(wordRevealTimer.current);
           getStore().setOrbMode("idle");
@@ -398,7 +385,7 @@ export function AssessmentStage({
         });
       }
     }
-  }, [messages, token]);
+  }, [messages, token, startNudgeForCurrentAct]);
 
   // ── Interactive element appearance animation ──
   useEffect(() => {
@@ -437,7 +424,7 @@ export function AssessmentStage({
     return () => clearTimeout(timer);
   }, [isComplete, token]);
 
-  // ── Handlers (use getStore() for fresh state — no store in deps) ──
+  // ── Handlers ──
   const handleVoiceTranscript = useCallback(
     (text: string) => {
       const s = getStore();
@@ -449,7 +436,6 @@ export function AssessmentStage({
       ttsRef.current?.stop();
       nudgeRef.current.stop();
 
-      // Phase 0 mic check response
       if (phase0Ref.current === "mic_check") {
         handlePhase0Response(text);
         return;
@@ -495,7 +481,6 @@ export function AssessmentStage({
     ttsRef.current?.stop();
     nudgeRef.current.stop();
 
-    // Phase 0 mic check response (via text fallback)
     if (phase0Ref.current === "mic_check") {
       handlePhase0Response(text);
       return;
@@ -578,28 +563,107 @@ export function AssessmentStage({
   const showInputToggle = (currentAct === "ACT_2" && !activeElement) || phase0MicCheck;
   const showInput = !isComplete && !activeElement && (!isPhase0 || phase0MicCheck);
 
+  // Structured mode: Act 2 with an active structured element
+  const isStructuredMode = currentAct === "ACT_2" && activeElement && !activeElement.responded;
+
   // ── Spacebar toggle for mic ──
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Only respond to spacebar
       if (e.code !== 'Space') return;
-      // Don't capture if repeating (holding key)
       if (e.repeat) return;
-      // Don't capture when typing in text input
       if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) return;
-      // Only when mic should be visible and active
-      // Note: showInput already ensures !activeElement, so no separate interactive element check needed
       if (!showInput || !isVoiceMode || isComplete || isTTSPlaying || isLoading) return;
 
-      e.preventDefault(); // Prevent page scroll
-
-      // Simulate mic button click
+      e.preventDefault();
       micButtonRef.current?.click();
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showInput, isVoiceMode, isComplete, isTTSPlaying, isLoading]);
+
+  // ── Input area (shared between both modes) ──
+  const renderInputArea = () => {
+    if (!showInput) return null;
+
+    return (
+      <div className="flex flex-col items-center gap-3 w-full">
+        {showInputToggle && (
+          <InputModeToggle
+            mode={inputMode}
+            onToggle={(mode) => getStore().setInputMode(mode)}
+          />
+        )}
+
+        {isVoiceMode ? (
+          <MicButton
+            ref={micButtonRef}
+            onTranscript={handleVoiceTranscript}
+            onListeningChange={handleListeningChange}
+            disabled={isLoading || isTTSPlaying}
+          />
+        ) : (
+          <div className="flex gap-2 w-full max-w-md">
+            <textarea
+              value={textInput}
+              onChange={(e) => setTextInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleTextSend();
+                }
+              }}
+              placeholder="Type your response..."
+              disabled={isLoading}
+              rows={1}
+              className="flex-1 resize-none px-4 py-3 text-sm outline-none"
+              style={{
+                borderRadius: "10px",
+                border: "1px solid rgba(255, 255, 255, 0.07)",
+                background: "rgba(255, 255, 255, 0.03)",
+                color: "rgba(255, 255, 255, 0.85)",
+                fontFamily: "var(--font-display)",
+                maxHeight: "80px",
+                minHeight: "44px",
+              }}
+              onInput={(e) => {
+                const target = e.target as HTMLTextAreaElement;
+                target.style.height = "auto";
+                target.style.height = `${Math.min(target.scrollHeight, 80)}px`;
+              }}
+            />
+            <button
+              onClick={handleTextSend}
+              disabled={!textInput.trim() || isLoading}
+              aria-label="Send message"
+              style={{
+                width: "44px",
+                height: "44px",
+                borderRadius: "10px",
+                border: "1px solid rgba(37, 99, 235, 0.3)",
+                background: textInput.trim()
+                  ? "rgba(37, 99, 235, 0.15)"
+                  : "rgba(255, 255, 255, 0.03)",
+                color: textInput.trim()
+                  ? "#60a5fa"
+                  : "rgba(255, 255, 255, 0.2)",
+                cursor: textInput.trim() ? "pointer" : "default",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "all 200ms ease",
+              }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <line x1="22" y1="2" x2="11" y2="13" />
+                <polygon points="22 2 15 22 11 13 2 9 22 2" />
+              </svg>
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div
@@ -609,44 +673,57 @@ export function AssessmentStage({
       {/* Living background */}
       <LivingBackground />
 
+      {/* Top bar */}
+      <div
+        className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-6 py-4"
+        style={{ pointerEvents: "none" }}
+      >
+        {/* Client company name */}
+        <span
+          className="text-[10px] uppercase tracking-[2px]"
+          style={{
+            fontFamily: "var(--font-mono)",
+            color: "rgba(184, 196, 214, 0.4)",
+            pointerEvents: "auto",
+          }}
+        >
+          {companyName}
+        </span>
+
+        {/* Session timer */}
+        <span
+          className="text-[11px] tabular-nums"
+          style={{
+            fontFamily: "var(--font-mono)",
+            color: "rgba(184, 196, 214, 0.35)",
+            pointerEvents: "auto",
+          }}
+        >
+          {formatTime(elapsedSeconds)}
+        </span>
+      </div>
+
       {/* Stage content */}
-      <div className="relative z-10 flex flex-col items-center h-[100dvh] px-4 py-6">
-        {/* Top: Progress (hidden during Phase 0) */}
+      <div className="relative z-10 flex flex-col h-[100dvh]">
+        {/* Progress bar (hidden during Phase 0) */}
         {!isPhase0 && (
-          <div className="w-full pt-2 pb-6">
+          <div className="w-full px-6 pt-12 pb-2">
             <StageProgressBar currentAct={currentAct} />
           </div>
         )}
 
-        {/* Center: Orb + Subtitle area */}
-        <div className="flex flex-col items-center flex-1 justify-center gap-4 -mt-8">
-          {/* Act label (hidden during Phase 0) */}
-          {!isPhase0 && <ActLabel currentAct={currentAct} />}
-
-          {/* Orb */}
-          <AssessmentOrb
-            mode={orbMode}
-            amplitude={audioAmplitude}
-            compact={orbSize === "compact"}
-          />
-
-          {/* Subtitle */}
-          <SubtitleDisplay
-            text={subtitleText}
-            revealedWords={subtitleRevealedWords}
-            isRevealing={isTTSPlaying}
-          />
-
-          {/* Candidate transcript */}
-          <CandidateTranscript
-            text={candidateTranscript}
-            visible={showTranscript}
-          />
-
-          {/* Interactive elements */}
-          {activeElement && !activeElement.responded && (
+        {/* Main content area */}
+        {isStructuredMode ? (
+          // ── Structured mode: question panel left, orb + subtitle right ──
+          <div
+            className="flex-1 flex items-center px-6 gap-8"
+            style={{
+              transition: "all 800ms cubic-bezier(0.25, 0.1, 0.25, 1)",
+            }}
+          >
+            {/* Left: Question / interactive panel */}
             <div
-              className="w-full flex justify-center stage-animate"
+              className="flex-1 flex flex-col justify-center max-w-xl"
               style={{
                 opacity: showElements ? 1 : 0,
                 transform: showElements ? "translateY(0)" : "translateY(24px)",
@@ -655,103 +732,126 @@ export function AssessmentStage({
             >
               {renderInteractiveElement()}
             </div>
-          )}
-        </div>
 
-        {/* Bottom: Input area */}
-        {showInput && (
-          <div className="flex flex-col items-center gap-3 pb-4 w-full">
-            {showInputToggle && (
-              <InputModeToggle
-                mode={inputMode}
-                onToggle={(mode) => getStore().setInputMode(mode)}
+            {/* Right: Compact orb + subtitle + input */}
+            <div className="flex flex-col items-center gap-4 min-w-[280px]">
+              <AssessmentOrb
+                mode={orbMode}
+                amplitude={audioAmplitude}
+                compact={true}
               />
-            )}
 
-            {isVoiceMode ? (
-              <MicButton
-                onTranscript={handleVoiceTranscript}
-                onListeningChange={handleListeningChange}
-                disabled={isLoading || isTTSPlaying}
+              <SubtitleDisplay
+                text={subtitleText}
+                revealedWords={subtitleRevealedWords}
+                isRevealing={isTTSPlaying}
               />
-            ) : (
-              <div className="flex gap-2 w-full max-w-md">
-                <textarea
-                  value={textInput}
-                  onChange={(e) => setTextInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleTextSend();
-                    }
-                  }}
-                  placeholder="Type your response..."
-                  disabled={isLoading}
-                  rows={1}
-                  className="flex-1 resize-none px-4 py-3 text-sm outline-none"
-                  style={{
-                    borderRadius: "10px",
-                    border: "1px solid rgba(255, 255, 255, 0.07)",
-                    background: "rgba(255, 255, 255, 0.03)",
-                    color: "rgba(255, 255, 255, 0.85)",
-                    fontFamily: "var(--font-display)",
-                    maxHeight: "80px",
-                    minHeight: "44px",
-                  }}
-                  onInput={(e) => {
-                    const target = e.target as HTMLTextAreaElement;
-                    target.style.height = "auto";
-                    target.style.height = `${Math.min(target.scrollHeight, 80)}px`;
-                  }}
-                />
-                <button
-                  onClick={handleTextSend}
-                  disabled={!textInput.trim() || isLoading}
-                  aria-label="Send message"
-                  style={{
-                    width: "44px",
-                    height: "44px",
-                    borderRadius: "10px",
-                    border: "1px solid rgba(37, 99, 235, 0.3)",
-                    background: textInput.trim()
-                      ? "rgba(37, 99, 235, 0.15)"
-                      : "rgba(255, 255, 255, 0.03)",
-                    color: textInput.trim()
-                      ? "#60a5fa"
-                      : "rgba(255, 255, 255, 0.2)",
-                    cursor: textInput.trim() ? "pointer" : "default",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    transition: "all 200ms ease",
-                  }}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                    <line x1="22" y1="2" x2="11" y2="13" />
-                    <polygon points="22 2 15 22 11 13 2 9 22 2" />
-                  </svg>
-                </button>
+
+              <CandidateTranscript
+                text={candidateTranscript}
+                visible={showTranscript}
+              />
+
+              {renderInputArea()}
+            </div>
+          </div>
+        ) : (
+          // ── Conversational mode: orb center-stage ──
+          <div className="flex flex-col items-center flex-1 justify-center gap-4 px-4 -mt-8">
+            {/* Act label (hidden during Phase 0) */}
+            {!isPhase0 && <ActLabel currentAct={currentAct} />}
+
+            {/* Orb */}
+            <AssessmentOrb
+              mode={orbMode}
+              amplitude={audioAmplitude}
+              compact={orbSize === "compact"}
+            />
+
+            {/* Subtitle */}
+            <SubtitleDisplay
+              text={subtitleText}
+              revealedWords={subtitleRevealedWords}
+              isRevealing={isTTSPlaying}
+            />
+
+            {/* Candidate transcript */}
+            <CandidateTranscript
+              text={candidateTranscript}
+              visible={showTranscript}
+            />
+
+            {/* Interactive elements (conversational mode — enter below subtitles) */}
+            {activeElement && !activeElement.responded && (
+              <div
+                className="w-full flex justify-center"
+                style={{
+                  opacity: showElements ? 1 : 0,
+                  transform: showElements ? "translateY(0)" : "translateY(24px)",
+                  transition: "opacity 700ms cubic-bezier(0.25, 0.1, 0.25, 1), transform 700ms cubic-bezier(0.25, 0.1, 0.25, 1)",
+                }}
+              >
+                {renderInteractiveElement()}
               </div>
             )}
           </div>
         )}
 
-        {/* Error */}
-        {error && (
-          <div
-            className="fixed bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg"
-            style={{
-              background: "rgba(220, 38, 38, 0.15)",
-              border: "1px solid rgba(220, 38, 38, 0.3)",
-              color: "#fca5a5",
-              fontSize: "12px",
-              fontFamily: "var(--font-display)",
-            }}
-          >
-            Something went wrong. Please try again.
+        {/* Bottom input area (conversational mode only — structured mode has input in sidebar) */}
+        {!isStructuredMode && showInput && (
+          <div className="flex flex-col items-center gap-3 pb-4 px-4 w-full">
+            {renderInputArea()}
           </div>
         )}
       </div>
+
+      {/* Bottom bar */}
+      <div
+        className="absolute bottom-0 left-0 right-0 z-20 flex items-center justify-between px-6 py-3"
+        style={{ pointerEvents: "none" }}
+      >
+        {/* Security indicator */}
+        <span
+          className="flex items-center gap-1.5 text-[9px] uppercase tracking-[1.5px]"
+          style={{
+            fontFamily: "var(--font-mono)",
+            color: "rgba(184, 196, 214, 0.25)",
+          }}
+        >
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-40">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+          Encrypted Session
+        </span>
+
+        {/* Version */}
+        <span
+          className="text-[9px]"
+          style={{
+            fontFamily: "var(--font-mono)",
+            color: "rgba(184, 196, 214, 0.2)",
+          }}
+        >
+          ACI v1.6
+        </span>
+      </div>
+
+      {/* Error toast */}
+      {error && (
+        <div
+          className="fixed bottom-12 left-1/2 -translate-x-1/2 z-30 px-4 py-2 rounded-lg"
+          style={{
+            background: "rgba(220, 38, 38, 0.15)",
+            border: "1px solid rgba(220, 38, 38, 0.3)",
+            color: "#fca5a5",
+            fontSize: "12px",
+            fontFamily: "var(--font-display)",
+          }}
+        >
+          Something went wrong. Please try again.
+        </div>
+      )}
     </div>
   );
 }

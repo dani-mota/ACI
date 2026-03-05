@@ -33,7 +33,7 @@ export async function getSession(): Promise<AppSession | null> {
     where: { supabaseId: supabaseUser.id },
   });
 
-  if (!user) return null;
+  if (!user || !user.isActive) return null;
 
   return {
     user: {
@@ -81,12 +81,25 @@ export async function getAuthStatus(): Promise<{ status: AuthStatus }> {
   });
   if (user) return { status: "approved" };
 
-  // Check their access request
-  const request = await prisma.accessRequest.findUnique({
+  // Check their access request (by supabaseId first, then by email for org-join requests)
+  const request = await prisma.accessRequest.findFirst({
     where: { supabaseId: supabaseUser.id },
+    orderBy: { createdAt: "desc" },
   });
 
-  if (request?.status === "REJECTED") return { status: "rejected" };
+  if (request) {
+    if (request.status === "REJECTED") return { status: "rejected" };
+    return { status: "pending" };
+  }
+
+  // Fallback: check by email (org-join requests may not have supabaseId)
+  if (supabaseUser.email) {
+    const emailRequest = await prisma.accessRequest.findFirst({
+      where: { email: supabaseUser.email },
+      orderBy: { createdAt: "desc" },
+    });
+    if (emailRequest?.status === "REJECTED") return { status: "rejected" };
+  }
 
   return { status: "pending" };
 }

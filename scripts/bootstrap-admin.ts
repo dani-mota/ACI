@@ -10,7 +10,7 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
   let org = await prisma.organization.findFirst({ where: { name: "Arklight" } });
   if (!org) {
-    org = await prisma.organization.create({ data: { name: "Arklight" } });
+    org = await prisma.organization.create({ data: { name: "Arklight", slug: "arklight" } });
     console.log("Created org:", org.id);
   } else {
     console.log("Found existing org:", org.id);

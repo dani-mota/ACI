@@ -12,7 +12,9 @@ export default async function AdminPage() {
     redirect("/dashboard");
   }
 
+  // Platform admin sees only requests without an org (new company inquiries)
   const requests = await prisma.accessRequest.findMany({
+    where: { orgId: null },
     orderBy: { createdAt: "desc" },
   });
 

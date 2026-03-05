@@ -132,7 +132,7 @@ export async function GET() {
   // 5. ADMIN only: pending access requests
   if (role === "ADMIN") {
     const pendingRequests = await prisma.accessRequest.findMany({
-      where: { status: "PENDING" },
+      where: { status: "PENDING", orgId: null },
       orderBy: { createdAt: "desc" },
       take: 3,
     });

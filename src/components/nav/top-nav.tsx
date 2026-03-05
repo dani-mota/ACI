@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { LayoutDashboard, Grid3X3, GitCompareArrows, Sparkles, ArrowLeft, Sun, Moon, Shield } from "lucide-react";
+import { LayoutDashboard, Grid3X3, GitCompareArrows, Sparkles, ArrowLeft, Sun, Moon, Shield, Settings } from "lucide-react";
 import { UserMenu } from "./user-menu";
 import { NotificationBell } from "./notification-bell";
 import { useTheme } from "@/components/theme-provider";
@@ -33,6 +33,30 @@ const BASE_NAV_ITEMS = [
   { path: "/roles", label: "Roles", icon: Grid3X3 },
   { path: "/compare", label: "Compare", icon: GitCompareArrows },
 ];
+
+/** Settings nav link — visible only to TA_LEADER+ */
+function SettingsNavLink() {
+  const { user } = useAuth();
+  const pathname = usePathname();
+
+  if (user.role !== "TA_LEADER" && user.role !== "ADMIN") return null;
+
+  const isActive = pathname.startsWith("/settings");
+
+  return (
+    <Link
+      href="/settings/team"
+      className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
+        isActive
+          ? "text-aci-gold border-b-2 border-aci-gold"
+          : "text-muted-foreground hover:text-foreground"
+      }`}
+    >
+      <Settings className="w-3.5 h-3.5" />
+      <span className="hidden sm:inline">Settings</span>
+    </Link>
+  );
+}
 
 /** Admin nav link — extracted so useAuth() is only called in live mode */
 function AdminNavLink() {
@@ -110,6 +134,7 @@ export function TopNav({ mode = "live" }: { mode?: "live" | "tutorial" }) {
               </Link>
             );
           })}
+          {!isTutorial && <SettingsNavLink />}
           {!isTutorial && <AdminNavLink />}
           <div className="w-px h-5 bg-border mx-1.5" />
           {isTutorial ? (

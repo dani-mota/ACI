@@ -199,9 +199,9 @@ export async function getHeatmapData(orgId?: string) {
   };
 }
 
-export async function getRoleDetailData(slug: string, orgId?: string) {
+export async function getRoleDetailData(slug: string, orgId: string) {
   const role = await prisma.role.findFirst({
-    where: { slug, ...(orgId ? { orgId } : {}) },
+    where: { slug, orgId },
     include: {
       compositeWeights: true,
       cutlines: true,
@@ -210,7 +210,7 @@ export async function getRoleDetailData(slug: string, orgId?: string) {
 
   if (!role) return null;
 
-  const where = orgId ? { orgId } : {};
+  const where = { orgId };
   const [allRoles, candidates] = await Promise.all([
     prisma.role.findMany({ where, orderBy: { name: "asc" } }),
     prisma.candidate.findMany({

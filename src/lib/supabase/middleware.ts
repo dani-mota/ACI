@@ -40,7 +40,8 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/roles") ||
     request.nextUrl.pathname.startsWith("/compare") ||
     request.nextUrl.pathname.startsWith("/export") ||
-    request.nextUrl.pathname.startsWith("/invitations");
+    request.nextUrl.pathname.startsWith("/invitations") ||
+    request.nextUrl.pathname.startsWith("/settings");
 
   if (!user && isProtectedRoute) {
     const url = request.nextUrl.clone();

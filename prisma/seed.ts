@@ -371,7 +371,7 @@ async function main() {
 
   // 1. Organization
   const org = await prisma.organization.create({
-    data: { name: "Hadrian Manufacturing", isDemo: true },
+    data: { name: "Hadrian Manufacturing", slug: "hadrian-manufacturing", isDemo: true },
   });
   console.log("  Created organization:", org.name);
 

@@ -12,14 +12,17 @@ datasource db {
 // ──────────────────────────────────────────────
 
 model Organization {
-  id         String      @id @default(cuid())
-  name       String
-  isDemo     Boolean     @default(false)
-  createdAt  DateTime    @default(now())
-  users      User[]
-  candidates Candidate[]
-  roles      Role[]
-  cutlines   Cutline[]
+  id              String           @id @default(cuid())
+  name            String
+  slug            String           @unique
+  isDemo          Boolean          @default(false)
+  createdAt       DateTime         @default(now())
+  users           User[]
+  candidates      Candidate[]
+  roles           Role[]
+  cutlines        Cutline[]
+  teamInvitations TeamInvitation[]
+  accessRequests  AccessRequest[]
 }
 
 model User {
@@ -30,10 +33,12 @@ model User {
   role        UserRole
   orgId       String
   org         Organization          @relation(fields: [orgId], references: [id])
+  isActive         Boolean               @default(true)
   notes            Note[]
   invitations      AssessmentInvitation[]
   reviewedRequests AccessRequest[]        @relation("ReviewedRequests")
   recordedOutcomes OutcomeRecord[]
+  teamInvitesSent  TeamInvitation[]       @relation("TeamInvitesSent")
   createdAt        DateTime              @default(now())
 }
 
@@ -45,6 +50,33 @@ enum UserRole {
   ADMIN
 }
 
+model TeamInvitation {
+  id         String       @id @default(cuid())
+  orgId      String
+  org        Organization @relation(fields: [orgId], references: [id])
+  email      String
+  name       String?
+  role       UserRole
+  invitedBy  String
+  inviter    User         @relation("TeamInvitesSent", fields: [invitedBy], references: [id])
+  token      String       @unique @default(uuid())
+  status     InviteStatus @default(PENDING)
+  expiresAt  DateTime
+  createdAt  DateTime     @default(now())
+  acceptedAt DateTime?
+
+  @@index([email, orgId])
+  @@index([token])
+  @@index([orgId, status])
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
 // ──────────────────────────────────────────────
 // ROLES & CUTLINES
 // ──────────────────────────────────────────────
@@ -52,7 +84,7 @@ enum UserRole {
 model Role {
   id                 String                @id @default(cuid())
   name               String
-  slug               String                @unique
+  slug               String
   description        String?
   orgId              String
   org                Organization          @relation(fields: [orgId], references: [id])
@@ -74,6 +106,8 @@ model Role {
   isGeneric          Boolean               @default(false)
   createdBy          String?
   versions           RoleVersion[]
+
+  @@unique([slug, orgId])
 }
 
 model Cutline {
@@ -496,11 +530,15 @@ enum AccessRequestStatus {
 
 model AccessRequest {
   id              String              @id @default(cuid())
-  email           String              @unique
+  email           String
   firstName       String
   lastName        String
   companyName     String
   requestedRole   UserRole
+  jobTitle        String?
+  reason          String?
+  orgId           String?
+  org             Organization?       @relation(fields: [orgId], references: [id])
   supabaseId      String?             @unique
   status          AccessRequestStatus @default(PENDING)
   reviewedBy      String?
@@ -509,6 +547,9 @@ model AccessRequest {
   rejectionReason String?
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
+
+  @@index([email, orgId])
+  @@index([orgId, status])
 }
 
 // ──────────────────────────────────────────────

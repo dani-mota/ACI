@@ -138,14 +138,48 @@ export function getAccessibleFields(userRole: AppUserRole): FieldAccess {
   return ACCESS_MAP[userRole];
 }
 
-export function getMockSession() {
-  return {
-    user: {
-      id: "mock-user-1",
-      email: "alex.chen@arklight.io",
-      name: "Alex Chen",
-      role: "TA_LEADER" as AppUserRole,
-      organizationId: "mock-org-1",
-    },
+// ─── Team management permissions ──────────────────────────
+
+export const ROLE_LEVEL: Record<AppUserRole, number> = {
+  RECRUITER_COORDINATOR: 1,
+  RECRUITING_MANAGER: 2,
+  HIRING_MANAGER: 2,
+  TA_LEADER: 3,
+  ADMIN: 4,
+};
+
+/** Roles that can manage team (invite, deactivate, change roles) */
+const TEAM_MANAGEMENT_ROLES: AppUserRole[] = ["TA_LEADER", "ADMIN"];
+
+/** Roles that can be assigned by org admins (ADMIN is platform-only) */
+const ASSIGNABLE_ROLES: AppUserRole[] = [
+  "RECRUITER_COORDINATOR",
+  "RECRUITING_MANAGER",
+  "HIRING_MANAGER",
+  "TA_LEADER",
+];
+
+export function canManageTeam(role: AppUserRole): boolean {
+  return TEAM_MANAGEMENT_ROLES.includes(role);
+}
+
+export function canAssignRole(assignerRole: AppUserRole, targetRole: AppUserRole): boolean {
+  if (targetRole === "ADMIN") return false;
+  if (!ASSIGNABLE_ROLES.includes(targetRole)) return false;
+  return ROLE_LEVEL[assignerRole] >= ROLE_LEVEL[targetRole];
+}
+
+export function getAssignableRoles(assignerRole: AppUserRole): AppUserRole[] {
+  return ASSIGNABLE_ROLES.filter((r) => canAssignRole(assignerRole, r));
+}
+
+export function getRoleLabel(role: AppUserRole): string {
+  const labels: Record<AppUserRole, string> = {
+    RECRUITER_COORDINATOR: "Recruiter Coordinator",
+    RECRUITING_MANAGER: "Recruiting Manager",
+    HIRING_MANAGER: "Hiring Manager",
+    TA_LEADER: "TA Leader",
+    ADMIN: "Admin",
   };
+  return labels[role] || role;
 }

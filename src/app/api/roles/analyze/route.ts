@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
 
     if (body.sourceType === "TEMPLATE_CLONE" && body.templateSlug) {
       const templateRole = await prisma.role.findUnique({
-        where: { slug: body.templateSlug },
+        where: { slug_orgId: { slug: body.templateSlug, orgId: session.user.orgId } },
         include: {
           compositeWeights: { where: { effectiveTo: null } },
           cutlines: true,

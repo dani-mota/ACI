@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { canManageTeam, canAssignRole } from "@/lib/rbac";
+import type { AppUserRole } from "@/lib/rbac";
 import { sendEmail } from "@/lib/email/resend";
 import { buildAccessApprovedEmail } from "@/lib/email/templates/access-approved";
 import { buildAccessRejectedEmail } from "@/lib/email/templates/access-rejected";
@@ -10,16 +12,17 @@ const APP_URL =
   process.env.NEXT_PUBLIC_APP_URL || "https://aci-rho.vercel.app";
 
 /**
- * PATCH /api/access-requests/[id]
- * Admin-only: approve or reject an access request.
+ * PATCH /api/team/access-requests/[id]
+ * TA_LEADER+: approve or reject an org-scoped access request.
  */
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getSession();
-  if (!session || session.user.role !== "ADMIN") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!canManageTeam(session.user.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const { id } = await params;
@@ -27,7 +30,7 @@ export async function PATCH(
   const { action } = body;
 
   const accessRequest = await prisma.accessRequest.findUnique({ where: { id } });
-  if (!accessRequest) {
+  if (!accessRequest || accessRequest.orgId !== session.user.orgId) {
     return NextResponse.json({ error: "Request not found" }, { status: 404 });
   }
 
@@ -36,22 +39,20 @@ export async function PATCH(
   }
 
   if (action === "approve") {
-    const { orgId, newOrgName, role } = body;
+    const { role } = body as { role?: string };
 
     if (!role) {
       return NextResponse.json({ error: "Role is required" }, { status: 400 });
     }
-    if (!orgId && !newOrgName) {
-      return NextResponse.json({ error: "Organization is required" }, { status: 400 });
+
+    if (!canAssignRole(session.user.role, role as AppUserRole)) {
+      return NextResponse.json({ error: "You cannot assign this role" }, { status: 403 });
     }
 
-    // Step 1: Create Supabase auth user and get a one-time invite link.
-    // generateLink with type "invite" creates the user (if not exists) and
-    // returns an action_link the user clicks to set their password.
+    // Step 1: Create Supabase auth user via invite link
+    // Same pattern as /api/access-requests/[id] (admin approval)
     let supabaseUserId: string | null = null;
-    // Fallback: direct user to forgot-password so they can generate their own link
     let setupUrl = `${APP_URL}/forgot-password`;
-
     const callbackUrl = `${APP_URL}/auth/callback?next=/update-password`;
 
     try {
@@ -63,7 +64,6 @@ export async function PATCH(
         });
 
       if (linkError) {
-        // User already exists in Supabase — generate a magic link instead
         console.error("generateLink (invite) failed:", linkError.message);
         const { data: magicData, error: magicError } =
           await getSupabaseAdmin().auth.admin.generateLink({
@@ -83,35 +83,26 @@ export async function PATCH(
       }
     } catch (err) {
       console.error("Supabase admin API error:", err);
-      // Non-fatal — proceed with approval, user can reset password via forgot-password
     }
 
-    // Step 2: Prisma transaction — create org (if new) + user + update request
-    let result: { userId: string; orgId: string };
+    if (!supabaseUserId) {
+      return NextResponse.json(
+        { error: "Failed to create auth account. Please try again." },
+        { status: 500 }
+      );
+    }
+
+    // Step 2: Prisma transaction — create user + update request
     try {
-      result = await prisma.$transaction(async (tx) => {
-        let assignedOrgId = orgId;
-
-        if (!orgId && newOrgName) {
-          const slug = newOrgName
-            .toLowerCase()
-            .replace(/[^a-z0-9\s-]/g, "")
-            .replace(/\s+/g, "-")
-            .replace(/-+/g, "-")
-            .trim();
-          const newOrg = await tx.organization.create({
-            data: { name: newOrgName, slug },
-          });
-          assignedOrgId = newOrg.id;
-        }
-
-        const user = await tx.user.create({
+      await prisma.$transaction(async (tx) => {
+        await tx.user.create({
           data: {
             supabaseId: supabaseUserId,
             email: accessRequest.email,
             name: `${accessRequest.firstName} ${accessRequest.lastName}`,
             role: role as any,
-            orgId: assignedOrgId,
+            orgId: session.user.orgId,
+            isActive: true,
           },
         });
 
@@ -123,11 +114,8 @@ export async function PATCH(
             reviewedAt: new Date(),
           },
         });
-
-        return { userId: user.id, orgId: assignedOrgId };
       });
     } catch (err) {
-      // If DB transaction fails after Supabase user was created, log for manual cleanup
       if (supabaseUserId) {
         console.error(
           `DB transaction failed after creating Supabase user ${supabaseUserId} for ${accessRequest.email}. Manual cleanup may be needed.`,
@@ -137,7 +125,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Failed to approve request" }, { status: 500 });
     }
 
-    // Step 3: Send approval email with the setup link
+    // Step 3: Send approval email
     try {
       const { subject, html } = buildAccessApprovedEmail({
         userName: accessRequest.firstName,
@@ -156,11 +144,11 @@ export async function PATCH(
         entityId: id,
         action: "ACCESS_REQUEST_APPROVED",
         actorId: session.user.id,
-        metadata: { email: accessRequest.email, role, orgId: result.orgId },
+        metadata: { email: accessRequest.email, role, orgId: session.user.orgId },
       },
     });
 
-    return NextResponse.json({ success: true, userId: result.userId });
+    return NextResponse.json({ success: true });
   }
 
   if (action === "reject") {
@@ -181,7 +169,6 @@ export async function PATCH(
       },
     });
 
-    // Send rejection email
     try {
       const { subject, html } = buildAccessRejectedEmail({
         userName: accessRequest.firstName,
@@ -192,14 +179,13 @@ export async function PATCH(
       // Email failure shouldn't block rejection
     }
 
-    // Log activity
     await prisma.activityLog.create({
       data: {
         entityType: "AccessRequest",
         entityId: id,
         action: "ACCESS_REQUEST_REJECTED",
         actorId: session.user.id,
-        metadata: { email: accessRequest.email },
+        metadata: { email: accessRequest.email, orgId: session.user.orgId },
       },
     });
 

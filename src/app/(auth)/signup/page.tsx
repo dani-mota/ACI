@@ -58,8 +58,8 @@ export default function SignupPage() {
 
   return (
     <AuthCard
-      title="Request Access"
-      subtitle="Submit a request to join your organization's ACI platform"
+      title="Evaluate ACI for Your Organization"
+      subtitle="Request access to set up ACI for your company. If your company already uses ACI, ask your team administrator for an invitation link."
       footer={
         <span>
           Already have an account?{" "}

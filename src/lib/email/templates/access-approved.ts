@@ -4,12 +4,24 @@ interface AccessApprovedParams {
   loginUrl: string;   // Fallback login page URL
 }
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export function buildAccessApprovedEmail({
   userName,
   setupUrl,
   loginUrl,
 }: AccessApprovedParams): { subject: string; html: string } {
   const subject = "Your ACI Access Has Been Approved";
+  const safeName = escapeHtml(userName);
+  const safeSetupUrl = encodeURI(setupUrl);
+  const safeLoginUrl = encodeURI(loginUrl);
 
   const html = `
 <!DOCTYPE html>
@@ -35,7 +47,7 @@ export function buildAccessApprovedEmail({
           <tr>
             <td style="padding: 32px;">
               <h1 style="margin: 0 0 8px; font-size: 18px; color: #0a1628; font-weight: 700;">
-                Welcome aboard, ${userName}!
+                Welcome aboard, ${safeName}!
               </h1>
               <p style="margin: 0 0 24px; font-size: 14px; color: #52525b; line-height: 1.6;">
                 Your access request to the Arklight Cognitive Index platform has been approved. Click the button below to set up your password and access your dashboard.
@@ -45,7 +57,7 @@ export function buildAccessApprovedEmail({
               <table cellpadding="0" cellspacing="0" style="margin-bottom: 16px;">
                 <tr>
                   <td style="background-color: #c9a227; padding: 12px 32px;">
-                    <a href="${setupUrl}" style="color: #0a1628; font-size: 14px; font-weight: 700; text-decoration: none; text-transform: uppercase; letter-spacing: 1px;">
+                    <a href="${safeSetupUrl}" style="color: #0a1628; font-size: 14px; font-weight: 700; text-decoration: none; text-transform: uppercase; letter-spacing: 1px;">
                       Set Up Your Account
                     </a>
                   </td>
@@ -54,7 +66,7 @@ export function buildAccessApprovedEmail({
 
               <p style="margin: 0 0 24px; font-size: 11px; color: #a1a1aa; line-height: 1.6;">
                 This link expires in <strong>24 hours</strong>. If it expires, use the
-                <a href="${loginUrl}" style="color: #52525b;">"Forgot password"</a>
+                <a href="${safeLoginUrl}" style="color: #52525b;">"Forgot password"</a>
                 option on the login page to set up your account.
               </p>
 

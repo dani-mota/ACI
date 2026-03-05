@@ -12,11 +12,19 @@ Final Specification
 
 *for Advanced Manufacturing & Defense*
 
-Version 1.5  •  March 2026  •  Confidential
+Version 1.7  •  March 2026  •  Confidential
 
-Supersedes: ACI PRD v1.4 (March 2026), v1.3 (March 2026), v1.2 (March 2026), v1.1 (February 2026), NAIB Engineering PRD v3.0, NAIB PRD v4, ACI Finalization Doc
+Supersedes: ACI PRD v1.6 (March 2026), v1.5 (March 2026), v1.4 (March 2026), v1.3 (March 2026), v1.2 (March 2026), v1.1 (February 2026), NAIB Engineering PRD v3.0, NAIB PRD v4, ACI Finalization Doc
 
 Incorporates: User Persona Analysis (Tasha Aquino Vance, Kevin O’Shea)
+
+| **v1.7 Change Log (March 2026)** |
+| :---- |
+| This revision introduces **Org-Scoped Access Request Routing**, **Team Management Security Hardening**, and **Multi-Tenant User Onboarding**. Key changes: (1) **Dual-Path Access Request Routing** — Two distinct onboarding flows: Flow A (new company inquiry via `/signup` → platform admin reviews at `/admin`) and Flow B (join existing org via `/join/[orgSlug]` → org TA_LEADERs review at `/settings/team`); (2) **Org-Scoped Access Requests** — AccessRequest model extended with `orgId`, `jobTitle`, `reason` fields; `email @unique` constraint removed and replaced with `@@index([email, orgId])` to support per-org requests; new `@@index([orgId, status])` for efficient team settings queries; (3) **TA_LEADER Approval Flow** — New PATCH `/api/team/access-requests/[id]` endpoint allowing TA_LEADER+ to approve/reject org-scoped requests with `canAssignRole()` enforcement, org isolation, mandatory Supabase user creation (no silent failures), and full `ActivityLog` audit trail; (4) **Organization Join Page** — New `/join/[orgSlug]` public page with server-side slug validation (prevents org enumeration), client form for name/email/job title/reason, hardcoded `RECRUITER_COORDINATOR` role for org-scoped requests; (5) **Pending Requests UI** — New `PendingRequests` component on `/settings/team` showing org-scoped pending requests with approve/reject dialogs, role assignment via `getAssignableRoles()`, and deactivated user detection warning; (6) **Team Management Security Hardening** — Peer-level modification guard (`ROLE_LEVEL` check prevents modifying users at or above your role level), last-TA_LEADER demotion guard (prevents org lock-out), hard Supabase ban/unban (no silent failures), `canAssignRole()` re-validation on invitation resend, rate limiting on invitation resend (5/hr) and team accept (10/min/IP), strong password policy (8+ chars, uppercase, lowercase, digit); (7) **Auth Hardening** — `getSession()` now checks `user.isActive` (blocks deactivated users even with valid Supabase sessions), `getAuthStatus()` fallback to email lookup for org-join requests without `supabaseId`, `/settings` added to middleware protected routes; (8) **Email Security** — `escapeHtml()` applied to all email templates receiving user input (access-approved, access-rejected, org-access-request-notification, team-invite, org-admin-welcome, invitation); new org access request notification template for TA_LEADERs with branded dark navy design; (9) **Rate Limiting Expansion** — IP-based rate limit (10/hr) on all access request submissions, email+orgId rate limit (5/24hr) on org-scoped requests, invitation resend rate limit (5/hr/user), team accept rate limit (10/min/IP); (10) **Input Validation** — Server-side field length limits (firstName/lastName: 100, companyName/jobTitle: 200, reason: 2000, rejectionReason: 1000), org-scoped requests restricted to RECRUITER_COORDINATOR role server-side, `supabaseId` removed from public POST body (prevents mass assignment); (11) **Admin Page Scoping** — Admin page and notifications now filter to `orgId: null` (platform-level requests only), preventing org-scoped requests from appearing in admin view; (12) **Signup Page Copy** — Updated to "Evaluate ACI for Your Organization" with guidance to ask team admin for invitation link if company already uses ACI; (13) **Audit Trail** — `ActivityLog` entries added to both platform admin and org-level approval/rejection flows. |
+
+| **v1.6 Change Log (March 2026)** |
+| :---- |
+| This revision introduces the **Aria Assessment Experience** — a complete redesign of the candidate-facing assessment UI from a chat-based interface to an orb-centered, voice-first, single-screen stage experience. Key changes: (1) **Aria AI Evaluator** — The assessment agent is now a named presence ("Aria") with a warm British female voice powered by ElevenLabs TTS (Flash v2.5, ~75ms latency), replacing browser-native SpeechSynthesis; (2) **Orb-Centered Stage UI** — Replaces the scrolling chat interface with a single-screen layout: fluid canvas-rendered orb (idle/speaking/listening/processing states with displacement animation), word-by-word subtitles, inline interactive elements, living animated background with particle field and aurora nebulae; (3) **Phase 0 — "The Handshake"** — New ~60-second non-scored pre-assessment warmup where Aria introduces herself, explains the format, and validates the candidate's microphone. Resolves the cold-start problem where the agent never spoke first; (4) **Nudge System** — Proactive re-engagement when candidates go silent (15–30s thresholds by context), with automatic text input fallback; (5) **Welcome Page Redesign** — Readiness checklist (quiet environment, mic access, time), microphone pre-check, privacy disclosure, format preview; (6) **Email Template Update** — "Before You Begin" section in invitation email explaining voice-based assessment format; (7) **Voice Architecture** — ElevenLabs streaming TTS with sentence-level chunking, Web Audio API playback with AnalyserNode for real-time amplitude extraction driving orb animation, server-side TTS proxy route; (8) **Candidate Input** — Voice-first for Act 1 and Act 3, candidate's choice (voice or type) for Act 2 follow-up probes, browser Web Speech API for speech-to-text; (9) **Act Transitions** — Cinematic agent-narrated transitions with orb size morphing (200px ↔ 72px), synchronized to Aria's narration; (10) **Legal Defensibility Roadmap** — Documented measurement rigor per construct, identified gaps in behavioral construct validation, specified remediation plan (SJT items for behavioral constructs, adverse impact analysis, criterion validity study, human-AI agreement study). |
 
 | **v1.5 Change Log (March 2026)** |
 | :---- |
@@ -38,7 +46,7 @@ Incorporates: User Persona Analysis (Tasha Aquino Vance, Kevin O’Shea)
 
 # **1\. Executive Summary**
 
-ACI (Arklight Cognitive Index) is a full-stack talent assessment intelligence platform purpose-built for advanced manufacturing and defense companies scaling beyond artisanal hiring methods. It assesses candidates across 12 cognitive, technical, and behavioral constructs through an **AI-conducted conversational investigation** (~60–90 min) with a three-act adaptive structure, streaming chat interface, and three-layer scoring pipeline. The assessment delivers decision-ready results through an intelligent dashboard, candidate profiling system, and deployment planning engine. The assessment pipeline is fully role-aware: AI probes, narrative insights, and predictions are contextualized by each role's domain using extracted job description data. A Generic Aptitude path enables cross-role candidate evaluation with equal-weight scoring and automatic fit rankings across all organizational roles.
+ACI (Arklight Cognitive Index) is a full-stack talent assessment intelligence platform purpose-built for advanced manufacturing and defense companies scaling beyond artisanal hiring methods. It assesses candidates across 12 cognitive, technical, and behavioral constructs through an **AI-conducted conversational investigation** (~60–90 min) guided by **Aria**, a named AI evaluator with a warm British female voice. The assessment uses an orb-centered, voice-first stage interface — not a chat — with a three-act adaptive structure, ElevenLabs TTS voice synthesis, real-time speech-to-text candidate input, and a three-layer scoring pipeline. The assessment delivers decision-ready results through an intelligent dashboard, candidate profiling system, and deployment planning engine. The assessment pipeline is fully role-aware: AI probes, narrative insights, and predictions are contextualized by each role's domain using extracted job description data. A Generic Aptitude path enables cross-role candidate evaluation with equal-weight scoring and automatic fit rankings across all organizational roles.
 
 The platform solves three compounding failures that advanced manufacturers face as they scale: the scalability collapse (craft-style evaluation methods that break at volume), the “soft yes / soft no” crisis (weeks of interviews that still produce indecisive outcomes), and the technical knowledge gap (recruiting teams who cannot evaluate domain expertise without SME bottlenecks).
 
@@ -194,13 +202,14 @@ Architecture decisions favor simplicity, convention over configuration, and mana
 | Runtime | React 19.2.3 | Latest React with concurrent features | ✅ Live |
 | Language | TypeScript (strict mode) | Type safety across full stack | ✅ Live |
 | Database | Supabase (PostgreSQL) | Built-in auth, realtime, row-level security | ✅ Live |
-| Auth | Supabase Auth | Email/password with access-request approval workflow | ✅ Live |
+| Auth | Supabase Auth | Email/password with dual-path access-request approval (platform admin + org TA\_LEADER), team invitation with token-based accept, `isActive` enforcement, hard ban/unban on deactivation | ✅ Live |
 | ORM | Prisma | Type-safe queries, migration management, generated client | ✅ Live |
 | UI | Tailwind CSS 4 \+ shadcn/ui \+ Radix UI | Consistent design system, fast iteration | ✅ Live |
 | Charts | Recharts | React-native, lightweight, excellent radar chart support | ✅ Live |
 | AI Engine | Anthropic API (Claude) | AI-adaptive follow-ups, role analysis, JD parsing, V2 conversational assessment | ✅ Live |
 | AI Streaming | Vercel AI SDK (`ai` + `@ai-sdk/anthropic`) | Streaming chat responses for V2 conversational assessment | ✅ Live |
-| Voice | Web Speech API (browser-native) | Speech-to-text input + text-to-speech output for V2 voice mode | ✅ Live |
+| Voice (Input) | Web Speech API (browser-native) | Speech-to-text for candidate responses | ✅ Live |
+| Voice (Output) | ElevenLabs TTS API (Flash v2.5) | AI evaluator voice synthesis — warm British female voice ("Aria"), ~75ms latency, streaming audio | 🔨 v1.6 |
 | Deployment | Vercel | Native Next.js support, preview deploys | ✅ Live |
 | PDF Export | @react-pdf/renderer | Server-side PDF generation (Scorecard, Interview Kit, One-Pager) | ✅ Live |
 | State | Zustand | Lightweight stores with sessionStorage persistence | ✅ Live |
@@ -216,10 +225,10 @@ The application follows Next.js App Router conventions with clear separation bet
 | Directory | Purpose | Status |
 | :---- | :---- | :---- |
 | prisma/ | Data model (schema.prisma, 22 models) \+ seed data | ✅ Live |
-| src/app/(auth)/ | Login, signup (access request), forgot-password, update-password, pending approval, auth callback | ✅ Live |
+| src/app/(auth)/ | Login, signup (access request), forgot-password, update-password, pending approval, auth callback, join/\[orgSlug\] (org-scoped access request + team invite accept) | ✅ Live |
 | src/app/(dashboard)/ | Protected routes: dashboard, candidates/\[id\], compare, roles (heatmap, detail, builder, new), export, invitations/batch, admin | ✅ Live |
 | src/app/(assess)/ | Candidate-facing assessment: V1 (\[token\]/block/\[blockIndex\]) and V2 (\[token\]/v2 chat interface), \[token\]/survey, \[token\]/thank-you | ✅ Live |
-| src/app/api/ | 23+ API route handlers: candidates, assessments (V1 + V2 chat), invitations, roles, export, access-requests, email, cron | ✅ Live |
+| src/app/api/ | 27+ API route handlers: candidates, assessments (chat), invitations, roles, export, access-requests, team (user management, invitations, accept, access-requests), email, notifications, cron | ✅ Live |
 | src/app/tutorial/ | Tutorial mode: demo dashboard, roles, candidates, compare (uses demo org data) | ✅ Live |
 | src/app/demo/ | Demo landing with cinematic loading animation | ✅ Live |
 | src/components/ | 140\+ components: assess (V1), assessment/chat (V2 chat UI), dashboard, profile, roles, role-builder, invitation, compare, tutorial, demo, nav, admin, auth, ui | ✅ Live |
@@ -253,9 +262,10 @@ The data model is implemented in Prisma ORM targeting Supabase PostgreSQL. All e
 
 | Model | Key Fields | Notes | Status |
 | :---- | :---- | :---- | :---- |
-| Organization | id, name, isDemo, createdAt | Multi-tenant root with demo org support for tutorial mode | ✅ Live |
-| User | id, email, name, role (UserRole enum), orgId | RBAC enforced via role field | ✅ Live |
-| AccessRequest | id, email, name, company, jobTitle, reason, status (PENDING/APPROVED/REJECTED), reviewedBy, reviewedAt | Access request workflow with admin approval | ✅ Live |
+| Organization | id, name, slug, isDemo, createdAt | Multi-tenant root with demo org support for tutorial mode. `slug` is unique and used for org-scoped join URLs (`/join/[orgSlug]`). | ✅ Live |
+| User | id, email, name, role (UserRole enum), orgId, isActive | RBAC enforced via role field. `isActive` checked by `getSession()` to block deactivated users even with valid Supabase sessions. | ✅ Live |
+| AccessRequest | id, email, firstName, lastName, companyName, requestedRole, jobTitle?, reason?, orgId?, supabaseId?, status (PENDING/APPROVED/REJECTED), reviewedBy, reviewedAt, rejectionReason? | Dual-path access request workflow: `orgId: null` for platform requests (admin approval at `/admin`), `orgId` present for org-scoped requests (TA\_LEADER approval at `/settings/team`). Indexed on `[email, orgId]` and `[orgId, status]`. | ✅ Live |
+| TeamInvitation | id, orgId, email, name?, role, invitedBy, token, status (PENDING/ACCEPTED/EXPIRED/REVOKED), expiresAt | Team member invitation with 7-day expiry, token-based accept flow at `/join/[orgSlug]/accept`. Rate-limited resend (5/hr/user). | ✅ Live |
 
 UserRole enum values: RECRUITER\_COORDINATOR, RECRUITING\_MANAGER, HIRING\_MANAGER, TA\_LEADER, ADMIN.
 
@@ -715,7 +725,7 @@ The simulation produces a Scoring Engine Validation Report documenting: the dist
 
 # **9\. Assessment Delivery Platform** ✅ IMPLEMENTED
 
-The assessment delivery platform uses a single modality: the **AI-conducted conversational investigation** (src/app/(assess)/assess/\[token\]/v2/, src/lib/assessment/, src/components/assessment/chat/). Chat-based interface with streaming AI agent, inline interactive elements, voice mode, and 3-layer scoring. ~60–90 minutes. See Section 26 for full specification.
+The assessment delivery platform uses a single modality: the **AI-conducted conversational investigation** guided by **Aria**, a named AI evaluator (src/app/(assess)/assess/\[token\]/v2/, src/lib/assessment/, src/components/assessment/). Orb-centered stage interface with ElevenLabs TTS voice output, Web Speech API voice input, inline interactive elements, and 3-layer scoring. ~60–90 minutes. See Section 26 for full specification.
 
 The assessment produces SubtestResult, CompositeScore, Prediction, and RedFlag records consumed by the dashboard, profiles, PDFs, and comparison views.
 
@@ -1153,11 +1163,11 @@ When a candidate is assessed, the system calculates fit across all roles and sur
 
 A structured interview guide auto-generated from the candidate’s assessment data. Available both as a section within the candidate profile (InterviewGuide component) and as a downloadable PDF (PDFInterviewKit component, route: GET /api/export/pdf/\[candidateId\]/interview-kit). Contains: recommended questions for each development area, what to listen for in responses, areas that are already validated (don’t re-test), and suggested interview format and time allocation.
 
-## **11.5 Notification System** 🔶 PARTIALLY IMPLEMENTED
+## **11.5 Notification System** 🔶 MOSTLY IMPLEMENTED
 
-* In-app notification bell (NotificationBell component) with badge count for pending invitations/approvals ✅
+* In-app notification bell (NotificationBell component) with badge count. GET /api/notifications returns up to 20 live notifications from DB state (completed assessments, awaiting decisions, started assessments, critical red flags, pending platform access requests). Org-scoped for non-ADMIN users; ADMIN sees platform-level pending requests (`orgId: null`) ✅
 
-* Email notifications for: assessment invitations, access request approvals/rejections, access request admin notifications, assessment results ✅
+* Email notifications for: assessment invitations, access request approvals/rejections, access request admin notifications, org-scoped access request TA\_LEADER notifications, team member invitations, org admin welcome, assessment results ✅
 
 * Cron endpoint for scheduled result notifications (GET /api/cron/send-results) with CRON\_SECRET authentication, 7-day delay after assessment completion, duplicate send prevention, and batch processing (20 per run) ✅
 
@@ -1232,13 +1242,18 @@ All endpoints require authentication (except access-request submission and asses
 | GET | /api/export/pdf/\[candidateId\]/interview-kit | Interview guide PDF | ✅ Live |
 | GET | /api/export/pdf/\[candidateId\]/one-pager | HM summary one-pager PDF | ✅ Live |
 
-### **Access Control** ✅
+### **Access Control & Team Management** ✅
 
 | Method | Path | Description | Status |
 | :---- | :---- | :---- | :---- |
-| POST | /api/access-requests | Submit access request (public, no auth required) | ✅ Live |
-| GET | /api/access-requests | List pending requests (ADMIN only) | ✅ Live |
-| POST | /api/access-requests/\[id\] | Approve/reject request (ADMIN only, creates Supabase account on approval) | ✅ Live |
+| POST | /api/access-requests | Submit access request (public, no auth required). Dual-path: without `orgId` creates platform request (admin reviews), with `orgId` creates org-scoped request (TA\_LEADER reviews). IP rate-limited (10/hr), email+orgId rate-limited (5/24hr). Input length validation. Org-scoped requests restricted to RECRUITER\_COORDINATOR role. | ✅ Live |
+| GET | /api/access-requests | List platform-level pending requests (ADMIN only, filtered to `orgId: null`) | ✅ Live |
+| PATCH | /api/access-requests/\[id\] | Approve/reject platform request (ADMIN only, creates Supabase account + Prisma User on approval, ActivityLog audit trail) | ✅ Live |
+| PATCH | /api/team/access-requests/\[id\] | Approve/reject org-scoped request (TA\_LEADER+, org-isolated, `canAssignRole()` enforced, mandatory Supabase user creation, ActivityLog audit trail, rejectionReason capped at 1000 chars) | ✅ Live |
+| PATCH | /api/team/\[userId\] | Modify team member role/status (TA\_LEADER+, peer-level guard, last-TA\_LEADER protection, hard Supabase ban/unban) | ✅ Live |
+| POST | /api/team/invite | Create team invitation (TA\_LEADER+, `canAssignRole()` enforced, sends branded email with 7-day expiry) | ✅ Live |
+| POST/DELETE | /api/team/invite/\[invitationId\] | Resend (rate-limited 5/hr, re-validates `canAssignRole()`) or revoke invitation (TA\_LEADER+) | ✅ Live |
+| POST | /api/team/accept | Accept team invitation (public, rate-limited 10/min/IP, strong password policy, token validation, Supabase user creation, transactional) | ✅ Live |
 
 ### **Email & Notifications** ✅
 
@@ -1246,13 +1261,13 @@ All endpoints require authentication (except access-request submission and asses
 | :---- | :---- | :---- | :---- |
 | GET | /api/cron/send-results | Scheduled result notification emails (CRON\_SECRET auth, 7-day delay, duplicate prevention) | ✅ Live |
 | POST | /api/email/results | Send result email to specific candidate | ✅ Live |
+| GET | /api/notifications | Live notifications based on DB state, org-scoped. ADMIN sees platform-level pending access requests (orgId: null). Returns up to 20 notifications. | ✅ Live |
 
 ### **Pending API Endpoints**
 
 | Method | Path | Description | Status |
 | :---- | :---- | :---- | :---- |
 | POST | /api/webhooks/assessment-complete | Outbound webhook to ATS | ⏳ Pending |
-| GET | /api/notifications | List in-app notifications for current user | ⏳ Pending |
 
 ## **12.1 ATS Integration** ⏳ PENDING
 
@@ -1303,6 +1318,34 @@ All endpoints require authentication (except access-request submission and asses
 * Duplicate email send prevention via resultsEmailSentAt tracking ✅
 
 * In-memory sliding-window rate limiting on all assessment endpoints (src/lib/rate-limit.ts): chat 30/min, complete 5/min, response 60/min, ai-probe 20/min (v1.4) ✅
+
+* Rate limiting on team management endpoints: invitation resend 5/hr/user, team accept 10/min/IP, access requests 10/hr/IP + 5/24hr per email+org (v1.7) ✅
+
+* Peer-level modification guard: users cannot modify team members at or above their ROLE\_LEVEL (v1.7) ✅
+
+* Last-TA\_LEADER demotion guard: prevents demoting the sole active TA\_LEADER in an org (v1.7) ✅
+
+* Hard Supabase ban/unban on user deactivation/reactivation: ban failure blocks the operation (no silent failures) (v1.7) ✅
+
+* `isActive` check in `getSession()`: deactivated users blocked even with valid Supabase sessions (v1.7) ✅
+
+* HTML escaping (`escapeHtml()`) on all email templates receiving user input: prevents stored XSS via email (v1.7) ✅
+
+* Input length validation on all public-facing form submissions: firstName/lastName 100 chars, companyName/jobTitle 200, reason 2000, rejectionReason 1000 (v1.7) ✅
+
+* Mass assignment prevention: `supabaseId` removed from public access request POST body (v1.7) ✅
+
+* Mandatory Supabase user creation on org-scoped approval: returns 500 if both invite and magiclink generation fail (no ghost accounts) (v1.7) ✅
+
+* Org isolation on team access request approval: `accessRequest.orgId !== session.user.orgId` check prevents cross-org abuse (v1.7) ✅
+
+* `canAssignRole()` enforced server-side on all role assignment paths: approval, invitation creation, invitation resend (v1.7) ✅
+
+* Org-scoped access requests restricted to RECRUITER\_COORDINATOR role server-side (prevents role claim manipulation) (v1.7) ✅
+
+* Strong password policy on team invitation accept: minimum 8 characters with uppercase, lowercase, and digit (v1.7) ✅
+
+* ActivityLog audit trail on all approval/rejection flows (both platform admin and org-level) (v1.7) ✅
 
 * BOLA prevention on AI probe endpoint — assessmentId and interactionId ownership verification against invitation's candidate (v1.4) ✅
 
@@ -1508,7 +1551,30 @@ All Demo Day features are live and operational:
 * **Start Route Hardening** — Returns structured error when candidate has completed assessment; top-level try/catch with server-side logging
 * **Schema Migration** — Dropped `version` column and `AssessmentVersion` enum from production database
 
-## **V1.6 — Next Priorities**
+## **V1.6 — Previous Release (March 2026)** ✅ SHIPPED
+
+* **Aria Assessment Experience** — Complete redesign of candidate-facing assessment: orb-centered, voice-first, single-screen stage interface replacing the chat-based UI
+* **ElevenLabs TTS Voice** — Warm British female voice ("Aria") via ElevenLabs Flash v2.5 (~75ms latency), replacing browser-native SpeechSynthesis
+* **Phase 0 — "The Handshake"** — Non-scored pre-assessment warmup with mic check
+* **Nudge System** — Proactive re-engagement for silent candidates (15–30s thresholds)
+* **Welcome Page Redesign** — Readiness checklist, mic pre-check, privacy disclosure
+* See Section 26 for full specification
+
+## **V1.7 — Current Release (March 2026)** ✅ SHIPPED
+
+* **Org-Scoped Access Request Routing** — Dual-path onboarding: platform requests (admin review) and org-scoped requests (TA\_LEADER review via `/join/[orgSlug]`)
+* **Team Management Security Hardening** — Peer-level modification guards, last-TA\_LEADER demotion protection, hard Supabase ban/unban, `canAssignRole()` enforcement on all role assignment paths
+* **Auth Hardening** — `isActive` check in `getSession()`, `getAuthStatus()` email fallback for org-join requests, `/settings` middleware protection
+* **Email Security** — `escapeHtml()` applied to all email templates with user input, new org access request notification template
+* **Rate Limiting Expansion** — IP-based rate limiting on access requests (10/hr), invitation resend (5/hr), team accept (10/min/IP)
+* **Input Validation & Mass Assignment Prevention** — Server-side field length limits, `supabaseId` removed from public POST body, org-scoped requests restricted to RECRUITER\_COORDINATOR
+* **Mandatory Supabase User Creation** — Org-level approvals fail with 500 if Supabase auth creation fails (no ghost accounts)
+* **Audit Trail** — `ActivityLog` entries on both platform and org-level approval/rejection flows
+* **Admin Scoping** — Admin page and notifications filtered to `orgId: null` (platform requests only)
+* **Signup Page Copy Update** — "Evaluate ACI for Your Organization" with guidance for existing org members
+* See Sections 18, 24 for full specification
+
+## **V1.8 — Next Priorities**
 
 * Weekly Pipeline Digest Email (email infrastructure ready, needs content generation \+ cron scheduling)
 * Adverse Impact Report (requires customer-provided demographic data integration)
@@ -1556,35 +1622,77 @@ The platform includes a demo organization (Organization with isDemo=true) used f
 
 Distributed across roles: \~5 per role. Each seeded candidate includes full SubtestResult for all 12 constructs, CompositeScore for all 5 roles (enables Role Switcher demo), Prediction record, RedFlag records where applicable, AIInteraction records (2–3 per construct with realistic mock Q\&A), Note records (1–2 per candidate from mock users), and realistic names, emails, and phone numbers.
 
-# **18\. Access Request & User Onboarding Workflow** ✅ IMPLEMENTED (New in v1.2)
+# **18\. Access Request & User Onboarding Workflow** ✅ IMPLEMENTED (v1.2, expanded v1.7)
 
-This feature was not specified in v1.1 but has been fully built. It addresses the enterprise access control requirement: "The signup page should say 'Request Access' not 'Create one.' Open self-signup undermines the premium enterprise positioning."
+This feature addresses the enterprise access control requirement: "The signup page should say 'Request Access' not 'Create one.' Open self-signup undermines the premium enterprise positioning." As of v1.7, the system supports two distinct onboarding flows with org-scoped routing.
 
-## **18.1 Access Request Flow**
+## **18.1 Flow A — New Company Inquiry (Platform-Level)**
 
-1. Visitor navigates to /signup → sees "Request Access" form
-2. Submits: name, email, company, job title, reason for access
-3. System creates AccessRequest record (status: PENDING) in database
-4. Admin notification email sent to ADMIN\_NOTIFICATION\_EMAIL (dani@arklight.us) via Resend
-5. Visitor redirected to /pending page with confirmation message
+1. Visitor navigates to /signup → sees "Evaluate ACI for Your Organization" form with guidance: "If your company already uses ACI, ask your team administrator for an invitation link."
+2. Submits: first name, last name, email, company, role (RECRUITER\_COORDINATOR, RECRUITING\_MANAGER, HIRING\_MANAGER, TA\_LEADER)
+3. System creates AccessRequest record with `orgId: null` (status: PENDING)
+4. IP-based rate limit: 10 requests/hour. Input length validation enforced.
+5. Admin notification email sent to ADMIN\_NOTIFICATION\_EMAIL (dani@arklight.us) via Resend
+6. Visitor sees confirmation message
 
-## **18.2 Admin Approval Flow**
+**Admin Approval (platform):**
+1. Admin navigates to /admin (ADMIN role only) — sees only requests with `orgId: null`
+2. Admin selects existing organization or creates new one
+3. **Approve:** System creates Supabase Auth account via `generateLink` (invite or magiclink fallback) → creates User + Organization (if new) in Prisma transaction → sends setup email with 24-hour password-reset link → ActivityLog entry → AccessRequest status → APPROVED
+4. **Reject:** Stores rejection reason (capped at 1000 chars) → sends rejection email with escaped reason → ActivityLog entry → AccessRequest status → REJECTED
+5. Rejected users can resubmit with updated information
 
-1. Admin navigates to /admin (ADMIN role only)
-2. Sees list of pending access requests with details
-3. Admin approves or rejects each request:
-   * **Approve:** System creates Supabase Auth account → creates User record in Prisma → sends setup email with password-reset link → AccessRequest status → APPROVED
-   * **Reject:** Sends rejection email with reason → AccessRequest status → REJECTED
-4. Rejected users can resubmit with updated information
+## **18.2 Flow B — Join Existing Organization (Org-Scoped)**
 
-## **18.3 Auth Flow**
+1. Visitor receives org-specific join URL (e.g., `/join/acme-industries`) from their team administrator
+2. Server component validates org slug via database lookup; invalid slugs show generic "Invalid Link" error (prevents org enumeration)
+3. Visitor submits: first name, last name, email, job title, reason (optional)
+4. System creates AccessRequest record with `orgId` set, `requestedRole: RECRUITER_COORDINATOR` (hardcoded server-side)
+5. Rate limits: IP-based 10/hr + email+orgId 5/24hr. Input length validation enforced.
+6. Checks for existing active user in org (409 if exists), existing pending request (409 if exists), previously rejected request (allows resubmission by updating existing record)
+7. Notification email sent to all active TA\_LEADERs in the organization via branded template
 
-* Three-tier auth status: unauthenticated → pending approval → approved
+**TA\_LEADER Approval (org-scoped):**
+1. TA\_LEADER navigates to /settings/team → sees "Access Requests" section with pending org-scoped requests
+2. Table shows: name, email, job title, reason, date, approve/reject actions
+3. Deactivated user detection: if a deactivated account with the same email exists in the org, a warning icon appears suggesting reactivation instead
+4. **Approve dialog:** Role assignment dropdown populated by `getAssignableRoles()` based on approver's role. `canAssignRole()` enforced server-side — TA\_LEADERs can assign RC, RM, HM, TA\_LEADER (not ADMIN).
+5. **Approve action:** Mandatory Supabase auth user creation via `generateLink` (invite, then magiclink fallback) — returns 500 if both fail (no ghost accounts). Prisma transaction creates User + marks request APPROVED. Sends approval email with setup link. ActivityLog entry.
+6. **Reject action:** Optional reason (capped at 1000 chars, escaped in email). Sends rejection email. ActivityLog entry.
+7. Org isolation: `accessRequest.orgId !== session.user.orgId` returns 404 (prevents cross-org abuse).
+
+## **18.3 Flow C — Team Invitation (Direct)**
+
+1. TA\_LEADER+ creates invitation from /settings/team → enters name, email, selects role
+2. `canAssignRole()` validated; invitation created with 7-day expiry token
+3. Branded email sent with accept link: `/join/[orgSlug]/accept?token=...`
+4. Recipient clicks link → server validates token, expiry, and orgSlug match → shows accept form
+5. Recipient enters name, creates password (strong policy: 8+ chars, uppercase, lowercase, digit)
+6. System creates Supabase auth user with password → Prisma User in transaction → auto-signs in → redirects to /dashboard
+7. Rate limited: accept endpoint 10/min/IP, resend 5/hr/user with `canAssignRole()` re-validation
+
+## **18.4 Auth Flow**
+
+* Four-tier auth status: unauthenticated → pending approval → rejected → approved
+* `getAuthStatus()` checks supabaseId first, then falls back to email lookup (handles org-join requests without supabaseId)
+* `getSession()` checks `user.isActive` — deactivated users blocked even with valid Supabase sessions
 * Supabase Auth handles session management (email/password)
-* Middleware (src/lib/supabase/middleware.ts) protects dashboard routes, redirects unauthenticated to /login
+* Middleware (src/lib/supabase/middleware.ts) protects dashboard routes (/dashboard, /candidates, /roles, /compare, /export, /invitations, /settings), redirects unauthenticated to /login
 * /update-password route for password setup after account creation
 * /auth/callback for Supabase OAuth callback handling
 * /forgot-password for self-service password reset
+
+## **18.5 Team Management Security**
+
+| Guard | Description | File |
+| :---- | :---- | :---- |
+| Peer-level modification | Users cannot modify team members at or above their ROLE\_LEVEL | src/app/api/team/\[userId\]/route.ts |
+| Last-TA\_LEADER protection | Prevents demoting or deactivating the sole active TA\_LEADER in an org | src/app/api/team/\[userId\]/route.ts |
+| Hard Supabase ban/unban | Deactivation/reactivation calls must succeed before Prisma update (no silent failures) | src/app/api/team/\[userId\]/route.ts |
+| canAssignRole enforcement | All role assignment paths (approval, invitation, resend) validate the assigner has sufficient permissions | src/lib/rbac.ts |
+| Org isolation | Org-scoped access request approval checks `accessRequest.orgId === session.user.orgId` | src/app/api/team/access-requests/\[id\]/route.ts |
+| Mass assignment prevention | `supabaseId` not accepted from public POST body on access requests | src/app/api/access-requests/route.ts |
+| Ghost account prevention | Org-level approval returns 500 if Supabase user creation fails (no null-supabaseId users) | src/app/api/team/access-requests/\[id\]/route.ts |
 
 # **19\. AI-Powered Role Builder** ✅ IMPLEMENTED (New in v1.2)
 
@@ -1634,13 +1742,18 @@ Originally scoped as "Custom Role Builder" in Phase 2 (effort: ~2 weeks). The im
 
 ## **20.2 Email Templates**
 
-| Template | Trigger | Content |
-| :---- | :---- | :---- |
-| Assessment Invitation | POST /api/invitations | Candidate name, role, company, assessment link, 7-day expiration |
-| Access Approved | Admin approves access request | Welcome message \+ login/setup link |
-| Access Rejected | Admin rejects access request | Rejection reason \+ resubmission guidance |
-| Access Request Notification | New access request submitted | Admin notification with requester details |
-| Assessment Results | POST /api/email/results or /api/cron/send-results | Results summary \+ link to view full results |
+All templates with user-controlled input apply `escapeHtml()` to prevent stored XSS in email clients (v1.7).
+
+| Template | Trigger | Content | escapeHtml |
+| :---- | :---- | :---- | :---- |
+| Assessment Invitation | POST /api/invitations | Candidate name, role, company, assessment link, 7-day expiration, **"Before You Begin" section** (voice conversation format, quiet environment, microphone required, 60–90 min, Chrome/Edge/Safari recommended, headphones recommended, typing fallback available) | ✅ |
+| Access Approved | Admin or TA\_LEADER approves access request | Welcome message \+ setup link (24-hour expiry) \+ login fallback link | ✅ |
+| Access Rejected | Admin or TA\_LEADER rejects access request | Escaped rejection reason \+ resubmission guidance | ✅ |
+| Access Request Notification (Platform) | New platform-level access request submitted | Admin notification with requester details \+ link to /admin | — |
+| Org Access Request Notification | New org-scoped access request submitted | TA\_LEADER notification with requester name, email, job title, reason \+ link to /settings/team. Dark navy branded design matching ACI theme. | ✅ |
+| Team Invitation | TA\_LEADER+ creates team invitation | Invitee name, role, org name, accept link (7-day expiry), role-specific description | ✅ |
+| Org Admin Welcome | New organization created via platform admin approval | Welcome email to org admin with pre-configured roles and getting-started guidance | ✅ |
+| Assessment Results | POST /api/email/results or /api/cron/send-results | Results summary \+ link to view full results | — |
 
 # **21\. Monitoring & Error Tracking** ✅ IMPLEMENTED (New in v1.2)
 
@@ -1816,11 +1929,11 @@ This prevents assessment sessions from hanging indefinitely if the AI provider i
 
 | Metric | Count |
 | :---- | :---- |
-| API Route Handlers | 22+ (ai-probe removed in v1.5) |
-| Page Routes | 31+ (V1 block routes removed in v1.5) |
-| Database Models (Prisma) | 22 (19 original + 3: ConversationMessage, AssessmentState, AIEvaluationRun) |
+| API Route Handlers | 27+ (ai-probe removed in v1.5; team management + org access requests added in v1.7) |
+| Page Routes | 33+ (V1 block routes removed in v1.5; /join/\[orgSlug\], /settings/team added in v1.7) |
+| Database Models (Prisma) | 23 (19 original + 3 V2 models + TeamInvitation) |
 | Assessment Constructs | 12 |
-| Assessment Modalities | 1 (3-act conversational; V1 6-block removed in v1.5) |
+| Assessment Modalities | 1 (3-act conversational with Aria voice agent; chat UI replaced by orb stage in v1.6) |
 | Interactive Element Types | 6 (Text Response, Multiple Choice Inline, Numeric Input, Timed Challenge, Confidence Rating, Tradeoff Selection) |
 | Item Bank | 86 items across 5 constructs (calibrated with difficulty parameters) |
 | Scenario Shells | 4 (6 beats each = 24 scenario encounters) |
@@ -1831,44 +1944,59 @@ This prevents assessment sessions from hanging indefinitely if the AI provider i
 | Ceiling Types | 5 (Hard, Soft Trainable, Soft Context-Dependent, Stress-Induced, Insufficient Data) |
 | Prediction Models | 4 |
 | PDF Export Types | 3 |
-| Email Templates | 5 |
-| Zustand Stores | 2 (chat-assessment-store, app-store; V1 assessment-store removed in v1.5) |
+| Email Templates | 8 (invitation, access-approved, access-rejected, access-request-notification, org-access-request-notification, team-invite, org-admin-welcome, results) |
+| Zustand Stores | 2 (assessment-store with orb/TTS/nudge state, app-store) |
 | Library Files | 55+ (engine files consolidated in src/lib/assessment/) |
-| UI Components | 25+ (4 chat components in src/components/assessment/chat/) |
+| UI Components | 30+ (orb, stage, interactive, voice, background components in src/components/assessment/) |
 | Total Source Components | 130+ (V1 components removed in v1.5) |
 | npm Dependencies (prod) | 37 (ai, @ai-sdk/anthropic) |
 | npm Dependencies (dev) | 8 |
 | Authenticated API Routes | 22+/22+ (all routes authenticated) |
-| Rate-Limited Endpoints | 3 (chat: 30/min, complete: 5/min, response: 60/min) |
+| Rate-Limited Endpoints | 7 (chat: 30/min, complete: 5/min, response: 60/min, access-requests: 10/hr/IP + 5/24hr per email+org, team-accept: 10/min/IP, invite-resend: 5/hr/user, TTS: 60/min) |
 | Domain-Neutral Items | 86/86 |
 
-# **26\. Conversational Assessment Engine** ✅ IMPLEMENTED (New in v1.4, sole modality since v1.5)
 
-The conversational assessment engine conducts a three-act, AI-driven adaptive investigation lasting 60–90 minutes. A candidate interacts with an AI agent through a streaming chat interface. The 12-construct model, composite scoring, cutlines, status determination, dashboard, profiles, exports, RBAC, and all downstream systems remain unchanged — only the data collection methodology and scoring approach differ from the historical V1 form-based approach.
+# **26\. Aria Assessment Experience** (Redesigned in v1.6, sole modality)
 
-| The Core Innovation *The AI agent conducts a conversation — adapting in real time to the candidate's responses, escalating difficulty, branching based on quality, and probing specifically where it detects ceilings. The result is richer behavioral evidence, more precise construct measurement, and ceiling characterization.* |
+The assessment is conducted by **Aria**, a named AI evaluator with a warm British female voice. Aria guides the candidate through a three-act adaptive investigation lasting 60–90 minutes via an orb-centered, voice-first stage interface. The candidate interacts by speaking (primary) or typing (fallback). There is no chat interface, no scrolling message history, no chat bubbles. The orb IS the interface — a fluid, animated presence that speaks, listens, and breathes.
+
+The 12-construct model, composite scoring, cutlines, status determination, dashboard, profiles, exports, RBAC, and all downstream systems remain unchanged. Only the candidate-facing experience layer has changed.
+
+| The Experience Principle *The candidate should forget they are being assessed and feel like they are having a conversation with a thoughtful, warm evaluator who is genuinely curious about how they think. If the candidate is anxious, confused, or disengaged, the data is garbage. The experience IS the measurement instrument.* |
 | :---- |
 
-## **26.1 Configuration**
+## **26.1 Aria — The AI Evaluator**
 
-**File:** `src/lib/assessment/config.ts`
+### **Identity**
+- **Name:** Aria (spoken during Phase 0 introduction, not displayed as a UI label)
+- **Voice:** British female, warm, caring, human. Calm and composed — not clinical, not overly enthusiastic. The candidate should feel like they're speaking with an intelligent person who puts them at ease.
+- **Voice Engine:** ElevenLabs TTS API, Flash v2.5 model (`eleven_flash_v2_5`), ~75ms latency
+- **Voice ID:** Stored in `ELEVENLABS_VOICE_ID` environment variable (auditioned and selected from ElevenLabs library — British female, warm/professional/narration-style)
+- **Visual Presence:** Canvas-rendered fluid sphere (the "orb") — NOT a CSS circle. Organic displacement animation with multiple layers, specular highlight, ambient glow. States: idle (gentle breathing), speaking (dynamic displacement + energy wisps, synced to audio amplitude), listening (green shift, responsive breathing), processing (muted, subtle)
 
-As of v1.5, the conversational assessment is the sole modality. There is no feature flag or version dispatch. All new assessments use the conversational engine.
+### **Behavioral Guidelines**
+- Aria always speaks first. The candidate never has to "go first."
+- Aria never repeats a question verbatim when nudging — she addresses the silence supportively.
+- Aria never says "correct" or "incorrect" during Act 1 scenarios. She adapts difficulty through branching, not explicit feedback.
+- Aria acknowledges difficulty without being patronizing: "Those timed ones can be intense" not "That was a hard one, don't worry."
+- Aria's tone shifts subtly across acts: curious and engaged in Act 1, focused and encouraging in Act 2, warm and reflective in Act 3.
+- Between scenarios in Act 1, Aria provides brief conversational transitions, not UI break screens: "That was a rich situation. Let's move into something different."
 
-> **Historical note:** In v1.4, a feature flag (`ASSESSMENT_V2_ENABLED`) and version enum (`V1_BLOCKS`/`V2_CONVO`) controlled which assessment modality was used. These were removed in v1.5 along with all V1 code.
+## **26.2 Assessment Timeline**
 
-## **26.2 Three-Act Assessment Structure**
+| Phase | Duration | Interactions | Constructs | Scored? |
+|-------|----------|-------------|------------|---------|
+| Phase 0 — The Handshake | ~60 sec | 3 Aria segments + 1 candidate mic check | None | No |
+| Act 1 — Scenario Gauntlet | ~40–50 min | 4 scenarios × 6 beats = 24 conversational exchanges | Systems Diagnostics, Fluid Reasoning, Cognitive Flexibility, Learning Velocity, Executive Control, Ethical Judgment, Procedural Reliability, Metacognitive Calibration | Yes (Layer B) |
+| Act 2 — Precision Gauntlet | ~30–40 min | 35–55 structured items + 15–30 voice probes + 5–15 diagnostic probes | Quantitative Reasoning, Spatial Visualization, Mechanical Reasoning, Pattern Recognition, Fluid Reasoning | Yes (Layer A + B + C) |
+| Act 3 — Calibration | ~10–15 min | 2–3 confidence items + 1–2 parallel scenarios + 1 reflective self-assessment | Cross-cutting validation + Metacognitive Calibration | Yes (Layer A + B) |
+| **Total** | **~60–90 min** | **~100–130 interactions** | **All 12 constructs** | |
 
-The assessment follows a three-act narrative structure. Each act serves a distinct measurement purpose:
+### **State Machine**
 
-| Act | Name | Duration | Purpose | Constructs Measured |
-| :---- | :---- | :---- | :---- | :---- |
-| Act 1 | The Scenario Gauntlet | ~45 min | Behavioral observation via branching scenarios | Systems Diagnostics, Fluid Reasoning, Cognitive Flexibility, Learning Velocity, Executive Control, Ethical Judgment, Procedural Reliability, Metacognitive Calibration |
-| Act 2 | The Precision Gauntlet | ~35 min | Precise ability measurement via adaptive loops | Quantitative Reasoning, Spatial Visualization, Mechanical Reasoning, Pattern Recognition, Fluid Reasoning |
-| Act 3 | Calibration & Consistency Audit | ~15 min | Consistency validation and metacognitive calibration | Cross-cutting: validates Act 1 signals and measures Metacognitive Calibration |
-
-**State Machine:** `src/lib/assessment/engine.ts` — orchestrates transitions:
 ```
+PHASE_0 → Introduction → Format Orientation → Mic Check → Mic Validation
+  ↓
 ACT_1 → Scenario 0 → Beats 0–5 → Scenario 1 → ... → Scenario 3 → Beat 5
   ↓
 ACT_2 → QUANT_REASONING → 4 phases → SPATIAL_VIZ → ... → FLUID_REASONING
@@ -1878,11 +2006,81 @@ ACT_3 → Confidence Items → Parallel Scenarios → Self-Assessment
 COMPLETE
 ```
 
-## **26.3 Act 1 — The Scenario Gauntlet**
+## **26.3 Pre-Assessment: Email & Welcome Page**
 
-Four domain-neutral scenarios, each with 6 beats. The AI agent presents a scenario, the candidate responds conversationally, and the response is classified as STRONG / ADEQUATE / WEAK. The next beat branches based on classification — strong performers face harder challenges, weak performers receive scaffolding.
+### **Assessment Invitation Email**
 
-### **Scenario Library** (src/lib/assessment/scenarios/index.ts)
+Must include a "Before You Begin" section after the assessment link:
+- This assessment is conducted as a **voice conversation** with an AI evaluator named Aria
+- Find a quiet space with a working microphone
+- Allow 60–90 minutes of uninterrupted time
+- Use Chrome, Edge, or Safari on desktop/laptop
+- Headphones recommended
+- Typing fallback available
+
+### **Welcome Page** (src/components/assess/welcome-screen.tsx)
+
+Redesigned with dark navy aesthetic matching the assessment interface. Content:
+- Role name + company name
+- "What to Expect" — conversation with Aria, ~60–90 minutes
+- Readiness checklist: quiet environment (✓), microphone access (✓ with [Test Mic] button), time available (✓), headphones (recommended)
+- **Microphone pre-check:** Requests browser permission, captures 2 seconds of audio, shows level indicator, confirms working or shows troubleshooting. Does NOT block assessment if mic check fails.
+- Privacy disclosure: "Your responses — spoken and typed — will be recorded, transcribed, and evaluated. Audio is processed in real-time and not stored after transcription. Results are shared only with the hiring team at [Company Name]."
+- [Begin Assessment →] button
+
+## **26.4 Phase 0 — The Handshake**
+
+**Duration:** ~60 seconds. **Scored:** No. Messages stored with `act: PHASE_0`, excluded from all scoring pipelines.
+
+**Purpose:** Agent initiates contact (candidate never goes first), format orientation, microphone validation, psychological safety.
+
+### **Screen State During Phase 0**
+- Orb: full size (200px), center screen, enters in speaking state immediately
+- Progress bar: **hidden** (appears only when Act 1 begins)
+- Act label: **hidden**
+- Subtitles: visible below orb
+- Mic button: hidden until Segment 3
+
+### **Sequence**
+
+**Segment 1 — Introduction (~8 sec):** "Hello, and welcome. My name is Aria, and I'll be guiding you through your assessment today. It's good to have you here."
+
+**Segment 2 — Format Orientation (~15 sec):** "This will take about 60 to 90 minutes. I'll walk you through some scenarios and problems — and you'll respond by speaking. I'll also give you some questions you can answer by tapping on screen. There are no trick questions, and there's no single right answer to most of what we'll discuss."
+
+**Segment 3 — Mic Check (~8 sec + candidate response):** "Before we begin, let's make sure I can hear you clearly. Tap the microphone button and tell me — what role are you here for today?" → Mic button appears. Candidate speaks. Orb enters listening state.
+
+**Segment 4 — Confirmation (~4 sec):** "Perfect, I can hear you. Let's get started." → Progress bar fades in. Act label appears. Transition to Act 1.
+
+### **Mic Check Failure Handling**
+- No audio after 10s → Aria offers text fallback
+- Candidate types → Aria acknowledges, assessment continues voice-out/text-in
+- No interaction after 30s → Aria gently nudges, shows both mic and text input
+
+### **Phase 0 Rules**
+- NOT skippable. Every candidate goes through it.
+- On session resume: if Phase 0 complete, skip to last position; if not, restart Phase 0.
+
+### **Database Changes**
+- Add `PHASE_0` to act enum
+- Add `phase0Complete Boolean @default(false)` to AssessmentState
+- Scoring pipeline queries: `WHERE act != 'PHASE_0'`
+
+## **26.5 Act 1 — The Scenario Gauntlet**
+
+**Duration:** ~40–50 min. **Input mode:** Voice only (text fallback via nudge system).
+
+Four domain-neutral scenarios, each with 6 beats. Aria presents a scenario, the candidate responds by speaking, the response is classified as STRONG / ADEQUATE / WEAK via triple-evaluation, and the next beat branches accordingly. Strong performers face escalated challenges; weak performers receive scaffolding.
+
+### **Screen State**
+- Orb: full size (200px), center screen
+- Progress bar: visible, Act 1 segment filling
+- Act label: "THE SCENARIO GAUNTLET" (JetBrains Mono, 9px, --aci-gold at 60% opacity)
+- Subtitles: Aria's words below orb, word-by-word reveal
+- Mic button: visible at bottom when candidate's turn
+- Interactive elements: **none** (Act 1 is entirely conversational)
+- No chat bubbles. No message history. Only the current exchange exists on screen.
+
+### **Scenario Library** (unchanged from v1.5)
 
 | Scenario | Name | Primary Constructs |
 | :---- | :---- | :---- |
@@ -1891,59 +2089,118 @@ Four domain-neutral scenarios, each with 6 beats. The AI agent presents a scenar
 | 3 | Learning Gauntlet | Learning Velocity, Cognitive Flexibility, Pattern Recognition |
 | 4 | Prioritization Crisis | Executive Control, Systems Diagnostics, Metacognitive Calibration, Ethical Judgment |
 
-### **Beat Structure** (6 beats per scenario)
+### **Beat Structure** (6 beats per scenario, unchanged from v1.5)
 
-| Beat | Type | Purpose |
-| :---- | :---- | :---- |
-| 0 | INITIAL\_SITUATION | Sets the scene; observes initial approach |
-| 1 | INITIAL\_RESPONSE | First decision point; measures primary construct |
-| 2 | COMPLICATION | Introduces complexity; tests adaptability |
-| 3 | SOCIAL\_PRESSURE | Adds interpersonal dynamics; tests integrity and judgment |
-| 4 | CONSEQUENCE\_REVEAL | Shows impact of decisions; tests reflective capacity |
-| 5 | REFLECTIVE\_SYNTHESIS | Candidate reflects on approach; measures metacognition |
+| Beat | Type | Purpose | What Aria Does |
+| :---- | :---- | :---- | :---- |
+| 0 | INITIAL\_SITUATION | Sets the scene; observes initial approach | Narrates scenario, poses open question. Orb: speaking → idle. Mic activates. |
+| 1 | INITIAL\_RESPONSE | First decision point; measures primary construct | Branches based on Beat 0 classification: STRONG → escalates, ADEQUATE → maintains, WEAK → scaffolds |
+| 2 | COMPLICATION | Introduces complexity; tests adaptability | Adds unexpected new information. "While you're investigating, a second alert fires..." |
+| 3 | SOCIAL\_PRESSURE | Adds interpersonal dynamics; tests integrity and judgment | Introduces a person who pressures the candidate. "A senior colleague walks over and says..." |
+| 4 | CONSEQUENCE\_REVEAL | Shows impact of decisions; tests reflective capacity | Reveals outcome of candidate's choices. "It turns out your approach [was effective / didn't work]..." |
+| 5 | REFLECTIVE\_SYNTHESIS | Candidate reflects on approach; measures metacognition | Direct reflection: "Looking back at this whole situation, what did you learn about how you approach unfamiliar problems?" |
 
-### **Response Classification** (src/lib/assessment/classification.ts)
+### **Between Scenarios**
+Aria provides a brief conversational breath: "That was a rich situation. Let's move into something different." No UI change. No break screen. The candidate shouldn't feel block boundaries.
 
-Each candidate response is classified by Claude Haiku with triple-evaluation for reliability:
-* 3 parallel classification calls with slightly different prompts
-* Median classification selected (by rubric score)
-* Falls back to ADEQUATE if AI is unavailable
-* Prompt includes sanitized conversation history (XML tags stripped, length-capped) to prevent injection
+### **Response Classification** (unchanged from v1.5)
+Each response classified by Claude Haiku with triple-evaluation. 3 parallel calls, median selected. Falls back to ADEQUATE if AI unavailable.
 
-### **Domain Adaptation** (src/lib/assessment/scenarios/generator.ts)
+### **Domain Adaptation** (unchanged from v1.5)
+When role JD context is available, Claude Sonnet adapts scenario surface content to the candidate's domain while preserving structural properties.
 
-When role JD context is available, Claude Sonnet adapts scenario surface content to the candidate's domain while preserving structural properties. Generic roles use domain-neutral default content.
+### **Act 1 Data Captured**
+- 24 conversational transcripts (full text from speech-to-text)
+- 24 STRONG/ADEQUATE/WEAK classifications (triple-evaluated)
+- 24 response times (ms from mic activation to speech start + total duration)
+- 24 word counts (red flag input: avg < 20 words = scenario disengagement)
+- 4 branch paths (array of classifications per scenario)
 
-## **26.4 Act 2 — The Precision Gauntlet**
+## **26.6 Act 1 → Act 2 Transition**
 
-Five constructs are measured through adaptive investigation loops (src/lib/assessment/adaptive-loop.ts), each following a 4-phase algorithm:
+Cinematic and agent-narrated. The space morphs as Aria speaks (~15–20 seconds):
 
-### **Phase 1: Calibration** (2–3 items)
+1. Aria: "You handled those scenarios well. Now we're going to shift gears."
+2. Orb begins compressing (200px → 72px, 2s cinematic ease)
+3. Aria: "I'm going to present you with a series of problems — some timed, some not."
+4. Act label fades out, then "THE PRECISION GAUNTLET" fades in
+5. Aria: "Take your time where you can."
+6. First interactive element fades in center-screen
 
-Serve one easy, one medium, one hard item. Compute rough ability placement.
+## **26.7 Act 2 — The Precision Gauntlet**
 
-### **Phase 2: Boundary Mapping** (3–5 items)
+**Duration:** ~30–40 min. **Input mode:** Tap for structured items. Voice or text (candidate's choice) for follow-up probes.
 
-Binary search from both sides of the detected boundary. Items served at progressively tighter intervals until the boundary is pinpointed (the difficulty level where accuracy drops below 50%).
+Five constructs measured through adaptive investigation loops, each following a 4-phase algorithm. The candidate experiences a rhythm: items (tap) → voice probe → items (tap) → conversation about their ceiling → "let's move on" → repeat.
 
-### **Phase 3: Pressure Test** (2–3 items)
+### **Screen State**
+- Orb: compact (72px), top of stage. Expands to ~100–120px during voice probes. Returns to 72px for next items.
+- Progress bar: visible, Act 2 segment filling
+- Act label: "THE PRECISION GAUNTLET"
+- Subtitles: Aria's words below compact orb
+- Interactive elements: center of screen (choice cards, numeric input, timed challenges)
+- Mic button: appears during follow-up probes
+- Input mode toggle: "Voice / Type" pills appear after first follow-up probe
 
-Serve items at the boundary difficulty but from a different sub-type. Verifies the boundary is real, not an artifact of item-specific knowledge. If pressure test contradicts boundary, serve 1 additional item to resolve.
+### **Per-Construct Adaptive Loop** (4 phases, repeated for each of 5 constructs)
 
-### **Phase 4: Diagnostic Probe** (1–3 conversational exchanges)
+**Phase 1: Calibration** (2–3 items, ~2–3 min)
+- Serve 1 easy (difficulty 0.0–0.3), 1 medium (0.4–0.6), 1 hard (0.7–1.0) item
+- Compute rough ability placement
+- Aria introduces briefly: "Here's your first problem" (first construct) or "Okay, next section" (subsequent)
+- After 3rd item: 1 voice probe — "How are you finding these so far?" (metacognitive check, stored but not ability-scored)
 
-The AI generates targeted conversational probes (src/lib/assessment/diagnostic-probe.ts) to characterize the **nature** of the ceiling:
+**Phase 2: Boundary Mapping** (3–5 items, ~4–6 min)
+- Binary search from both sides of detected boundary
+- Items flow continuously. Aria may say brief connectors: "Okay, next one."
+- Narrows until boundary is pinpointed within ±0.1 on difficulty scale
+- **Ceiling defined as:** the difficulty level where candidate accuracy drops below 50%
+- After boundary identified: 1 voice probe — "That last one was tougher. Walk me through how you approached it." (Scored via Layer B — reveals reasoning at boundary)
+- Orb expands slightly during voice probe (~100px), returns to 72px for next items
 
-| Diagnostic Question | What the Probe Tests |
-| :---- | :---- |
-| Hard ceiling vs. soft ceiling? | Can the candidate solve the problem with more time, a different representation, or a worked example? |
-| Domain-specific vs. general? | Does the failure generalize across contexts or is it isolated to a specific type? |
-| Stress-induced vs. competence-limited? | Did accumulated cognitive fatigue degrade performance on items they could normally handle? |
-| Self-aware vs. blind spot? | Does the candidate recognize they struggled? (Cross-referenced with confidence data) |
+**Phase 3: Pressure Test** (2–3 items, ~2–3 min)
+- Items at boundary difficulty but from a DIFFERENT sub-type within the same construct
+- May include 1 timed challenge (30-second countdown, color transitions blue → amber → red)
+- **Confirms ceiling is real** (not artifact of item-specific knowledge)
+- If pressure test contradicts boundary (candidate passes items they "shouldn't"): 1 additional item to resolve
+- Outcome: CONFIRMED / CONTRADICTED / INCONCLUSIVE
+- If timed challenge used: optional voice probe — "How did the time pressure affect your approach?"
 
-Probe responses are analyzed by Claude Haiku → `CeilingType` classification (see Section 8.6 Layer C).
+**Phase 4: Diagnostic Probe** (1–3 conversational exchanges, ~3–5 min)
+- **Triggered only after ceiling is confirmed** by Phases 2–3
+- Orb expands to ~120px. Interactive elements disappear. Conversational mode.
+- AI generates targeted probes based on the specific ceiling detected. NOT generic.
 
-### **V2 Item Bank** (src/lib/assessment/item-bank.ts — 86 items)
+**Diagnostic probe selection logic** — which probe Aria asks depends on the data:
+
+| Signal in Data | Probe Aria Asks First | What It Tests |
+|---|---|---|
+| Response timing spiked near ceiling (candidate slowed dramatically) | Stress probe: "Do you think the time pressure changed how you performed, or would you have gotten those same ones wrong with unlimited time?" | Stress-induced vs. competence-limited |
+| Failed items across multiple sub-types | Generalization probe: "You did well on the data problems but hit a wall on the abstract equations. Does that track with your experience?" | Domain-specific vs. general limitation |
+| Failed only in one sub-type, passed others at same difficulty | Scaffold probe: "Let me show you that problem a different way. [Re-presents with scaffold.] Does thinking about it this way change your answer?" | Hard ceiling vs. soft/trainable ceiling |
+| No clear signal | Default: hard vs. soft ceiling probe | Can the candidate solve it with more time or a different representation? |
+
+**Stopping rules** (whichever triggers first):
+
+| Rule | Condition | Action |
+|---|---|---|
+| Confident classification | Evidence strength ≥ 0.7 after any probe | Stop probing, classify ceiling |
+| Maximum probes reached | 3 conversational exchanges for this construct | Stop probing, classify with available data (INSUFFICIENT_DATA if still ambiguous) |
+| Candidate disengagement | Response < 15 words to probe questions | Stop probing, classify with available data, feeds into disengagement red flag |
+
+**Ceiling type classification output:**
+
+| Ceiling Type | Meaning | Training Implication | Supervision Implication |
+|---|---|---|---|
+| HARD\_CEILING | Fundamental ability limitation | LOW — training unlikely to close gap | Structured support needed |
+| SOFT\_CEILING\_TRAINABLE | Gap closable with practice | HIGH — targeted training recommended | Standard with development plan |
+| SOFT\_CEILING\_CONTEXT\_DEPENDENT | Performance varies by task context | MEDIUM — monitor across contexts | May excel in some but not others |
+| STRESS\_INDUCED | Fatigue/pressure degraded performance | MEDIUM — reduce time pressure | Calm working conditions preferred |
+| INSUFFICIENT\_DATA | Not enough probe data to classify | LOW — cannot determine | Standard supervision appropriate |
+
+**After Phase 4:** Aria transitions — "Good. Let's move to something different." Orb returns to 72px. Next construct begins.
+
+### **V2 Item Bank** (unchanged from v1.5 — src/lib/assessment/item-bank.ts, 86 items)
 
 | Construct | Easy | Medium | Hard | Total |
 | :---- | :---- | :---- | :---- | :---- |
@@ -1953,87 +2210,170 @@ Probe responses are analyzed by Claude Haiku → `CeilingType` classification (s
 | Pattern Recognition | 4 | 7 | 7 | 18 |
 | Fluid Reasoning | 4 | 6 | 5 | 15 |
 
-Each item includes: id, construct, subType, difficulty (0.0–1.0), correctAnswer, distractorRationale, timingExpectations.
+### **Interactive Element Types**
 
-### **Interactive Element Delivery**
-
-Act 2 items appear as interactive elements within the chat flow:
-* Multiple choice → tappable option cards
-* Numeric input → embedded input field
-* Timed challenges → timer overlay with rapid-fire items
-* After each structured item, the agent asks a conversational follow-up ("Walk me through that")
-
-## **26.5 Act 3 — Calibration & Consistency Audit**
-
-### **Confidence-Tagged Items** (2–3 items)
-
-Select moderately difficult items (not repeating Act 2 items). Before revealing the result, the agent asks confidence level (Very Confident / Somewhat Confident / Not Sure). Stored as confidence + accuracy for Metacognitive Calibration scoring.
-
-### **Parallel Scenario Re-Presentation** (1–2 brief scenarios)
-
-Generate brief scenarios structurally identical to Act 1 but with different surface content. Compare construct signals with Act 1 for consistency validation (see Section 8.6 Consistency Validation).
-
-### **Reflective Self-Assessment**
-
-Standardized prompt: "Across everything we've done today, which parts felt easiest? Hardest? Were there moments where you felt uncertain but went with your first instinct?"
-
-Compare self-assessment against actual performance profile for metacognitive calibration.
-
-### **Assessment Completion**
-
-After Act 3: agent delivers warm closing → `AssessmentState.isComplete = true` → completion endpoint triggers V2 scoring pipeline → redirect to post-assessment survey (reuses existing V1 survey).
-
-## **26.6 Chat Interface**
-
-### **Main Component** (src/components/assessment/chat/assessment-chat.tsx)
-
-Full-screen streaming chat interface:
-* Message list with auto-scroll and `role="log" aria-live="polite"` for accessibility
-* Agent messages stream word-by-word via Vercel AI SDK
-* Candidate text input (textarea with Enter-to-send)
-* Interactive elements rendered inline as embedded components
-* Progress indicator showing current act
-* Voice mode toggle (microphone button)
-* Session persistence — on page reload, loads history from ConversationMessage records and restores AssessmentState
-* Mobile-optimized with `h-[100dvh]` and compact padding
-
-### **Message Rendering** (src/components/assessment/chat/chat-message.tsx)
-
-* Agent messages: light background with inline markdown rendering (bold, italic, code, lists)
-* Candidate messages: dark background, plain text
-* Streaming indicator: bouncing dots animation while agent response loads
-* HTML-escaped markdown renderer prevents XSS while supporting formatting
-
-### **Interactive Elements** (src/components/assessment/chat/interactive-elements.tsx)
-
-| Component | Element Types | Features |
+| Component | Element Types | Delivery |
 | :---- | :---- | :---- |
-| ChoiceCards | MULTIPLE\_CHOICE\_INLINE, TRADEOFF\_SELECTION | A/B/C/D letter badges, ARIA radiogroup, strip duplicate letter prefixes |
-| NumericInput | NUMERIC\_INPUT | Decimal input mode, Enter-to-submit |
-| ConfidenceRating | CONFIDENCE\_RATING | 3-option selector (Very Confident / Somewhat / Not Sure) |
-| TimedChallenge | TIMED\_CHALLENGE | Countdown timer bar with color transitions (blue→amber→red), auto-timeout |
+| ChoiceCards | MULTIPLE\_CHOICE\_INLINE, TRADEOFF\_SELECTION | Vertical stack of tappable cards with A/B/C/D letter badges. Selected card highlights; non-selected fade to 30% opacity. |
+| NumericInput | NUMERIC\_INPUT | Centered text input field. Enter to submit. |
+| ConfidenceRating | CONFIDENCE\_RATING | 3-option horizontal selector (Very Confident / Somewhat / Not Sure) |
+| TimedChallenge | TIMED\_CHALLENGE | Timer bar above choice cards. 30-second countdown. Color transitions blue → amber (< 50%) → red (< 20%). |
 
-All elements disable after response and show selected state.
+### **Act 2 Data Captured**
+- 35–55 structured item responses (answer + correct/incorrect + response time + difficulty)
+- 15–30 voice probe transcripts (Layer B input)
+- 5 ceiling characterizations (one per construct — Layer C)
+- 5–15 diagnostic probe exchange transcripts (Layer C input)
+- 3–5 timed challenge responses (response time vs. timer + accuracy)
+- 5 boundary estimates (difficulty parameter 0.0–1.0 per construct)
+- 5 pressure test outcomes (CONFIRMED / CONTRADICTED / INCONCLUSIVE)
 
-### **Voice Mode** (src/components/assessment/chat/voice-controls.tsx)
+## **26.8 Act 2 → Act 3 Transition**
 
-* Speech-to-text via browser `SpeechRecognition` API (en-US)
-* Text-to-speech for agent messages via `SpeechSynthesis` API
-* Push-to-talk button with visual indicator
-* Gracefully disables if browser doesn't support speech APIs
-* Supplementary telemetry: voice vs. text response tracking
+1. Aria: "We're in the final stretch now. I'd like to revisit a couple of things and get your own read on how you did today."
+2. Orb expands (72px → 200px, 2s cinematic ease)
+3. Interactive elements clear
+4. Act label: "CALIBRATION"
 
-### **Client State** (src/stores/chat-assessment-store.ts)
+## **26.9 Act 3 — Calibration & Consistency Audit**
 
-Zustand store managing:
-* Message history with optimistic local updates
-* Active interactive element state (restored on page reload)
-* Voice mode state (enabled, listening, speaking)
-* Timer state for timed challenges
-* Loading, error, and completion states
-* Streaming response handling (Vercel AI SDK format)
+**Duration:** ~10–15 min. **Input mode:** Voice for scenarios and reflection. Tap for confidence ratings.
 
-## **26.7 AI Model Configuration**
+### **Screen State**
+- Orb: full size (200px) — Act 1 aesthetic returns
+- Progress bar: visible, Act 3 segment filling
+- Act label: "CALIBRATION"
+- Mic button: visible for conversational segments
+
+### **Component 1: Confidence-Tagged Items** (2–3 items, ~5 min)
+
+Aria: "I'm going to give you a couple more problems. Before I tell you if you got it right, I want you to tell me how confident you are in your answer."
+
+Select moderately difficult items (NOT repeating Act 2 items). After candidate answers, confidence rating appears (Very Confident / Somewhat / Not Sure). Aria does NOT reveal whether the answer was correct. Accuracy + confidence = Metacognitive Calibration score.
+
+### **Component 2: Parallel Scenario Re-Presentation** (1–2 brief scenarios, ~5 min)
+
+Brief scenarios structurally identical to Act 1 but with different surface content. Only 1–2 beats (not the full 6-beat structure). Compare construct signals with Act 1 for consistency validation:
+- Delta < 0.15 → HIGH consistency (score stands)
+- Delta ≥ 0.15 → LOW consistency (flag, downweight lower-confidence source by 0.75×)
+
+### **Component 3: Reflective Self-Assessment** (~3–4 min)
+
+Aria: "Across everything we've done today — the scenarios, the problem-solving, the timed sections — which parts felt easiest to you? And which parts felt hardest?"
+
+May follow up: "Were there moments where you felt uncertain but went with your first instinct?"
+
+Compare self-assessment against actual performance profile for Metacognitive Calibration scoring.
+
+### **Act 3 Data Captured**
+- 2–3 confidence-tagged items (answer + confidence + accuracy)
+- 1–2 parallel scenario transcripts + classifications
+- 2–4 consistency deltas
+- 1 reflective self-assessment transcript
+- 1 self-assessment accuracy analysis (AI-evaluated alignment between self-report and actual scores)
+
+## **26.10 Assessment Completion**
+
+Aria: "That's everything. Thank you for your time and your thoughtful responses today. Your results will be reviewed by the hiring team, and you'll hear from them soon."
+
+Orb settles to idle. Subtitles fade. After 2 seconds, smooth transition to post-assessment survey (existing survey-form.tsx). Then thank-you screen.
+
+Behind the scenes: `AssessmentState.isComplete = true` → scoring pipeline fires (Layer A + B + C + consistency + red flags + composites + cutlines + status + predictions). Results available on dashboard within ~2 minutes.
+
+## **26.11 Nudge System**
+
+When the candidate doesn't respond after Aria finishes speaking, Aria gently re-engages. Nudges prevent candidates from getting stuck, confused, or frozen.
+
+### **Nudge Timing**
+
+| Context | First Nudge | Second Nudge (+ text fallback) | Final (advance) |
+|---|---|---|---|
+| Phase 0 mic check | 15s | 30s | 45s |
+| Act 1 scenario responses | 20s | 40s | 60s |
+| Act 2 follow-up probes | 15s | 30s | 45s |
+| Act 3 reflective questions | 25s | 50s | 75s |
+| Interactive elements (MC, confidence) | No nudge — element is visible and tappable | | |
+
+### **Nudge Behavior**
+- First nudge: supportive, doesn't repeat question. "Take your time — there's no rush."
+- Second nudge: offers text alternative. "If you'd prefer to type your response, that's completely fine too." Text input appears.
+- Final fallback: advances assessment. "No worries — let's move on." Current item scored as no-response (feeds into disengagement red flag).
+- **Nudges are AI-generated, not hardcoded.** System prompt instructs the agent to generate contextually appropriate, varied nudges.
+
+### **Nudge Telemetry**
+Track per assessment: nudge count by act, nudge-to-response time, text fallback activations.
+
+## **26.12 Voice Engine**
+
+### **Agent Output: ElevenLabs TTS**
+
+| Parameter | Value |
+|---|---|
+| Provider | ElevenLabs |
+| Model | Flash v2.5 (`eleven_flash_v2_5`) |
+| Latency | ~75ms |
+| Voice | British female, warm, caring (voice ID in `ELEVENLABS_VOICE_ID` env var) |
+| Output format | mp3\_44100\_128 |
+| Voice settings | stability: 0.6, similarity\_boost: 0.8, style: 0.3, use\_speaker\_boost: true |
+| Cost per assessment | ~$0.50–$1.00 (~35,000 characters of agent speech) |
+
+**Architecture:** Agent text streams via Vercel AI SDK → buffered into sentence-level chunks → sent to ElevenLabs streaming endpoint → audio played via Web Audio API → AnalyserNode extracts real-time amplitude → amplitude drives orb displacement (orb surface ripples proportionally to Aria's voice).
+
+**Server-side proxy:** `src/app/api/assess/[token]/tts/route.ts` — validates assessment token, proxies to ElevenLabs, rate-limited (60 req/min), logs character count for cost tracking.
+
+**Fallback:** If ElevenLabs unavailable → browser SpeechSynthesis. Subtitles still work. Assessment never blocks on TTS failure.
+
+### **Candidate Input: Web Speech API**
+- Browser-native `SpeechRecognition` API (en-US) for speech-to-text
+- Push-to-talk via mic button with visual indicator
+- Gracefully disables if browser doesn't support speech APIs → text input fallback
+- Voice vs. text response tracking for telemetry
+
+### **Environment Variables**
+```
+ELEVENLABS_API_KEY=        # API key from ElevenLabs dashboard
+ELEVENLABS_VOICE_ID=       # Selected British female voice ID
+```
+
+## **26.13 Stage Interface**
+
+### **Living Background** (canvas)
+Full-viewport animated canvas behind everything. 3–4 aurora nebulae in deep navy/blue drifting slowly. ~80 particles with pulsing opacity and connecting lines (neural network aesthetic). Subtle gold accent aurora. Mesmerizing if you stare, invisible if you're focused on the assessment.
+
+### **The Orb** (canvas)
+Canvas-rendered fluid sphere with sinusoidal displacement on polar coordinates. Multiple concentric layers with different displacement frequencies. Core gradient with specular highlight. Outer glow. Size transitions: 200px (Phase 0, Act 1, Act 3, Act 2 diagnostic probes) → 72px (Act 2 structured items) → ~100–120px (Act 2 voice probes). Transitions: 2s cubic-bezier(0.25, 0.1, 0.25, 1) via ResizeObserver.
+
+### **Subtitles**
+Word-by-word reveal (~55ms per word). DM Sans, 17px, weight 300, center-aligned. Color: #b8c4d6. Previous subtitle clears (500ms fade) before new text begins.
+
+### **Candidate Transcript**
+Brief fade-in/out confirmation when candidate speaks. DM Sans, 13px, italic. Fades in 400ms, holds ~2s at 50% opacity, fades out 1s. Wrapped in quotes.
+
+### **Progress Bar**
+Three segments with dots. JetBrains Mono labels (9px, uppercase). --aci-blue fill with glow. Hidden during Phase 0.
+
+### **Interactive Elements**
+Choice cards, numeric input, timed challenges, confidence rating. Enter with opacity + translateY animation (700ms). Exit with reverse. After selection on choice cards: non-selected fade to 30%, then all cards fade out and orb expands for voice follow-up.
+
+### **Mic Button**
+52px circle, push-to-talk. Active state: --aci-green-bright border, ripple animation. Visible only when it's the candidate's turn.
+
+## **26.14 Design System Alignment**
+
+| Token | Hex | Assessment Usage |
+|---|---|---|
+| --aci-navy | #0F1729 | Background foundation |
+| --aci-navy-deep | #080e1a | Deepest background layer |
+| --aci-blue | #2563EB | Orb core, progress fills, interactive highlights |
+| --aci-green | #059669 | Orb listening state |
+| --aci-green-bright | #22d68a | Active mic indicator |
+| --aci-amber | #D97706 | Timer warning state |
+| --aci-gold | #C9A84C | Act labels |
+| --aci-red | #DC2626 | Timer danger state |
+
+Typography: DM Sans (body/subtitles), JetBrains Mono (labels/progress/timer). No Inter in the assessment experience.
+
+## **26.15 AI Model Configuration** (unchanged from v1.5)
 
 | Purpose | Model | Timeout | Rationale |
 | :---- | :---- | :---- | :---- |
@@ -2041,41 +2381,78 @@ Zustand store managing:
 | Content generation (scenario adaptation, item generation) | Claude Sonnet 4.6 (`claude-sonnet-4-6-20250514`) | 30s | Higher quality for content creation |
 | Layer B evaluation (rubric scoring) | Claude Haiku 4.5 | 15s | Triple-evaluation × many constructs = cost-sensitive |
 
-**Cost Target:** \<$5 per candidate across all AI calls (classification, follow-ups, triple-evaluation scoring, ceiling probes).
+**Cost Target:** <$5 per candidate for Anthropic API calls + ~$0.50–$1.00 for ElevenLabs TTS = **<$6 total AI cost per assessment**.
 
-## **26.8 Implementation Files**
+## **26.16 Measurement Rigor by Construct**
 
-### **Engine Files** (src/lib/assessment/)
+### **Rigorously Measured (5 constructs) — Quantitative + Qualitative + Ceiling**
+
+Quantitative Reasoning, Spatial Visualization, Mechanical Reasoning, Pattern Recognition, Fluid Reasoning. These have: 86-item calibrated bank with difficulty parameters, 4-phase adaptive algorithm, Layer A deterministic scoring, Layer B conversational probe scoring, Layer C ceiling characterization, and Act 3 consistency validation. Full audit trail of items served, answers given, difficulty parameters, and scoring formulas.
+
+### **Conversationally Measured (7 constructs) — Qualitative Only**
+
+Systems Diagnostics, Cognitive Flexibility, Learning Velocity, Executive Control, Ethical Judgment, Procedural Reliability, Metacognitive Calibration. These rely on Layer B (AI rubric evaluation of conversational transcripts from Act 1 + Act 3). Triple-evaluation for reliability. 12 rubrics with 3–5 behavioral indicators each.
+
+**Why no structured items for behavioral constructs:** Multiple choice items for integrity and judgment constructs have near-zero discriminative power because candidates can identify the socially desirable answer. Conversational measurement through branching scenarios produces richer, harder-to-fake behavioral signal. The measurement is more rigorous for these constructs, not less — but the scoring mechanism depends on AI interpretation rather than deterministic math.
+
+### **Validation Roadmap (Required for Legal Defensibility)**
+
+| Study | What It Proves | Priority | Dependency |
+|---|---|---|---|
+| Criterion validity study | Assessment scores predict job performance (ramp time, supervisor ratings, retention, process compliance) | CRITICAL | Requires 100+ candidates with outcome data |
+| Human-AI agreement study | Trained I/O psychologists and AI rubric system produce same scores (target: ICC > 0.70) | HIGH | Requires 50 scored transcripts + 2–3 raters |
+| Adverse impact analysis | Assessment does not produce disparate impact on protected classes (four-fifths rule, Fisher's exact test) | CRITICAL | Requires demographic data from customers |
+| SJT item development for behavioral constructs | Adds Layer A deterministic scores for Ethical Judgment, Procedural Reliability, Executive Control | HIGH | Requires I/O psychology item development |
+
+## **26.17 Implementation Files**
+
+### **New UI Files** (v1.6)
 
 | Directory | Files | Purpose |
 | :---- | :---- | :---- |
-| src/lib/assessment/ | config.ts, types.ts, engine.ts, classification.ts, adaptive-loop.ts, item-bank.ts, diagnostic-probe.ts, logger.ts | Core engine: configuration, types, state machine, classification, adaptive loops, item bank, probing, logging |
-| src/lib/assessment/scenarios/ | index.ts, generator.ts | 4 scenario shells + domain-adaptive content generation |
-| src/lib/assessment/scoring/ | pipeline.ts, layer-a.ts, layer-b.ts, layer-c.ts, rubrics.ts, aggregation.ts, consistency.ts, red-flags.ts | 3-layer scoring pipeline with 12 construct rubrics, consistency validation, and 12 red flag checks |
-| src/lib/assessment/ | construct-scoring.ts, norm-tables.ts, role-context.ts, role-fit-rankings.ts, narratives.ts | Shared scoring utilities (construct layers, percentile tables, role context, fit rankings, narrative generation) |
+| src/components/assessment/orb/ | assessment-orb.tsx, orb-renderer.ts, use-orb-animation.ts | Canvas-rendered fluid orb |
+| src/components/assessment/stage/ | assessment-stage.tsx, subtitle-display.tsx, candidate-transcript.tsx, progress-bar.tsx, act-label.tsx | Single-screen stage layout |
+| src/components/assessment/interactive/ | choice-cards.tsx, timed-challenge.tsx, confidence-rating.tsx, numeric-input.tsx, input-mode-toggle.tsx | Interactive elements |
+| src/components/assessment/voice/ | mic-button.tsx, voice-controller.ts, tts-engine.ts, audio-player.ts, use-audio-amplitude.ts | Voice I/O + ElevenLabs TTS |
+| src/components/assessment/background/ | living-background.tsx | Animated canvas background |
+| src/components/assess/ | welcome-screen.tsx (redesigned), readiness-check.tsx, completion-screen.tsx, phase-0-controller.ts | Pre/post assessment + Phase 0 |
 
-### **UI Files**
+### **New Engine Files** (v1.6)
 
-| Directory | Files | Purpose |
+| File | Purpose |
+| :---- | :---- |
+| src/lib/assessment/phase-0.ts | Phase 0 script content, segment definitions, mic check logic |
+| src/lib/assessment/nudge-system.ts | Nudge timing thresholds, timer management, telemetry |
+
+### **Modified Engine Files** (v1.6)
+
+| File | Change |
+| :---- | :---- |
+| src/lib/assessment/engine.ts | Add PHASE\_0 state to state machine |
+| src/lib/assessment/types.ts | Add PHASE\_0 to act enum |
+| src/lib/assessment/config.ts | Add Phase 0 + nudge configuration |
+| src/lib/assessment/scoring/pipeline.ts | Exclude PHASE\_0 messages from scoring |
+
+### **New API Route** (v1.6)
+
+| Route | File | Purpose |
 | :---- | :---- | :---- |
-| src/components/assessment/chat/ | assessment-chat.tsx, chat-message.tsx, interactive-elements.tsx, voice-controls.tsx | Chat UI: main interface, message rendering, interactive elements, voice controls |
-| src/components/assess/ | welcome-screen.tsx, expired-screen.tsx, thank-you-screen.tsx, survey-form.tsx | Shared assessment screens (welcome, expired, thank-you, survey) |
-| src/stores/ | chat-assessment-store.ts | Zustand store for chat state |
+| /api/assess/\[token\]/tts | src/app/api/assess/\[token\]/tts/route.ts | ElevenLabs TTS proxy (token auth, rate-limited, cost tracking) |
 
-### **Route Files**
+### **Removed in v1.6**
+
+Chat-based UI components (assessment-chat.tsx, chat-message.tsx), replaced by orb/stage components. Voice-controls.tsx replaced by voice/ directory. The streaming chat API endpoint (`/api/assess/[token]/chat/route.ts`) remains unchanged — only the UI that consumes it has changed.
+
+### **Existing Route Files** (unchanged)
 
 | Route | File | Purpose |
 | :---- | :---- | :---- |
 | /assess/\[token\] | src/app/(assess)/assess/\[token\]/page.tsx | Welcome/expired/in-progress page |
 | /assess/\[token\]/start | src/app/(assess)/assess/\[token\]/start/route.ts | POST: create assessment + update statuses |
-| /assess/\[token\]/v2 | src/app/(assess)/assess/\[token\]/v2/page.tsx | Assessment chat page entry point |
+| /assess/\[token\]/v2 | src/app/(assess)/assess/\[token\]/v2/page.tsx | Assessment page entry point |
 | /api/assess/\[token\]/chat | src/app/api/assess/\[token\]/chat/route.ts | Streaming chat API endpoint |
 | /api/assess/\[token\]/complete | src/app/api/assess/\[token\]/complete/route.ts | Assessment completion + scoring pipeline |
 
-### **Files Removed in v1.5**
-
-V1-only components (assessment-shell, progress-bar, block-interstitial, completion-screen, 5 item-type components), V1 routes (/assess/\[token\]/block/, /api/assess/ai-probe), V1 libraries (items.ts, blocks.ts, pipeline.ts, item-scoring.ts, randomize.ts), V1 store (assessment-store.ts), feature flag (`ASSESSMENT_V2_ENABLED`), version enum (`AssessmentVersion`), and Assessment.version column.
-
 *End of Document*
 
-ACI • Arklight Cognitive Index • Product Requirements Document v1.4 • March 2026
+ACI • Arklight Cognitive Index • Product Requirements Document v1.6 • March 2026

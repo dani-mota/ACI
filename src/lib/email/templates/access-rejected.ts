@@ -3,15 +3,26 @@ interface AccessRejectedParams {
   rejectionReason?: string;
 }
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export function buildAccessRejectedEmail({
   userName,
   rejectionReason,
 }: AccessRejectedParams): { subject: string; html: string } {
   const subject = "ACI Access Request Update";
+  const safeName = escapeHtml(userName);
+  const safeReason = rejectionReason ? escapeHtml(rejectionReason) : undefined;
 
-  const reasonBlock = rejectionReason
+  const reasonBlock = safeReason
     ? `<p style="margin: 0 0 24px; font-size: 13px; color: #52525b; line-height: 1.7; background-color: #fafafa; border: 1px solid #e4e4e7; padding: 12px 16px;">
-        <strong>Reason:</strong> ${rejectionReason}
+        <strong>Reason:</strong> ${safeReason}
       </p>`
     : "";
 
@@ -39,7 +50,7 @@ export function buildAccessRejectedEmail({
           <tr>
             <td style="padding: 32px;">
               <h1 style="margin: 0 0 8px; font-size: 18px; color: #0a1628; font-weight: 700;">
-                Hello ${userName},
+                Hello ${safeName},
               </h1>
               <p style="margin: 0 0 24px; font-size: 14px; color: #52525b; line-height: 1.6;">
                 Thank you for your interest in the Arklight Cognitive Index platform. After reviewing your access request, we are unable to approve it at this time.
