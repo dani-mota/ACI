@@ -42,14 +42,10 @@ export function AssessmentChat({ token, assessmentId, candidateName, companyName
             currentAct: data.state?.currentAct ?? "ACT_1",
             isComplete: data.state?.isComplete ?? false,
           });
-        } else {
-          // Send initial greeting
-          store.sendMessage("[START_ASSESSMENT]");
         }
       })
       .catch(() => {
-        // If loading fails, start fresh
-        store.sendMessage("[START_ASSESSMENT]");
+        // Loading failed — Phase 0 or stage controller handles greeting
       });
 
     setInitialized(true);

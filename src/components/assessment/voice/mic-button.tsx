@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useRef, useCallback, useState, forwardRef } from "react";
 
 interface MicButtonProps {
   onTranscript: (text: string) => void;
@@ -8,10 +8,20 @@ interface MicButtonProps {
   disabled?: boolean;
 }
 
-export function MicButton({ onTranscript, onListeningChange, disabled }: MicButtonProps) {
+export const MicButton = forwardRef<HTMLButtonElement, MicButtonProps>(
+  function MicButton({ onTranscript, onListeningChange, disabled }, ref) {
   const [listening, setListening] = useState(false);
   const [supported, setSupported] = useState(true);
+  const [interim, setInterim] = useState("");
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const silenceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const transcriptRef = useRef("");
+
+  // Stable callback refs
+  const onTranscriptRef = useRef(onTranscript);
+  onTranscriptRef.current = onTranscript;
+  const onListeningChangeRef = useRef(onListeningChange);
+  onListeningChangeRef.current = onListeningChange;
 
   useEffect(() => {
     const hasSpeech =
@@ -27,60 +37,96 @@ export function MicButton({ onTranscript, onListeningChange, disabled }: MicButt
     const SpeechRecognitionAPI =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     const recognition = new SpeechRecognitionAPI();
-    recognition.continuous = false;
-    recognition.interimResults = false;
+    recognition.continuous = true;
+    recognition.interimResults = true;
     recognition.lang = "en-US";
 
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      const transcript = event.results[0]?.[0]?.transcript;
-      if (transcript) {
-        onTranscript(transcript);
+    recognition.onresult = (event: any) => {
+      let fullTranscript = "";
+      let interimText = "";
+
+      for (let i = 0; i < event.results.length; i++) {
+        if (event.results[i].isFinal) {
+          fullTranscript += event.results[i][0].transcript;
+        } else {
+          interimText += event.results[i][0].transcript;
+        }
       }
-      setListening(false);
-      onListeningChange(false);
+
+      transcriptRef.current = fullTranscript;
+      setInterim(interimText);
+
+      // Reset silence timer — auto-stop after 2s of silence following final results
+      if (silenceTimer.current) clearTimeout(silenceTimer.current);
+      if (fullTranscript) {
+        silenceTimer.current = setTimeout(() => {
+          recognition.stop();
+        }, 2000);
+      }
     };
 
-    recognition.onerror = () => {
+    recognition.onspeechend = () => {
+      // Speech stopped — give a brief window for any final results
+      if (silenceTimer.current) clearTimeout(silenceTimer.current);
+      silenceTimer.current = setTimeout(() => {
+        recognition.stop();
+      }, 1500);
+    };
+
+    recognition.onerror = (event: any) => {
+      if (event.error === "aborted") return;
       setListening(false);
-      onListeningChange(false);
+      setInterim("");
+      onListeningChangeRef.current(false);
     };
 
     recognition.onend = () => {
+      if (silenceTimer.current) clearTimeout(silenceTimer.current);
       setListening(false);
-      onListeningChange(false);
+      setInterim("");
+      onListeningChangeRef.current(false);
+
+      // Submit accumulated transcript
+      const text = transcriptRef.current.trim();
+      if (text) {
+        onTranscriptRef.current(text);
+        transcriptRef.current = "";
+      }
     };
 
     recognitionRef.current = recognition;
 
     return () => {
+      if (silenceTimer.current) clearTimeout(silenceTimer.current);
       recognition.abort();
       recognitionRef.current = null;
     };
-  }, [supported, onTranscript, onListeningChange]);
+  }, [supported]);
 
   const toggleListening = useCallback(() => {
     if (disabled || !recognitionRef.current) return;
 
     if (listening) {
       recognitionRef.current.stop();
-      setListening(false);
-      onListeningChange(false);
     } else {
       try {
+        transcriptRef.current = "";
+        setInterim("");
         recognitionRef.current.start();
         setListening(true);
-        onListeningChange(true);
+        onListeningChangeRef.current(true);
       } catch {
         // Already started
       }
     }
-  }, [listening, disabled, onListeningChange]);
+  }, [listening, disabled]);
 
   if (!supported) return null;
 
   return (
     <div className="flex flex-col items-center gap-2">
       <button
+        ref={ref}
         onClick={toggleListening}
         disabled={disabled}
         aria-label={listening ? "Microphone active, listening" : "Activate microphone"}
@@ -135,7 +181,7 @@ export function MicButton({ onTranscript, onListeningChange, disabled }: MicButt
         </svg>
       </button>
 
-      {/* Hint text */}
+      {/* Status text */}
       <span
         style={{
           fontFamily: "var(--font-mono)",
@@ -146,9 +192,16 @@ export function MicButton({ onTranscript, onListeningChange, disabled }: MicButt
             ? "#22d68a"
             : "rgba(255, 255, 255, 0.25)",
           transition: "color 300ms ease",
+          maxWidth: "200px",
+          textAlign: "center",
+          minHeight: "14px",
         }}
       >
-        {listening ? "Listening..." : "Tap to speak"}
+        {listening
+          ? interim
+            ? interim.slice(0, 40) + (interim.length > 40 ? "..." : "")
+            : "Listening..."
+          : "Tap to speak"}
       </span>
 
       {/* Keyframe for ripple */}
@@ -166,4 +219,4 @@ export function MicButton({ onTranscript, onListeningChange, disabled }: MicButt
       `}</style>
     </div>
   );
-}
+});

@@ -79,7 +79,7 @@ export async function POST(
 
   try {
     const ttsResponse = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`,
+      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?output_format=mp3_44100_128`,
       {
         method: "POST",
         headers: {
@@ -95,7 +95,6 @@ export async function POST(
             style: 0.3,
             use_speaker_boost: true,
           },
-          output_format: "mp3_44100_128",
         }),
       },
     );

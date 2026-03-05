@@ -21,7 +21,7 @@ export function ActLabel({ currentAct }: ActLabelProps) {
         fontSize: "9px",
         letterSpacing: "2.5px",
         textTransform: "uppercase",
-        color: "rgba(14, 165, 233, 0.6)", // aci-gold at 60% opacity
+        color: "rgba(201, 168, 76, 0.6)", // --aci-gold (#C9A84C) at 60% opacity
         transition: "opacity 1.2s ease",
       }}
     >

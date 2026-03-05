@@ -134,6 +134,35 @@ export function buildInvitationEmail({
             </td>
           </tr>
 
+          <!-- Before You Begin -->
+          <tr>
+            <td style="background-color: #FFFFFF; padding: 24px 32px 0;">
+              <p style="margin: 0 0 12px; font-size: 9px; color: #64748B; text-transform: uppercase; letter-spacing: 2px; font-weight: 600; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+                Before You Begin
+              </p>
+              <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+                <tr>
+                  <td style="padding: 0 0 10px 16px; font-size: 13px; color: #334155; line-height: 1.7; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">This assessment is conducted as a voice conversation with an AI evaluator named Aria</td>
+                </tr>
+                <tr>
+                  <td style="padding: 0 0 10px 16px; font-size: 13px; color: #334155; line-height: 1.7; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">Find a quiet space with a working microphone</td>
+                </tr>
+                <tr>
+                  <td style="padding: 0 0 10px 16px; font-size: 13px; color: #334155; line-height: 1.7; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">Allow 60–90 minutes of uninterrupted time</td>
+                </tr>
+                <tr>
+                  <td style="padding: 0 0 10px 16px; font-size: 13px; color: #334155; line-height: 1.7; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">Use Chrome, Edge, or Safari on desktop or laptop</td>
+                </tr>
+                <tr>
+                  <td style="padding: 0 0 10px 16px; font-size: 13px; color: #334155; line-height: 1.7; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">Headphones recommended for the best experience</td>
+                </tr>
+                <tr>
+                  <td style="padding: 0 0 10px 16px; font-size: 13px; color: #334155; line-height: 1.7; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">A typing fallback is available if you prefer not to use voice</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
           <!-- CTA Button -->
           <tr>
             <td style="background-color: #FFFFFF; padding: 28px 32px 32px;" align="center">

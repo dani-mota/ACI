@@ -65,7 +65,7 @@ export class TTSEngine {
     this.onFallback = onFallback;
   }
 
-  private ensureAudioContext(): AudioContext {
+  private async ensureAudioContext(): Promise<AudioContext> {
     if (!this.audioContext || this.audioContext.state === "closed") {
       this.audioContext = new AudioContext();
       this.analyser = this.audioContext.createAnalyser();
@@ -76,7 +76,11 @@ export class TTSEngine {
       this.analyser.connect(this.audioContext.destination);
     }
     if (this.audioContext.state === "suspended") {
-      this.audioContext.resume();
+      try {
+        await this.audioContext.resume();
+      } catch {
+        // Context resume failed — will fall back to SpeechSynthesis
+      }
     }
     return this.audioContext;
   }
@@ -99,7 +103,14 @@ export class TTSEngine {
     const signal = this.abortController.signal;
 
     try {
-      const ctx = this.ensureAudioContext();
+      const ctx = await this.ensureAudioContext();
+
+      // If context is still suspended (no user gesture), skip to fallback
+      if (ctx.state === "suspended") {
+        this.fallbackActive = true;
+        this.onFallback();
+        return this.speakFallback(text);
+      }
 
       // Fetch and decode all chunks
       const buffers: AudioBuffer[] = [];
@@ -130,7 +141,26 @@ export class TTSEngine {
         const arrayBuffer = await res.arrayBuffer();
         if (signal.aborted) return;
 
-        const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+        // Guard: if the response is too small, it's likely a JSON error, not audio
+        if (arrayBuffer.byteLength < 100) {
+          console.warn("[TTS] Response too small to be audio, skipping chunk");
+          continue;
+        }
+
+        let audioBuffer: AudioBuffer;
+        try {
+          audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+        } catch (decodeErr) {
+          console.error("[TTS] Failed to decode audio chunk:", decodeErr);
+          // If the very first chunk fails to decode, switch to fallback entirely
+          if (buffers.length === 0) {
+            this.fallbackActive = true;
+            this.onFallback();
+            return this.speakFallback(text);
+          }
+          // Otherwise skip this chunk and continue with remaining
+          continue;
+        }
         buffers.push(audioBuffer);
       }
 
@@ -169,10 +199,19 @@ export class TTSEngine {
       source.connect(this.gainNode);
       this.currentSource = source;
 
-      source.onended = () => {
+      let resolved = false;
+      const done = () => {
+        if (resolved) return;
+        resolved = true;
+        clearTimeout(safetyTimeout);
         this.currentSource = null;
         this.playNext().then(resolve);
       };
+
+      source.onended = done;
+
+      // Safety timeout: if onended never fires (e.g. suspended context), move on
+      const safetyTimeout = setTimeout(done, (buffer.duration + 2) * 1000);
 
       source.start(0);
     });
@@ -242,6 +281,30 @@ export class TTSEngine {
   /** Get whether fallback is active */
   isFallback(): boolean {
     return this.fallbackActive;
+  }
+
+  /**
+   * Pre-initialize and resume the AudioContext.
+   * Call this from a user gesture (click/touch/keydown) to unlock Web Audio
+   * before the first speak() call — avoids suspended-context fallback.
+   *
+   * If the context was previously suspended (causing fallbackActive = true),
+   * successfully resuming it will clear the fallback flag so that subsequent
+   * speak() calls use ElevenLabs instead of the robotic browser voice.
+   */
+  async resumeContext(): Promise<void> {
+    try {
+      const ctx = await this.ensureAudioContext();
+      if (ctx.state === "suspended") {
+        await ctx.resume();
+      }
+      // If context is now running, clear the fallback flag — ElevenLabs is usable
+      if (ctx.state === "running" && this.fallbackActive) {
+        this.fallbackActive = false;
+      }
+    } catch {
+      // Best-effort — speak() will fall back if still suspended
+    }
   }
 
   /** Stop all playback immediately */

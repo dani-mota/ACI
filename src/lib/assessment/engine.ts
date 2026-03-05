@@ -112,8 +112,13 @@ function getAct1Action(
   const branchPath = (state.branchPath as ResponseClassification[] | null) ?? [];
   const lastClassification = branchPath.length > 0 ? branchPath[branchPath.length - 1] : undefined;
 
+  // Sentinel messages like [BEGIN_ASSESSMENT] or [NO_RESPONSE] are control signals,
+  // not real candidate responses. Treat them as "no message" for beat gating.
+  const isSentinel = lastCandidateMessage && /^\[.+\]$/.test(lastCandidateMessage.trim());
+  const hasRealCandidateMessage = !!lastCandidateMessage && !isSentinel;
+
   // Beat 0 (Initial Situation) — always starts with the scenario introduction
-  if (beatIndex === 0 && !lastCandidateMessage) {
+  if (beatIndex === 0 && !hasRealCandidateMessage) {
     return {
       type: "AGENT_MESSAGE",
       systemPrompt: buildAct1SystemPrompt(scenario, beatIndex),
@@ -129,7 +134,7 @@ function getAct1Action(
   }
 
   // Beat 1 (Initial Response) — agent asks "What do you do?"
-  if (beatIndex === 1 && !lastCandidateMessage) {
+  if (beatIndex === 1 && !hasRealCandidateMessage) {
     return {
       type: "AGENT_MESSAGE",
       systemPrompt: buildAct1SystemPrompt(scenario, beatIndex),
@@ -145,7 +150,7 @@ function getAct1Action(
   }
 
   // Beats 3-4 may include a tradeoff selection element
-  if (beat.type === "SOCIAL_PRESSURE" && !lastCandidateMessage && beatIndex === 3) {
+  if (beat.type === "SOCIAL_PRESSURE" && !hasRealCandidateMessage && beatIndex === 3) {
     return {
       type: "AGENT_MESSAGE",
       systemPrompt: buildAct1SystemPrompt(scenario, beatIndex),
@@ -462,25 +467,41 @@ export function computeStateUpdate(
     };
   }
 
-  if (currentState.currentAct === "ACT_1" && classification) {
-    const branchPath = (currentState.branchPath as ResponseClassification[] | null) ?? [];
-    const newBeat = currentState.currentBeat + 1;
-    const scenario = SCENARIOS[currentState.currentScenario];
-    const maxBeats = scenario?.beats.length ?? ASSESSMENT_STRUCTURE.beatsPerScenario;
-
-    if (newBeat >= maxBeats) {
-      // Move to next scenario
+  if (currentState.currentAct === "ACT_1") {
+    // Inter-scenario transition: the engine returned an AGENT_MESSAGE with
+    // transition metadata to advance to the next scenario. Apply it directly.
+    const metadata = (action.type === "AGENT_MESSAGE")
+      ? (action as { metadata?: Record<string, unknown> }).metadata
+      : undefined;
+    if (metadata?.transition && typeof metadata.scenarioIndex === "number") {
       return {
-        currentScenario: currentState.currentScenario + 1,
-        currentBeat: 0,
-        branchPath: [...branchPath, classification] as unknown as AssessmentState["branchPath"],
+        currentScenario: metadata.scenarioIndex as number,
+        currentBeat: (metadata.beatIndex as number) ?? 0,
+        branchPath: [] as unknown as AssessmentState["branchPath"],
       };
     }
 
-    return {
-      currentBeat: newBeat,
-      branchPath: [...branchPath, classification] as unknown as AssessmentState["branchPath"],
-    };
+    // Normal beat advancement after candidate response classification
+    if (classification) {
+      const branchPath = (currentState.branchPath as ResponseClassification[] | null) ?? [];
+      const newBeat = currentState.currentBeat + 1;
+      const scenario = SCENARIOS[currentState.currentScenario];
+      const maxBeats = scenario?.beats.length ?? ASSESSMENT_STRUCTURE.beatsPerScenario;
+
+      if (newBeat >= maxBeats) {
+        // Move to next scenario
+        return {
+          currentScenario: currentState.currentScenario + 1,
+          currentBeat: 0,
+          branchPath: [...branchPath, classification] as unknown as AssessmentState["branchPath"],
+        };
+      }
+
+      return {
+        currentBeat: newBeat,
+        branchPath: [...branchPath, classification] as unknown as AssessmentState["branchPath"],
+      };
+    }
   }
 
   // ── Act 2 state updates ──────────────────────────────────────

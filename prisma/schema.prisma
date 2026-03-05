@@ -444,6 +444,7 @@ enum ItemType {
 // ──────────────────────────────────────────────
 
 enum AssessmentAct {
+  PHASE_0
   ACT_1
   ACT_2
   ACT_3
@@ -596,6 +597,7 @@ model AssessmentState {
   branchPath        Json?
   act2Progress      Json?
   act3Progress      Json?
+  phase0Complete    Boolean       @default(false)
   isComplete        Boolean       @default(false)
   updatedAt         DateTime      @updatedAt
   createdAt         DateTime      @default(now())

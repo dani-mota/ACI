@@ -47,7 +47,7 @@ export default async function AssessmentV2Page({ params }: PageProps) {
     await prisma.assessmentState.create({
       data: {
         assessmentId: assessment.id,
-        currentAct: "ACT_1",
+        currentAct: "PHASE_0",
         currentScenario: 0,
         currentBeat: 0,
       },

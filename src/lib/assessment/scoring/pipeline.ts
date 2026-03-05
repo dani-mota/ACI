@@ -61,13 +61,16 @@ export async function runScoringPipeline(assessmentId: string) {
   const state = assessment.assessmentState;
   const act2Progress = (state.act2Progress as Record<string, AdaptiveLoopState> | null) ?? {};
 
+  // Exclude Phase 0 messages from scoring — they are non-assessed warmup
+  assessment.messages = assessment.messages.filter((m) => m.act !== "PHASE_0");
+
   // ── 2. Layer A: Deterministic scoring ──────────────────────────
   const itemBankMap = new Map(ITEM_BANK.map((i) => [i.id, i]));
   const layerAScores = [];
 
   // Score Act 2 structured items from item responses
   for (const resp of assessment.itemResponses) {
-    if (!resp.act || resp.act === "ACT_1") continue; // Act 1 is conversational only
+    if (!resp.act || resp.act === "ACT_1" || resp.act === "PHASE_0") continue; // Phase 0 & Act 1 are non-scored
     const item = itemBankMap.get(resp.itemId);
     if (!item) continue;
 

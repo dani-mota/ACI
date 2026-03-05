@@ -140,6 +140,43 @@ export async function POST(
     return (result._max.sequenceOrder ?? 0) + 1;
   }
 
+  // ── Phase 0 triggers ──
+
+  // Persist a Phase 0 scripted message (Aria segment or candidate mic-check reply)
+  if (body.trigger === "phase_0_message") {
+    const { content, role } = body as { content: string; role: "AGENT" | "CANDIDATE" };
+    if (!content || !role) {
+      return new Response(JSON.stringify({ error: "Missing content or role" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    const seq = await nextSequenceOrder();
+    await prisma.conversationMessage.create({
+      data: {
+        assessmentId: assessment.id,
+        role,
+        content: String(content).slice(0, 5000),
+        act: "PHASE_0",
+        sequenceOrder: seq,
+      },
+    });
+    return new Response(JSON.stringify({ ok: true }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // Complete Phase 0 → transition to ACT_1
+  if (body.trigger === "phase_0_complete") {
+    await prisma.assessmentState.update({
+      where: { assessmentId: assessment.id },
+      data: { currentAct: "ACT_1", phase0Complete: true },
+    });
+    return new Response(JSON.stringify({ ok: true }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   // Extract the candidate's last message
   const lastUserMessage = clientMessages?.filter(
     (m: { role: string }) => m.role === "user",
@@ -243,7 +280,9 @@ export async function POST(
   }
 
   // Classify candidate response during Act 1 and update state
-  if (state.currentAct === "ACT_1" && lastUserMessage && state.currentBeat > 0) {
+  // Skip classification for sentinel messages (e.g. [BEGIN_ASSESSMENT], [NO_RESPONSE])
+  // but DO classify real candidate responses even at beat 0.
+  if (state.currentAct === "ACT_1" && lastUserMessage && !isSentinel) {
     const scenario = SCENARIOS[state.currentScenario];
     if (scenario) {
       const beat = scenario.beats[state.currentBeat];
@@ -481,6 +520,7 @@ export async function GET(
   const safeState = assessment.assessmentState ? {
     currentAct: assessment.assessmentState.currentAct,
     isComplete: assessment.assessmentState.isComplete,
+    phase0Complete: assessment.assessmentState.phase0Complete,
   } : null;
 
   return new Response(
@@ -515,14 +555,15 @@ export async function GET(
 // ──────────────────────────────────────────────
 
 function buildConversationHistory(
-  dbMessages: { role: string; content: string }[],
+  dbMessages: { role: string; content: string; act?: string | null }[],
   clientMessages?: { role: string; content: string }[],
 ): { role: "user" | "assistant"; content: string }[] {
-  // Use DB messages as source of truth, supplemented by client messages
+  // Use DB messages as source of truth, excluding Phase 0 and system messages
   const history: { role: "user" | "assistant"; content: string }[] = [];
 
   for (const msg of dbMessages) {
     if (msg.role === "SYSTEM") continue;
+    if (msg.act === "PHASE_0") continue; // Phase 0 is scripted, not relevant to AI context
     history.push({
       role: msg.role === "AGENT" ? "assistant" : "user",
       content: msg.content,
