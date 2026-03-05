@@ -28,6 +28,15 @@ export async function POST(request: NextRequest) {
 
   // Parse and validate
   const { rows } = parseCsv(csvContent);
+
+  const MAX_BATCH_SIZE = 200;
+  if (rows.length > MAX_BATCH_SIZE) {
+    return NextResponse.json(
+      { error: `Batch size cannot exceed ${MAX_BATCH_SIZE} rows` },
+      { status: 400 }
+    );
+  }
+
   const validated = validateCsvRows(rows, validSlugs);
 
   const errors = validated.filter((r) => r.errors.length > 0);
@@ -90,7 +99,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Send emails (non-blocking — don't fail the batch if some emails fail)
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://aci-rho.vercel.app";
+  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://aci-rho.vercel.app").trim();
   const emailResults = await Promise.allSettled(
     results.map(async ({ candidate, invitation, role }) => {
       const assessmentLink = `${baseUrl}/assess/${invitation.linkToken}`;
@@ -117,6 +126,11 @@ export async function POST(request: NextRequest) {
     total: results.length,
     emailsSent: sent,
     emailsFailed: failed,
-    candidates: results.map((r) => r.candidate),
+    candidates: results.map((r) => ({
+      id: r.candidate.id,
+      firstName: r.candidate.firstName,
+      lastName: r.candidate.lastName,
+      email: r.candidate.email,
+    })),
   });
 }

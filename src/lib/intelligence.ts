@@ -13,6 +13,13 @@ export interface IntelligencePanel {
   developmentNote?: string;
 }
 
+/** V2 ceiling characterization data for enriched intelligence reports */
+interface CeilingInfo {
+  construct: string;
+  ceilingType: "HARD_CEILING" | "SOFT_CEILING_TRAINABLE" | "SOFT_CEILING_CONTEXT_DEPENDENT" | "STRESS_INDUCED" | "INSUFFICIENT_DATA";
+  narrative?: string;
+}
+
 function getLevel(percentile: number): "high" | "mid" | "low" {
   if (percentile >= 75) return "high";
   if (percentile >= 40) return "mid";
@@ -137,7 +144,7 @@ export function generateLeadership(results: SubtestScore[]): IntelligencePanel {
   };
 }
 
-export function generatePractical(results: SubtestScore[]): IntelligencePanel {
+export function generatePractical(results: SubtestScore[], ceilings?: CeilingInfo[]): IntelligencePanel {
   const sd = getScore(results, "SYSTEMS_DIAGNOSTICS");
   const mr = getScore(results, "MECHANICAL_REASONING");
   const sv = getScore(results, "SPATIAL_VISUALIZATION");
@@ -188,6 +195,22 @@ export function generatePractical(results: SubtestScore[]): IntelligencePanel {
     narrative = `Average technical aptitude profile (SD: ${sd}th, MR: ${mr}th, SV: ${sv}th, QR: ${qr}th, PR: ${pr}th percentile). This profile is typical and adequate for standard manufacturing roles. No construct stands out as a strength or concern. The candidate should be able to handle routine technical demands but may need support for complex troubleshooting. Target training at the lowest-scoring construct for maximum improvement — small gains at the bottom have more operational impact than marginal gains at the top.`;
     keyPoints.push("Standard technical profile — no extreme strengths or gaps");
     keyPoints.push("Adequate for routine operations with appropriate training support");
+  }
+
+  // V2 ceiling enrichment: add ceiling-specific insights
+  if (ceilings && ceilings.length > 0) {
+    const technicalConstructs = ["QUANTITATIVE_REASONING", "SPATIAL_VISUALIZATION", "MECHANICAL_REASONING", "PATTERN_RECOGNITION", "FLUID_REASONING"];
+    const relevant = ceilings.filter(c => technicalConstructs.includes(c.construct));
+    for (const c of relevant) {
+      const name = c.construct.toLowerCase().replace(/_/g, " ");
+      if (c.ceilingType === "HARD_CEILING") {
+        keyPoints.push(`Hard ceiling in ${name} — this is an innate limitation, not a training gap`);
+      } else if (c.ceilingType === "SOFT_CEILING_TRAINABLE") {
+        keyPoints.push(`Trainable ceiling in ${name} — structured practice can raise this capability`);
+      } else if (c.ceilingType === "STRESS_INDUCED") {
+        keyPoints.push(`Stress-induced ceiling in ${name} — performance degrades under pressure, recoverable with support`);
+      }
+    }
   }
 
   return {
@@ -340,11 +363,11 @@ export function generateOnboarding(results: SubtestScore[], roleName?: string): 
   };
 }
 
-export function generateAllPanels(results: SubtestScore[], roleName?: string): IntelligencePanel[] {
+export function generateAllPanels(results: SubtestScore[], roleName?: string, ceilings?: CeilingInfo[]): IntelligencePanel[] {
   return [
     generateWorkStyle(results),
     generateLeadership(results),
-    generatePractical(results),
+    generatePractical(results, ceilings),
     generateTeamDynamics(results),
     generateSelfAwareness(results),
     generateOnboarding(results, roleName),

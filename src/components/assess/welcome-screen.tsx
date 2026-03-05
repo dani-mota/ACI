@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Clock, Brain, Shield, Loader2 } from "lucide-react";
+import { Clock, Brain, Shield, Mic, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface WelcomeScreenProps {
@@ -13,16 +12,24 @@ interface WelcomeScreenProps {
 }
 
 export function WelcomeScreen({ token, candidateName, roleName, companyName }: WelcomeScreenProps) {
-  const router = useRouter();
   const [consent, setConsent] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleStart = async () => {
     setLoading(true);
-    const res = await fetch(`/assess/${token}/start`, { method: "POST" });
-    if (res.ok) {
-      router.push(`/assess/${token}/block/0`);
-    } else {
+    setError(null);
+    try {
+      const res = await fetch(`/assess/${token}/start`, { method: "POST" });
+      if (res.ok) {
+        window.location.href = `/assess/${token}/v2`;
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || "Failed to start assessment. Please try again.");
+        setLoading(false);
+      }
+    } catch {
+      setError("Connection error. Please check your internet and try again.");
       setLoading(false);
     }
   };
@@ -57,9 +64,9 @@ export function WelcomeScreen({ token, candidateName, roleName, companyName }: W
                   <Clock className="w-4 h-4 text-aci-blue" />
                 </div>
                 <div>
-                  <p className="text-xs font-medium text-foreground">Approximately 45 minutes</p>
+                  <p className="text-xs font-medium text-foreground">Approximately 60–90 minutes</p>
                   <p className="text-[10px] text-muted-foreground mt-0.5">
-                    6 assessment blocks with timed and untimed sections
+                    An interactive conversation with an AI assessment agent
                   </p>
                 </div>
               </div>
@@ -68,15 +75,26 @@ export function WelcomeScreen({ token, candidateName, roleName, companyName }: W
                   <Brain className="w-4 h-4 text-aci-gold" />
                 </div>
                 <div>
-                  <p className="text-xs font-medium text-foreground">Cognitive, Technical & Behavioral</p>
+                  <p className="text-xs font-medium text-foreground">Scenario-Based & Adaptive</p>
                   <p className="text-[10px] text-muted-foreground mt-0.5">
-                    Multiple-choice, open-ended, and AI-adaptive follow-up questions
+                    Discussions, problem-solving exercises, and adaptive follow-up probes
                   </p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
                 <div className="w-8 h-8 bg-aci-green/10 flex items-center justify-center flex-shrink-0">
-                  <Shield className="w-4 h-4 text-aci-green" />
+                  <Mic className="w-4 h-4 text-aci-green" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-foreground">Voice Mode Available</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    Speak your responses if preferred — type or talk, your choice
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 bg-accent flex items-center justify-center flex-shrink-0">
+                  <Shield className="w-4 h-4 text-muted-foreground" />
                 </div>
                 <div>
                   <p className="text-xs font-medium text-foreground">No Preparation Needed</p>
@@ -95,8 +113,8 @@ export function WelcomeScreen({ token, candidateName, roleName, companyName }: W
             </h3>
             <ul className="text-[11px] text-muted-foreground space-y-1.5">
               <li>- Find a quiet environment with stable internet</li>
-              <li>- You cannot go back to previous questions</li>
-              <li>- Some sections are timed — a timer will be visible</li>
+              <li>- The conversation adapts to your responses in real time</li>
+              <li>- Some sections include timed challenges — a timer will be visible</li>
               <li>- If disconnected, you can return using your invitation link</li>
             </ul>
           </div>
@@ -131,6 +149,10 @@ export function WelcomeScreen({ token, candidateName, roleName, companyName }: W
               "Begin Assessment"
             )}
           </Button>
+
+          {error && (
+            <p className="text-xs text-red-500 text-center">{error}</p>
+          )}
         </div>
       </div>
     </div>

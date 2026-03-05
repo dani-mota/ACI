@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { sendEmail } from "@/lib/email/resend";
 import { buildResultsEmail } from "@/lib/email/templates/results";
+import { getSession } from "@/lib/auth";
 
 /**
  * POST /api/email/results
@@ -9,6 +10,11 @@ import { buildResultsEmail } from "@/lib/email/templates/results";
  * Body: { candidateId: string }
  */
 export async function POST(request: NextRequest) {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const body = await request.json();
   const { candidateId } = body;
 

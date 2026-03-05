@@ -4,20 +4,14 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { UserPlus, Sparkles } from "lucide-react";
 import { InviteButton } from "@/components/invitation/invite-button";
-
-interface Role {
-  id: string;
-  name: string;
-  slug: string;
-  isGeneric?: boolean;
-  compositeWeights: { constructId: string; weight: number }[];
-}
+import type { InviteRole } from "@/components/invitation/role-selection-card";
 
 interface EmptyStateProps {
-  roles: Role[];
+  roles: InviteRole[];
+  canCreateRole: boolean;
 }
 
-export function EmptyState({ roles }: EmptyStateProps) {
+export function EmptyState({ roles, canCreateRole }: EmptyStateProps) {
   return (
     <div className="bg-card border border-dashed border-border p-12 text-center">
       <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-aci-gold/10 flex items-center justify-center">
@@ -34,7 +28,7 @@ export function EmptyState({ roles }: EmptyStateProps) {
         or explore the tutorial demo to see ACI in action with sample data.
       </p>
       <div className="flex items-center justify-center gap-3">
-        <InviteButton roles={roles} />
+        <InviteButton roles={roles} canCreateRole={canCreateRole} />
         <Link href="/tutorial/dashboard">
           <Button variant="outline" className="gap-2">
             <Sparkles className="w-4 h-4" />

@@ -5,6 +5,13 @@ interface SubtestScore {
   percentile: number;
 }
 
+/** V2 ceiling characterization data, passed when available from Layer C scoring */
+export interface CeilingCharacterization {
+  construct: string;
+  ceilingType: "HARD_CEILING" | "SOFT_CEILING_TRAINABLE" | "SOFT_CEILING_CONTEXT_DEPENDENT" | "STRESS_INDUCED" | "INSUFFICIENT_DATA";
+  narrative?: string;
+}
+
 type SupervisionLevel = "MINIMAL" | "STANDARD" | "ELEVATED" | "HIGH";
 type CeilingLevel = "SENIOR_SPECIALIST" | "TEAM_LEAD" | "STANDARD_PERFORMER" | "LIMITED";
 type RiskLevel = "LOW" | "MODERATE" | "ELEVATED" | "HIGH";
@@ -48,7 +55,11 @@ export function predictRampTime(results: SubtestScore[], roleContext?: RoleConte
   };
 }
 
-export function predictSupervision(results: SubtestScore[], roleContext?: RoleContext | null): {
+export function predictSupervision(
+  results: SubtestScore[],
+  roleContext?: RoleContext | null,
+  ceilings?: CeilingCharacterization[],
+): {
   level: SupervisionLevel;
   label: string;
   description: string;
@@ -78,21 +89,36 @@ export function predictSupervision(results: SubtestScore[], roleContext?: RoleCo
     label = "High Supervision";
   }
 
+  // V2: STRESS_INDUCED ceilings increase supervision recommendation
+  const stressCeilings = ceilings?.filter(c => c.ceilingType === "STRESS_INDUCED") ?? [];
+  if (stressCeilings.length > 0 && level === "MINIMAL") {
+    level = "STANDARD";
+    label = "Standard Supervision (stress-adjusted)";
+  }
+
   const confidence = Math.min(95, 55 + Math.abs(composite - 50) * 0.6);
+
+  let description = `Based on metacognitive calibration (${mc}th), procedural reliability (${prl}th), ethical judgment (${ej}th), and executive control (${ec}th).`;
+  if (roleContext && !roleContext.isGeneric) {
+    description += ` Given ${roleContext.roleName} responsibilities, this reflects expected autonomy in day-to-day operations.`;
+  }
+  if (stressCeilings.length > 0) {
+    description += ` Stress-induced performance ceilings detected in ${stressCeilings.map(c => c.construct.toLowerCase().replace(/_/g, " ")).join(", ")} — additional supervisor check-ins recommended during high-pressure periods.`;
+  }
 
   return {
     level,
     label,
-    description: `Based on metacognitive calibration (${mc}th), procedural reliability (${prl}th), ethical judgment (${ej}th), and executive control (${ec}th).${
-      roleContext && !roleContext.isGeneric
-        ? ` Given ${roleContext.roleName} responsibilities, this reflects expected autonomy in day-to-day operations.`
-        : ""
-    }`,
+    description,
     confidence: Math.round(confidence),
   };
 }
 
-export function predictCeiling(results: SubtestScore[], roleContext?: RoleContext | null): {
+export function predictCeiling(
+  results: SubtestScore[],
+  roleContext?: RoleContext | null,
+  ceilings?: CeilingCharacterization[],
+): {
   level: CeilingLevel;
   label: string;
   description: string;
@@ -122,16 +148,38 @@ export function predictCeiling(results: SubtestScore[], roleContext?: RoleContex
     label = "Role-Specific Contributor";
   }
 
-  const confidence = Math.min(90, 50 + Math.abs(composite - 50) * 0.5);
+  // V2 ceiling characterization: HARD_CEILING on key constructs caps performance ceiling
+  const keyConstruts = ["FLUID_REASONING", "LEARNING_VELOCITY", "SYSTEMS_DIAGNOSTICS"];
+  const hardCeilings = ceilings?.filter(c => c.ceilingType === "HARD_CEILING" && keyConstruts.includes(c.construct)) ?? [];
+  if (hardCeilings.length > 0 && (level === "SENIOR_SPECIALIST" || level === "TEAM_LEAD")) {
+    level = "STANDARD_PERFORMER";
+    label = "Solid Performer (ceiling-adjusted)";
+  }
+
+  // SOFT_CEILING_TRAINABLE: add training-specific context to description
+  const trainableCeilings = ceilings?.filter(c => c.ceilingType === "SOFT_CEILING_TRAINABLE") ?? [];
+
+  let confidence = Math.min(90, 50 + Math.abs(composite - 50) * 0.5);
+  // Higher confidence when V2 ceiling data is available
+  if (ceilings && ceilings.length > 0) {
+    confidence = Math.min(95, confidence + 5);
+  }
+
+  let description = `Growth trajectory based on fluid reasoning (${fr}th), learning velocity (${lv}th), systems diagnostics (${sd}th), and self-awareness (${mc}th).`;
+  if (roleContext && !roleContext.isGeneric) {
+    description += ` Relative to the ${roleContext.roleName} growth trajectory within ${roleContext.domain.toLowerCase()}.`;
+  }
+  if (hardCeilings.length > 0) {
+    description += ` Hard ceiling detected in ${hardCeilings.map(c => c.construct.toLowerCase().replace(/_/g, " ")).join(", ")} — growth trajectory adjusted downward.`;
+  }
+  if (trainableCeilings.length > 0) {
+    description += ` Trainable ceilings in ${trainableCeilings.map(c => c.construct.toLowerCase().replace(/_/g, " ")).join(", ")} — targeted development can unlock additional potential.`;
+  }
 
   return {
     level,
     label,
-    description: `Growth trajectory based on fluid reasoning (${fr}th), learning velocity (${lv}th), systems diagnostics (${sd}th), and self-awareness (${mc}th).${
-      roleContext && !roleContext.isGeneric
-        ? ` Relative to the ${roleContext.roleName} growth trajectory within ${roleContext.domain.toLowerCase()}.`
-        : ""
-    }`,
+    description,
     confidence: Math.round(confidence),
   };
 }
@@ -190,11 +238,15 @@ export function predictAttrition(results: SubtestScore[], roleContext?: RoleCont
   };
 }
 
-export function generateAllPredictions(results: SubtestScore[], roleContext?: RoleContext | null) {
+export function generateAllPredictions(
+  results: SubtestScore[],
+  roleContext?: RoleContext | null,
+  ceilings?: CeilingCharacterization[],
+) {
   return {
     rampTime: predictRampTime(results, roleContext),
-    supervision: predictSupervision(results, roleContext),
-    ceiling: predictCeiling(results, roleContext),
+    supervision: predictSupervision(results, roleContext, ceilings),
+    ceiling: predictCeiling(results, roleContext, ceilings),
     attrition: predictAttrition(results, roleContext),
   };
 }

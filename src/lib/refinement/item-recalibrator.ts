@@ -7,7 +7,7 @@
  */
 
 import prisma from "@/lib/prisma";
-import { ITEM_BANK } from "@/lib/assessment/items";
+import { ITEM_BANK } from "@/lib/assessment/item-bank";
 
 /**
  * Recompute calibration statistics for all items that have at least

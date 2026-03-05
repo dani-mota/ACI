@@ -17,6 +17,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
+  const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!EMAIL_REGEX.test(email)) {
+    return NextResponse.json({ error: "Invalid email address" }, { status: 400 });
+  }
+
+  if (firstName.length > 100 || lastName.length > 100) {
+    return NextResponse.json({ error: "Name exceeds maximum length" }, { status: 400 });
+  }
+
   const role = await prisma.role.findUnique({
     where: { id: roleId },
     include: { org: true },
@@ -26,36 +35,54 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Role not found" }, { status: 404 });
   }
 
+  // Check if candidate with this email already exists in the org
+  const existingCandidate = await prisma.candidate.findUnique({
+    where: { email_orgId: { email, orgId: session.user.orgId! } },
+    select: { id: true, firstName: true, lastName: true, status: true },
+  });
+
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 7);
 
-  const result = await prisma.$transaction(async (tx) => {
-    const candidate = await tx.candidate.create({
-      data: {
-        firstName,
-        lastName,
-        email,
-        phone: phone || null,
-        orgId: session.user.orgId!,
-        primaryRoleId: roleId,
-        status: "INVITED",
-      },
-    });
+  let result;
+  try {
+    result = await prisma.$transaction(async (tx) => {
+      // Reuse existing candidate or create new one
+      const candidate = existingCandidate
+        ? existingCandidate
+        : await tx.candidate.create({
+            data: {
+              firstName,
+              lastName,
+              email,
+              phone: phone || null,
+              orgId: session.user.orgId!,
+              primaryRoleId: roleId,
+              status: "INVITED",
+            },
+          });
 
-    const invitation = await tx.assessmentInvitation.create({
-      data: {
-        candidateId: candidate.id,
-        roleId,
-        invitedBy: session.user.id,
-        expiresAt,
-      },
-    });
+      const invitation = await tx.assessmentInvitation.create({
+        data: {
+          candidateId: candidate.id,
+          roleId,
+          invitedBy: session.user.id,
+          expiresAt,
+        },
+      });
 
-    return { candidate, invitation };
-  });
+      return { candidate, invitation, reused: !!existingCandidate };
+    });
+  } catch (err: unknown) {
+    console.error("Failed to create invitation:", err);
+    return NextResponse.json(
+      { error: "Failed to create invitation" },
+      { status: 500 },
+    );
+  }
 
   // Send invitation email
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://aci-rho.vercel.app";
+  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://aci-rho.vercel.app").trim();
   const assessmentLink = `${baseUrl}/assess/${result.invitation.linkToken}`;
 
   const { subject, html } = buildInvitationEmail({
@@ -78,8 +105,10 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({
-    candidate: result.candidate,
-    invitation: result.invitation,
+    candidateId: result.candidate.id,
+    invitationId: result.invitation.id,
+    status: "sent",
+    existingCandidate: result.reused,
   });
 }
 
@@ -93,9 +122,22 @@ export async function GET() {
     where: {
       candidate: { orgId: session.user.orgId! },
     },
-    include: {
-      candidate: true,
-      role: true,
+    select: {
+      id: true,
+      status: true,
+      expiresAt: true,
+      createdAt: true,
+      emailSentAt: true,
+      reminderCount: true,
+      candidate: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+        },
+      },
+      role: { select: { id: true, name: true, slug: true } },
       inviter: { select: { name: true } },
     },
     orderBy: { createdAt: "desc" },

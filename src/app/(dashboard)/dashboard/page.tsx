@@ -46,7 +46,7 @@ export default async function DashboardPage() {
             </Link>
           )}
         </div>
-        <EmptyState roles={serializedRoles} />
+        <EmptyState roles={serializedRoles} canCreateRole={!!canCreateRole} />
       </div>
     );
   }
@@ -71,7 +71,7 @@ export default async function DashboardPage() {
               </Button>
             </Link>
           )}
-          <InviteButton roles={serializedRoles} />
+          <InviteButton roles={serializedRoles} canCreateRole={!!canCreateRole} />
         </div>
       </div>
 

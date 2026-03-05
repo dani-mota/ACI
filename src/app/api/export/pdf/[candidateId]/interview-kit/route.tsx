@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { PDFInterviewKit, type PDFInterviewKitProps } from "@/components/profile/pdf-interview-kit";
+import { getSession } from "@/lib/auth";
 
 interface RouteParams {
   params: Promise<{ candidateId: string }>;
@@ -9,6 +10,11 @@ interface RouteParams {
 
 export async function GET(_request: NextRequest, { params }: RouteParams) {
   try {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { candidateId } = await params;
 
     const candidate = await prisma.candidate.findUnique({

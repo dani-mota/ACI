@@ -16,6 +16,17 @@
   --color-aci-surface: #F8FAFC;
   --color-aci-gold: #0EA5E9;
 
+  /* ── Stage Experience Colors (Assessment Orb UI) ── */
+  --color-stage-bg: #080e1a;
+  --color-stage-surface: rgba(15, 23, 41, 0.6);
+  --color-stage-border: rgba(255, 255, 255, 0.08);
+  --color-stage-text: #b8c4d6;
+  --color-stage-text-muted: rgba(184, 196, 214, 0.5);
+  --color-aci-navy-deep: #080e1a;
+  --color-aci-blue-bright: #3b82f6;
+  --color-aci-blue-pale: #93bbff;
+  --color-aci-green-bright: #22d68a;
+
   /* Heatmap 5-tier */
   --color-heat-exceptional: #065F46;
   --color-heat-strong: #059669;
@@ -187,6 +198,14 @@
 }
 .animate-pulse-amber-text {
   animation: pulseAmberText 600ms ease-in-out 2;
+}
+
+/* ── Stage: reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  .stage-animate {
+    animation: none !important;
+    transition: none !important;
+  }
 }
 
 /* ── Recharts focus/outline suppression ── */

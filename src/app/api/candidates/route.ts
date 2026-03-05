@@ -11,6 +11,17 @@ export async function GET(request: NextRequest) {
   }
 
   const { searchParams } = new URL(request.url);
+
+  // Lightweight existence check for invitation duplicate warning
+  const emailCheck = searchParams.get("email");
+  if (emailCheck) {
+    const existing = await prisma.candidate.findUnique({
+      where: { email_orgId: { email: emailCheck, orgId: session.user.orgId! } },
+      select: { id: true, status: true },
+    });
+    return NextResponse.json({ exists: !!existing, status: existing?.status ?? null });
+  }
+
   const search = searchParams.get("search") || "";
   const status = searchParams.get("status") || "";
   const role = searchParams.get("role") || "";

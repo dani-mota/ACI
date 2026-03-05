@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { PDFOnePager, type PDFOnePagerProps } from "@/components/profile/pdf-one-pager";
 import { generateAllPanels } from "@/lib/intelligence";
+import { getSession } from "@/lib/auth";
 
 interface RouteParams {
   params: Promise<{ candidateId: string }>;
@@ -10,6 +11,11 @@ interface RouteParams {
 
 export async function GET(_request: NextRequest, { params }: RouteParams) {
   try {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { candidateId } = await params;
 
     const candidate = await prisma.candidate.findUnique({

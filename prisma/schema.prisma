@@ -192,6 +192,10 @@ model Assessment {
   aiInteractions  AIInteraction[]
   itemResponses   ItemResponse[]
   survey          PostAssessmentSurvey?
+  // V2 conversational assessment relations
+  messages          ConversationMessage[]
+  assessmentState   AssessmentState?
+  aiEvaluationRuns  AIEvaluationRun[]
   createdAt       DateTime            @default(now())
 }
 
@@ -200,9 +204,9 @@ model Assessment {
 // ──────────────────────────────────────────────
 
 model SubtestResult {
-  id                String     @id @default(cuid())
+  id                String          @id @default(cuid())
   assessmentId      String
-  assessment        Assessment @relation(fields: [assessmentId], references: [id])
+  assessment        Assessment      @relation(fields: [assessmentId], references: [id])
   construct         Construct
   layer             Layer
   rawScore          Float
@@ -211,11 +215,21 @@ model SubtestResult {
   standardError     Float?
   responseTimeAvgMs Int?
   itemCount         Int
-  aiFollowUpCount   Int        @default(0)
+  aiFollowUpCount   Int             @default(0)
   calibrationScore  Float?
   calibrationBias   String?
   narrativeInsight  String?
-  createdAt         DateTime   @default(now())
+  // V2 layered scoring fields
+  layerARawScore          Float?
+  layerBRawScore          Float?
+  layerAWeight            Float?
+  layerBWeight            Float?
+  consistencyLevel        String?           // "HIGH" or "LOW"
+  consistencyDownweighted Boolean           @default(false)
+  ceilingType             CeilingTypeEnum?
+  ceilingNarrative        String?
+  scoringVersion          Int               @default(1)
+  createdAt         DateTime        @default(now())
 
   @@unique([assessmentId, construct])
 }
@@ -400,16 +414,19 @@ enum InvitationStatus {
 // ──────────────────────────────────────────────
 
 model ItemResponse {
-  id             String     @id @default(cuid())
+  id             String         @id @default(cuid())
   assessmentId   String
-  assessment     Assessment @relation(fields: [assessmentId], references: [id])
+  assessment     Assessment     @relation(fields: [assessmentId], references: [id])
   itemId         String
   itemType       ItemType
   response       String
   responseTimeMs Int?
   confidence     Float?
   rawScore       Float?
-  createdAt      DateTime   @default(now())
+  // V2 fields
+  act            AssessmentAct?
+  messageId      String?          // Links to ConversationMessage if from V2 chat
+  createdAt      DateTime       @default(now())
 
   @@unique([assessmentId, itemId])
 }
@@ -420,6 +437,39 @@ enum ItemType {
   OPEN_RESPONSE
   AI_PROBE
   TIMED_SEQUENCE
+}
+
+// ──────────────────────────────────────────────
+// V2 CONVERSATIONAL ASSESSMENT ENUMS
+// ──────────────────────────────────────────────
+
+enum AssessmentAct {
+  ACT_1
+  ACT_2
+  ACT_3
+}
+
+enum CeilingTypeEnum {
+  HARD_CEILING
+  SOFT_CEILING_TRAINABLE
+  SOFT_CEILING_CONTEXT_DEPENDENT
+  STRESS_INDUCED
+  INSUFFICIENT_DATA
+}
+
+enum ConvoMessageRole {
+  AGENT
+  CANDIDATE
+  SYSTEM
+}
+
+enum InteractionElementType {
+  TEXT_RESPONSE
+  MULTIPLE_CHOICE_INLINE
+  NUMERIC_INPUT
+  TIMED_CHALLENGE
+  CONFIDENCE_RATING
+  TRADEOFF_SELECTION
 }
 
 model PostAssessmentSurvey {
@@ -509,4 +559,62 @@ model ItemCalibration {
   @@unique([itemId, version])
   @@index([construct])
   @@index([flagged])
+}
+
+// ──────────────────────────────────────────────
+// V2 CONVERSATIONAL ASSESSMENT
+// ──────────────────────────────────────────────
+
+model ConversationMessage {
+  id              String                  @id @default(cuid())
+  assessmentId    String
+  assessment      Assessment              @relation(fields: [assessmentId], references: [id])
+  role            ConvoMessageRole
+  content         String
+  act             AssessmentAct
+  metadata        Json?                   // Beat number, scenario index, construct signals, etc.
+  elementType     InteractionElementType?
+  elementData     Json?                   // Options, correct answer, timer config, etc.
+  candidateInput  String?                 // Candidate's structured response to an interactive element
+  responseTimeMs  Int?
+  sequenceOrder   Int
+  createdAt       DateTime                @default(now())
+
+  @@index([assessmentId, act])
+  @@index([assessmentId, sequenceOrder])
+}
+
+model AssessmentState {
+  id                String        @id @default(cuid())
+  assessmentId      String        @unique
+  assessment        Assessment    @relation(fields: [assessmentId], references: [id])
+  currentAct        AssessmentAct @default(ACT_1)
+  currentScenario   Int           @default(0)
+  currentBeat       Int           @default(0)
+  currentConstruct  String?
+  currentPhase      Int?
+  branchPath        Json?
+  act2Progress      Json?
+  act3Progress      Json?
+  isComplete        Boolean       @default(false)
+  updatedAt         DateTime      @updatedAt
+  createdAt         DateTime      @default(now())
+}
+
+model AIEvaluationRun {
+  id              String     @id @default(cuid())
+  assessmentId    String
+  assessment      Assessment @relation(fields: [assessmentId], references: [id])
+  messageId       String
+  construct       Construct
+  runIndex        Int
+  indicatorScores Json
+  aggregateScore  Float
+  modelId         String
+  latencyMs       Int
+  rawOutput       String
+  createdAt       DateTime   @default(now())
+
+  @@index([assessmentId, construct])
+  @@index([messageId])
 }

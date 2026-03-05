@@ -1,60 +1,128 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { X, ChevronRight, ChevronLeft, Send, Loader2 } from "lucide-react";
+import {
+  ChevronRight,
+  ChevronLeft,
+  Send,
+  Loader2,
+  Compass,
+  AlertTriangle,
+  Target,
+  Clock,
+} from "lucide-react";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetFooter,
+} from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { RoleSelectionCard } from "./role-selection-card";
+import { AssessmentPathSelector } from "./assessment-path-selector";
+import type { InviteRole } from "./role-selection-card";
 
-interface Role {
-  id: string;
-  name: string;
-  slug: string;
-  isGeneric?: boolean;
-  compositeWeights: { constructId: string; weight: number }[];
-}
+type AssessmentPath = "generic" | "role-specific";
 
 interface InviteCandidateSheetProps {
   open: boolean;
   onClose: () => void;
-  roles: Role[];
+  roles: InviteRole[];
+  canCreateRole: boolean;
 }
 
-export function InviteCandidateSheet({ open, onClose, roles }: InviteCandidateSheetProps) {
+export function InviteCandidateSheet({
+  open,
+  onClose,
+  roles,
+  canCreateRole,
+}: InviteCandidateSheetProps) {
   const router = useRouter();
-  const [step, setStep] = useState(1);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
+  // Flow state
+  const [step, setStep] = useState<1 | 2>(1);
+  const [selectedPath, setSelectedPath] = useState<AssessmentPath | null>(null);
+  const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
+  const [roleSearchQuery, setRoleSearchQuery] = useState("");
+
+  // Form state
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [existingCandidateWarning, setExistingCandidateWarning] = useState(false);
 
-  const selectedRole = roles.find((r) => r.id === selectedRoleId);
+  // Derived values
+  const genericRole = roles.find((r) => r.isGeneric);
+  const nonGenericRoles = roles.filter((r) => !r.isGeneric);
+  const effectiveRoleId =
+    selectedPath === "generic" ? genericRole?.id ?? null : selectedRoleId;
+  const selectedRole = roles.find((r) => r.id === effectiveRoleId);
 
-  const resetForm = () => {
+  const canProceedStep1 =
+    selectedPath === "generic" ||
+    (selectedPath === "role-specific" && selectedRoleId !== null);
+  const canSubmit =
+    firstName.trim() !== "" &&
+    lastName.trim() !== "" &&
+    email.trim() !== "";
+
+  const resetForm = useCallback(() => {
     setStep(1);
+    setSelectedPath(null);
+    setSelectedRoleId(null);
+    setRoleSearchQuery("");
     setFirstName("");
     setLastName("");
     setEmail("");
     setPhone("");
-    setSelectedRoleId(null);
     setError(null);
     setLoading(false);
+    setExistingCandidateWarning(false);
+  }, []);
+
+  const handleOpenChange = useCallback(
+    (isOpen: boolean) => {
+      if (!isOpen) {
+        resetForm();
+        onClose();
+      }
+    },
+    [resetForm, onClose]
+  );
+
+  const handleSelectPath = (path: AssessmentPath) => {
+    setSelectedPath(path);
+    if (path === "generic") {
+      setSelectedRoleId(null);
+      setRoleSearchQuery("");
+    }
   };
 
-  const handleClose = () => {
-    resetForm();
-    onClose();
-  };
-
-  const canProceedStep1 = firstName.trim() && lastName.trim() && email.trim();
-  const canProceedStep2 = !!selectedRoleId;
+  const checkExistingCandidate = useCallback(async () => {
+    const trimmed = email.trim();
+    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      setExistingCandidateWarning(false);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/candidates?email=${encodeURIComponent(trimmed)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setExistingCandidateWarning(data.exists === true);
+      }
+    } catch {
+      // Silently fail — this is a non-blocking check
+    }
+  }, [email]);
 
   const handleSubmit = async () => {
+    if (!effectiveRoleId) return;
     setError(null);
     setLoading(true);
 
@@ -67,16 +135,21 @@ export function InviteCandidateSheet({ open, onClose, roles }: InviteCandidateSh
           lastName: lastName.trim(),
           email: email.trim(),
           phone: phone.trim() || undefined,
-          roleId: selectedRoleId,
+          roleId: effectiveRoleId,
         }),
       });
 
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to send invitation");
+        const text = await res.text();
+        let message = "Failed to send invitation";
+        try {
+          const data = JSON.parse(text);
+          message = data.error || message;
+        } catch { /* non-JSON response */ }
+        throw new Error(message);
       }
 
-      handleClose();
+      handleOpenChange(false);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
@@ -84,33 +157,29 @@ export function InviteCandidateSheet({ open, onClose, roles }: InviteCandidateSh
     }
   };
 
-  if (!open) return null;
-
   return (
-    <>
-      {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/50 z-50" onClick={handleClose} />
-
-      {/* Sheet */}
-      <div className="fixed right-0 top-0 bottom-0 w-full max-w-lg bg-card border-l border-border z-50 flex flex-col">
+    <Sheet open={open} onOpenChange={handleOpenChange}>
+      <SheetContent
+        side="right"
+        showCloseButton
+        className="w-full max-w-lg flex flex-col gap-0 p-0 sm:max-w-lg"
+      >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <div>
-            <h2 className="text-sm font-bold text-foreground uppercase tracking-wider" style={{ fontFamily: "var(--font-dm-sans)" }}>
-              Invite Candidate
-            </h2>
-            <p className="text-[10px] text-muted-foreground mt-0.5 uppercase tracking-wider">
-              Step {step} of 3
-            </p>
-          </div>
-          <button onClick={handleClose} className="text-muted-foreground hover:text-foreground">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+        <SheetHeader className="px-6 py-4 border-b border-border gap-0">
+          <SheetTitle
+            className="text-sm font-bold text-foreground uppercase tracking-wider"
+            style={{ fontFamily: "var(--font-dm-sans)" }}
+          >
+            Invite Candidate
+          </SheetTitle>
+          <SheetDescription className="text-[10px] text-muted-foreground mt-0.5 uppercase tracking-wider">
+            Step {step} of 2
+          </SheetDescription>
+        </SheetHeader>
 
         {/* Step indicators */}
-        <div className="flex gap-1 px-6 py-3 border-b border-border">
-          {[1, 2, 3].map((s) => (
+        <div className="flex gap-1 px-6 py-3 border-b border-border" aria-hidden="true">
+          {[1, 2].map((s) => (
             <div
               key={s}
               className={`h-1 flex-1 transition-colors ${
@@ -123,103 +192,205 @@ export function InviteCandidateSheet({ open, onClose, roles }: InviteCandidateSh
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-6 py-6">
           {step === 1 && (
-            <div className="space-y-4">
-              <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Candidate Information</p>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-medium text-muted-foreground mb-1 uppercase tracking-wider">First Name</label>
-                  <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="John" />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-medium text-muted-foreground mb-1 uppercase tracking-wider">Last Name</label>
-                  <Input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Doe" />
-                </div>
-              </div>
-              <div>
-                <label className="block text-[10px] font-medium text-muted-foreground mb-1 uppercase tracking-wider">Email</label>
-                <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="john.doe@example.com" />
-              </div>
-              <div>
-                <label className="block text-[10px] font-medium text-muted-foreground mb-1 uppercase tracking-wider">Phone (Optional)</label>
-                <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1-555-0100" />
-              </div>
-            </div>
+            <AssessmentPathSelector
+              selectedPath={selectedPath}
+              onSelectPath={handleSelectPath}
+              roles={nonGenericRoles}
+              selectedRoleId={selectedRoleId}
+              onSelectRole={setSelectedRoleId}
+              roleSearchQuery={roleSearchQuery}
+              onRoleSearchQueryChange={setRoleSearchQuery}
+              canCreateRole={canCreateRole}
+              hasGenericRole={!!genericRole}
+            />
           )}
 
           {step === 2 && (
-            <div className="space-y-4">
-              <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Select Role</p>
-              <div className="space-y-3">
-                {/* Show generic aptitude role first, then org roles */}
-                {[...roles].sort((a, b) => (a.isGeneric ? -1 : b.isGeneric ? 1 : 0)).map((role) => (
-                  <RoleSelectionCard
-                    key={role.id}
-                    role={role}
-                    selected={selectedRoleId === role.id}
-                    onSelect={() => setSelectedRoleId(role.id)}
-                  />
-                ))}
-              </div>
-
-              {/* Generic assessment disclaimer */}
-              {selectedRole?.isGeneric && (
-                <div className="bg-aci-blue/5 border border-aci-blue/20 p-3 text-[10px] text-muted-foreground leading-relaxed">
-                  This assessment measures general cognitive and behavioral aptitude without role-specific context.
-                  AI follow-up questions will remain domain-neutral. Results can be compared across all roles
-                  via the Role Fit Rankings on the candidate profile.
-                </div>
-              )}
-            </div>
-          )}
-
-          {step === 3 && (
             <div className="space-y-6">
-              <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Confirm & Send</p>
-
-              <div className="bg-accent/50 border border-border p-4 space-y-3">
+              {/* Candidate form */}
+              <div className="space-y-4">
+                <h3 className="text-xs text-muted-foreground uppercase tracking-wider font-medium">
+                  Candidate Information
+                </h3>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Name</span>
-                    <p className="text-xs font-medium text-foreground">{firstName} {lastName}</p>
+                    <label
+                      htmlFor="invite-first-name"
+                      className="block text-[10px] font-medium text-muted-foreground mb-1 uppercase tracking-wider"
+                    >
+                      First Name
+                    </label>
+                    <Input
+                      id="invite-first-name"
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      placeholder="John"
+                      aria-required="true"
+                    />
                   </div>
                   <div>
-                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Email</span>
-                    <p className="text-xs font-medium text-foreground">{email}</p>
+                    <label
+                      htmlFor="invite-last-name"
+                      className="block text-[10px] font-medium text-muted-foreground mb-1 uppercase tracking-wider"
+                    >
+                      Last Name
+                    </label>
+                    <Input
+                      id="invite-last-name"
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      placeholder="Doe"
+                      aria-required="true"
+                    />
                   </div>
                 </div>
-                {phone && (
-                  <div>
-                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Phone</span>
-                    <p className="text-xs font-medium text-foreground">{phone}</p>
-                  </div>
-                )}
                 <div>
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Role</span>
-                  <p className="text-xs font-medium text-foreground">{selectedRole?.name}</p>
+                  <label
+                    htmlFor="invite-email"
+                    className="block text-[10px] font-medium text-muted-foreground mb-1 uppercase tracking-wider"
+                  >
+                    Email
+                  </label>
+                  <Input
+                    id="invite-email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      setExistingCandidateWarning(false);
+                    }}
+                    onBlur={checkExistingCandidate}
+                    placeholder="john.doe@example.com"
+                    aria-required="true"
+                  />
+                  {existingCandidateWarning && (
+                    <div className="flex items-start gap-2 mt-1.5 p-2 bg-amber-50 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-800">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" aria-hidden="true" />
+                      <p className="text-[10px] text-amber-700 dark:text-amber-400 leading-relaxed">
+                        This candidate has previously been assessed or invited. A new assessment link will be sent.
+                      </p>
+                    </div>
+                  )}
                 </div>
                 <div>
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Link Expiry</span>
-                  <p className="text-xs font-medium text-foreground">7 days from now</p>
+                  <label
+                    htmlFor="invite-phone"
+                    className="block text-[10px] font-medium text-muted-foreground mb-1 uppercase tracking-wider"
+                  >
+                    Phone (Optional)
+                  </label>
+                  <Input
+                    id="invite-phone"
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="+1 (555) 000-0100"
+                  />
                 </div>
               </div>
 
+              {/* Live confirmation summary */}
+              <div className="bg-accent/50 border border-border p-4 space-y-3">
+                <h3 className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
+                  Invitation Summary
+                </h3>
+
+                {/* Assessment type */}
+                <div className="flex items-center gap-2">
+                  {selectedPath === "generic" ? (
+                    <div className="w-6 h-6 rounded bg-aci-blue/10 flex items-center justify-center">
+                      <Compass className="w-3.5 h-3.5 text-aci-blue" />
+                    </div>
+                  ) : (
+                    <div className="w-6 h-6 rounded bg-aci-green/10 flex items-center justify-center">
+                      <Target className="w-3.5 h-3.5 text-aci-green" />
+                    </div>
+                  )}
+                  <div>
+                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                      Assessment Type
+                    </span>
+                    <p className="text-xs font-medium text-foreground">
+                      {selectedPath === "generic"
+                        ? "General Aptitude Screen"
+                        : "Role-Specific Assessment"}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Role */}
+                <div>
+                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                    Role
+                  </span>
+                  <p className="text-xs font-medium text-foreground">
+                    {selectedRole?.name ?? "—"}
+                  </p>
+                </div>
+
+                {/* Candidate */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                      Candidate
+                    </span>
+                    <p className="text-xs font-medium text-foreground">
+                      {firstName.trim() || lastName.trim()
+                        ? `${firstName.trim()} ${lastName.trim()}`.trim()
+                        : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                      Email
+                    </span>
+                    <p className="text-xs font-medium text-foreground">
+                      {email.trim() || "—"}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Experience description */}
+                <div className="border-t border-border pt-3">
+                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                    Candidate Experience
+                  </span>
+                  <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed">
+                    {selectedPath === "generic"
+                      ? "Recommended for early-career talent, internal assessments, and horizontal promotions. Equal weighting across all 12 constructs with cross-role fit rankings."
+                      : "Domain-adaptive assessment with weighted constructs tailored to role requirements. AI follow-up probes target role-relevant areas."}
+                  </p>
+                </div>
+
+                {/* Link expiry */}
+                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                  <Clock className="w-3 h-3" aria-hidden="true" />
+                  Assessment link expires in 7 days
+                </div>
+              </div>
+
+              {/* Error */}
               {error && (
-                <div className="p-3 bg-aci-red/10 border border-aci-red/20 text-xs text-aci-red">
+                <div
+                  role="alert"
+                  className="p-3 bg-aci-red/10 border border-aci-red/20 text-xs text-aci-red"
+                >
                   {error}
                 </div>
               )}
-
-              <p className="text-[10px] text-muted-foreground">
-                An invitation email will be sent with a unique assessment link. The candidate will have 7 days to complete the assessment.
-              </p>
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-border">
+        <SheetFooter className="flex-row items-center justify-between px-6 py-4 border-t border-border mt-0">
           {step > 1 ? (
-            <Button variant="outline" size="sm" onClick={() => setStep(step - 1)} disabled={loading}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setStep(1)}
+              disabled={loading}
+            >
               <ChevronLeft className="w-3.5 h-3.5 mr-1" />
               Back
             </Button>
@@ -227,18 +398,23 @@ export function InviteCandidateSheet({ open, onClose, roles }: InviteCandidateSh
             <div />
           )}
 
-          {step < 3 ? (
+          {step === 1 ? (
             <Button
               variant="gold"
               size="sm"
-              onClick={() => setStep(step + 1)}
-              disabled={step === 1 ? !canProceedStep1 : !canProceedStep2}
+              onClick={() => setStep(2)}
+              disabled={!canProceedStep1}
             >
               Next
               <ChevronRight className="w-3.5 h-3.5 ml-1" />
             </Button>
           ) : (
-            <Button variant="gold" size="sm" onClick={handleSubmit} disabled={loading}>
+            <Button
+              variant="gold"
+              size="sm"
+              onClick={handleSubmit}
+              disabled={loading || !canSubmit}
+            >
               {loading ? (
                 <>
                   <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
@@ -252,8 +428,8 @@ export function InviteCandidateSheet({ open, onClose, roles }: InviteCandidateSh
               )}
             </Button>
           )}
-        </div>
-      </div>
-    </>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   );
 }

@@ -4,20 +4,14 @@ import { useState } from "react";
 import { UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { InviteCandidateSheet } from "./invite-candidate-sheet";
-
-interface Role {
-  id: string;
-  name: string;
-  slug: string;
-  isGeneric?: boolean;
-  compositeWeights: { constructId: string; weight: number }[];
-}
+import type { InviteRole } from "./role-selection-card";
 
 interface InviteButtonProps {
-  roles: Role[];
+  roles: InviteRole[];
+  canCreateRole: boolean;
 }
 
-export function InviteButton({ roles }: InviteButtonProps) {
+export function InviteButton({ roles, canCreateRole }: InviteButtonProps) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -30,6 +24,7 @@ export function InviteButton({ roles }: InviteButtonProps) {
         open={open}
         onClose={() => setOpen(false)}
         roles={roles}
+        canCreateRole={canCreateRole}
       />
     </>
   );

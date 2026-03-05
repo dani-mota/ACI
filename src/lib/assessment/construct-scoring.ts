@@ -16,7 +16,7 @@ interface ConstructScore {
   avgResponseTimeMs: number;
 }
 
-const CONSTRUCT_LAYERS: Record<string, string> = {
+export const CONSTRUCT_LAYERS: Record<string, string> = {
   FLUID_REASONING: "COGNITIVE_CORE",
   EXECUTIVE_CONTROL: "COGNITIVE_CORE",
   COGNITIVE_FLEXIBILITY: "COGNITIVE_CORE",
