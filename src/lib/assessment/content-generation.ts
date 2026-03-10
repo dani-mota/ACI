@@ -149,7 +149,7 @@ async function generateBeatContent(
     : buildBranchedBeatGenerationPrompt(scenario, beat, beatIdx, previousContext, roleContextStr);
 
   const response = await callGenerationAI(apiKey, prompt);
-  const parsed = JSON.parse(response);
+  const parsed = parseJSONResponse(response);
 
   if (isBeat0) {
     return parseBeat0Response(parsed, beat);
@@ -310,38 +310,91 @@ function normalizeBranch(raw: { spokenText: string; referenceUpdate: { newInform
   };
 }
 
-async function callGenerationAI(apiKey: string, prompt: string): Promise<string> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), AI_CONFIG.generationTimeoutMs);
-
+/**
+ * Parse JSON from AI response, handling common issues like
+ * unescaped newlines inside strings and trailing commas.
+ */
+function parseJSONResponse(text: string): any {
   try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: AI_CONFIG.generationModel,
-        max_tokens: 4000,
-        messages: [{ role: "user", content: prompt }],
-      }),
-      signal: controller.signal,
+    return JSON.parse(text);
+  } catch {
+    // Try fixing common JSON issues from LLM output:
+    // 1. Remove trailing commas before } or ]
+    let cleaned = text.replace(/,\s*([}\]])/g, "$1");
+    // 2. Escape unescaped newlines inside string values
+    cleaned = cleaned.replace(/"([^"]*?)"/g, (match) => {
+      return match.replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t");
     });
-
-    if (!response.ok) {
-      throw new Error(`API returned ${response.status}: ${await response.text()}`);
+    try {
+      return JSON.parse(cleaned);
+    } catch (e) {
+      throw new Error(`Failed to parse JSON after cleanup: ${(e as Error).message}\nFirst 500 chars: ${text.slice(0, 500)}`);
     }
-
-    const data = await response.json();
-    const text = data.content?.[0]?.text || "";
-
-    // Extract JSON from potential markdown code blocks
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error("No JSON found in response");
-    return jsonMatch[0];
-  } finally {
-    clearTimeout(timeoutId);
   }
+}
+
+const MAX_RETRIES = 2;
+
+async function callGenerationAI(apiKey: string, prompt: string): Promise<string> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), AI_CONFIG.generationTimeoutMs);
+
+    try {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: AI_CONFIG.generationModel,
+          max_tokens: 4000,
+          system: "You are a JSON generator. Return ONLY valid JSON with no markdown, no commentary, no code fences. Ensure all strings are properly escaped.",
+          messages: [{ role: "user", content: prompt }],
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const body = await response.text();
+        // Handle rate limiting with backoff
+        if (response.status === 429 && attempt < MAX_RETRIES) {
+          const retryAfter = response.headers.get("retry-after");
+          const waitMs = retryAfter ? parseInt(retryAfter) * 1000 : (attempt + 1) * 30_000;
+          await new Promise((r) => setTimeout(r, waitMs));
+          continue;
+        }
+        throw new Error(`API returned ${response.status}: ${body}`);
+      }
+
+      const data = await response.json();
+      const text = data.content?.[0]?.text || "";
+
+      // Extract JSON from potential markdown code blocks
+      const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+      const jsonStr = jsonMatch ? jsonMatch[1].trim() : text.trim();
+
+      // Find the outermost JSON object
+      const objMatch = jsonStr.match(/\{[\s\S]*\}/);
+      if (!objMatch) throw new Error("No JSON object found in response");
+
+      // Validate it parses before returning
+      parseJSONResponse(objMatch[0]);
+      return objMatch[0];
+    } catch (e) {
+      lastError = e as Error;
+      if (attempt < MAX_RETRIES) {
+        await new Promise((r) => setTimeout(r, 2000));
+        continue;
+      }
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  throw lastError!;
 }

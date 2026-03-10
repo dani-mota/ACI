@@ -7,7 +7,7 @@ export const AI_CONFIG = {
   /** Model for real-time assessment interactions (low latency) */
   realtimeModel: "claude-haiku-4-5-20251001" as const,
   /** Model for content generation (higher quality) */
-  generationModel: "claude-sonnet-4-6-20250514" as const,
+  generationModel: "claude-sonnet-4-20250514" as const,
   /** Timeout for real-time AI calls (ms) */
   realtimeTimeoutMs: 15_000,
   /** Timeout for generation AI calls (ms) */
