@@ -361,7 +361,7 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
           return;
         }
 
-        // Generic JSON response
+        // Pre-generated content response (or generic JSON with message)
         if (data.message) {
           const msg: ChatMessage = {
             id: `assistant-${Date.now()}`,
@@ -369,6 +369,36 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
             content: data.message,
           };
           set({ messages: [...currentMessages, msg], isLoading: false });
+
+          // If the response includes structured reference data, apply it directly
+          // instead of relying on parseScenarioResponse to extract from text delimiters
+          if (data.referenceCard) {
+            set({
+              referenceCard: {
+                role: data.referenceCard.role || "",
+                context: data.referenceCard.context || "",
+                sections: data.referenceCard.sections || [],
+                question: data.referenceCard.question || "",
+                newInformation: [],
+              },
+              referenceRevealCount: 0, // Progressive reveal for Beat 0
+            });
+          }
+          if (data.referenceUpdate && get().referenceCard) {
+            const card = get().referenceCard!;
+            set({
+              referenceCard: {
+                ...card,
+                newInformation: [...card.newInformation, ...(data.referenceUpdate.newInformation || [])],
+                question: data.referenceUpdate.question || card.question,
+              },
+              referenceRevealCount: -1,
+            });
+          }
+
+          // Display message for TTS (sentences will be extracted by displayMessage)
+          // If we already set reference data above, displayMessage's parseScenarioResponse
+          // won't find delimiters and will just split spoken text into sentences — which is correct
           get().displayMessage(data.message, get().currentAct, false);
           return;
         }
