@@ -62,7 +62,7 @@ export function CandidateTable({ candidates }: CandidateTableProps) {
   }, [candidates]);
 
   const getComposite = (c: CandidateRow) => {
-    const score = c.assessment?.compositeScores.find(
+    const score = c.assessment?.compositeScores?.find(
       (cs) => cs.roleSlug === c.primaryRole.slug
     );
     return score?.percentile ?? 0;
@@ -155,7 +155,7 @@ export function CandidateTable({ candidates }: CandidateTableProps) {
       c.primaryRole.name,
       String(getComposite(c)),
       STATUS_LABELS[c.status] ?? c.status,
-      String(c.assessment?.redFlags.length ?? 0),
+      String(c.assessment?.redFlags?.length ?? 0),
       new Date(c.createdAt).toLocaleDateString(),
     ]);
     downloadCSV("aci-candidates.csv", headers, csvRows);
@@ -197,7 +197,7 @@ export function CandidateTable({ candidates }: CandidateTableProps) {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="h-8 border border-border px-2 text-xs text-foreground bg-card"
+            className="h-8 border border-border pl-2.5 pr-7 text-xs text-foreground bg-card rounded-lg"
           >
             <option value="">All Statuses</option>
             <option value="RECOMMENDED">Strong Fit</option>
@@ -207,7 +207,7 @@ export function CandidateTable({ candidates }: CandidateTableProps) {
           <select
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value)}
-            className="h-8 border border-border px-2 text-xs text-foreground bg-card"
+            className="h-8 border border-border pl-2.5 pr-7 text-xs text-foreground bg-card rounded-lg"
           >
             <option value="">All Roles</option>
             {roles.map((r) => (
@@ -216,7 +216,7 @@ export function CandidateTable({ candidates }: CandidateTableProps) {
           </select>
           <button
             onClick={() => handleExportCSV(filtered)}
-            className="flex items-center gap-1 h-8 px-2.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground border border-border hover:bg-accent transition-colors"
+            className="flex items-center gap-1 h-8 px-2.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground border border-border rounded-lg hover:bg-accent transition-colors"
           >
             <Download className="w-3 h-3" />
             CSV
@@ -270,8 +270,8 @@ export function CandidateTable({ candidates }: CandidateTableProps) {
           <tbody>
             {filtered.map((candidate) => {
               const composite = getComposite(candidate);
-              const flagCount = candidate.assessment?.redFlags.length ?? 0;
-              const hasCritical = candidate.assessment?.redFlags.some(f => f.severity === "CRITICAL");
+              const flagCount = candidate.assessment?.redFlags?.length ?? 0;
+              const hasCritical = candidate.assessment?.redFlags?.some(f => f.severity === "CRITICAL");
               const isSelected = selectedIds.has(candidate.id);
 
               return (

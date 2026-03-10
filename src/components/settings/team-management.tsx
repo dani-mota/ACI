@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { UserPlus, MoreHorizontal, RefreshCw, UserX, UserCheck, Shield } from "lucide-react";
+import { UserPlus, MoreHorizontal, RefreshCw, UserX, UserCheck, Shield, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -63,6 +63,7 @@ const ROLE_DESCRIPTIONS: Record<string, string> = {
   RECRUITING_MANAGER: "Candidate assessments, predictive insights, red flags, and comparisons",
   HIRING_MANAGER: "Candidate profiles, construct breakdowns, AI transcripts, and summaries",
   RECRUITER_COORDINATOR: "Candidate status, fit scores, interview focus areas, and pipeline",
+  EXTERNAL_COLLABORATOR: "View assigned candidates only — composite scores, interview guides, and contact info",
 };
 
 const ROLE_COLORS: Record<string, string> = {
@@ -70,6 +71,7 @@ const ROLE_COLORS: Record<string, string> = {
   RECRUITING_MANAGER: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20",
   HIRING_MANAGER: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
   RECRUITER_COORDINATOR: "bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20",
+  EXTERNAL_COLLABORATOR: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20",
 };
 
 export function TeamManagement({
@@ -157,7 +159,7 @@ export function TeamManagement({
               Manage your organization&apos;s team members and pending invitations.
             </p>
           </div>
-          <Button onClick={() => setInviteOpen(true)} className="gap-2" disabled={assignableRoles.length === 0}>
+          <Button variant="blue" onClick={() => setInviteOpen(true)} className="gap-2" disabled={assignableRoles.length === 0}>
             <UserPlus className="w-4 h-4" />
             Invite Team Member
           </Button>
@@ -206,12 +208,42 @@ export function TeamManagement({
                         </TableCell>
                         <TableCell className="text-muted-foreground">{member.email}</TableCell>
                         <TableCell>
-                          <span
-                            className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium border rounded-full ${ROLE_COLORS[member.role] || "bg-muted text-muted-foreground border-border"}`}
-                          >
-                            {member.role === "TA_LEADER" && <Shield className="w-3 h-3" />}
-                            {getRoleLabel(member.role)}
-                          </span>
+                          {!isSelf && assignableRoles.length > 0 && member.role !== "ADMIN" ? (
+                            <Select
+                              value={member.role}
+                              onValueChange={(newRole) =>
+                                setConfirmAction({
+                                  type: "role",
+                                  userId: member.id,
+                                  userName: member.name,
+                                  newRole: newRole as AppUserRole,
+                                })
+                              }
+                            >
+                              <SelectTrigger className="h-7 w-auto min-w-[160px] text-xs border-slate-200 rounded-lg">
+                                <div className="flex items-center gap-1.5">
+                                  {member.role === "TA_LEADER" && <Shield className="w-3 h-3" />}
+                                  {member.role === "EXTERNAL_COLLABORATOR" && <ExternalLink className="w-3 h-3" />}
+                                  <SelectValue />
+                                </div>
+                              </SelectTrigger>
+                              <SelectContent>
+                                {assignableRoles.map((r) => (
+                                  <SelectItem key={r} value={r}>
+                                    {getRoleLabel(r)}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <span
+                              className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium border rounded-full ${ROLE_COLORS[member.role] || "bg-muted text-muted-foreground border-border"}`}
+                            >
+                              {member.role === "TA_LEADER" && <Shield className="w-3 h-3" />}
+                              {member.role === "EXTERNAL_COLLABORATOR" && <ExternalLink className="w-3 h-3" />}
+                              {getRoleLabel(member.role)}
+                            </span>
+                          )}
                         </TableCell>
                         <TableCell>
                           {member.isActive ? (
@@ -476,7 +508,7 @@ function InviteModal({
         <DialogHeader>
           <DialogTitle>Invite Team Member</DialogTitle>
           <DialogDescription>
-            Send an invitation to join your organization on ACI.
+            Send an invitation to join your organization on ACI. Non-domain emails will automatically be assigned the External Collaborator role with limited access.
           </DialogDescription>
         </DialogHeader>
 

@@ -1,5 +1,5 @@
 // RBAC roles aligned with Prisma UserRole enum and PRD Section 7.1
-export type AppUserRole = "RECRUITER_COORDINATOR" | "RECRUITING_MANAGER" | "HIRING_MANAGER" | "TA_LEADER" | "ADMIN";
+export type AppUserRole = "EXTERNAL_COLLABORATOR" | "RECRUITER_COORDINATOR" | "RECRUITING_MANAGER" | "HIRING_MANAGER" | "TA_LEADER" | "ADMIN";
 
 export interface FieldAccess {
   // Universal (all roles)
@@ -28,6 +28,26 @@ export interface FieldAccess {
 }
 
 const ACCESS_MAP: Record<AppUserRole, FieldAccess> = {
+  EXTERNAL_COLLABORATOR: {
+    candidateStatus: true,
+    contactInfo: true,
+    compositeScores: true,
+    interviewGuide: true,
+    developmentPlan: false,
+    predictions: false,
+    redFlags: false,
+    intelligenceReport: false,
+    subtestDetail: false,
+    questionLevel: false,
+    aiTranscripts: false,
+    peerComparison: false,
+    rawIrt: false,
+    validityMetrics: false,
+    auditTrail: false,
+    notes: false,
+    pdfExport: false,
+    bulkActions: false,
+  },
   RECRUITER_COORDINATOR: {
     candidateStatus: true,
     contactInfo: true,
@@ -141,6 +161,7 @@ export function getAccessibleFields(userRole: AppUserRole): FieldAccess {
 // ─── Team management permissions ──────────────────────────
 
 export const ROLE_LEVEL: Record<AppUserRole, number> = {
+  EXTERNAL_COLLABORATOR: 0,
   RECRUITER_COORDINATOR: 1,
   RECRUITING_MANAGER: 2,
   HIRING_MANAGER: 2,
@@ -165,6 +186,7 @@ export function canManageTeam(role: AppUserRole): boolean {
 
 export function canAssignRole(assignerRole: AppUserRole, targetRole: AppUserRole): boolean {
   if (targetRole === "ADMIN") return false;
+  if (targetRole === "EXTERNAL_COLLABORATOR") return false; // Auto-assigned by domain check, not manually
   if (!ASSIGNABLE_ROLES.includes(targetRole)) return false;
   return ROLE_LEVEL[assignerRole] >= ROLE_LEVEL[targetRole];
 }
@@ -173,8 +195,59 @@ export function getAssignableRoles(assignerRole: AppUserRole): AppUserRole[] {
   return ASSIGNABLE_ROLES.filter((r) => canAssignRole(assignerRole, r));
 }
 
+export function isExternalCollaborator(role: AppUserRole): boolean {
+  return role === "EXTERNAL_COLLABORATOR";
+}
+
+// ─── Server-side candidate data filtering ──────────────────
+
+/**
+ * Strips restricted fields from a candidate object (including nested assessment)
+ * based on the user's role. Operates on the serialized (plain object) form.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function filterCandidateForRole(candidate: any, role: AppUserRole): any {
+  if (!candidate) return candidate;
+  const access = ACCESS_MAP[role];
+  // TA_LEADER and ADMIN see everything — skip filtering
+  if (access.rawIrt && access.auditTrail) return candidate;
+
+  const filtered = { ...candidate };
+
+  // Strip notes if not allowed
+  if (!access.notes) {
+    delete filtered.notes;
+  }
+
+  // Strip assessment sub-fields based on access
+  if (filtered.assessment) {
+    const a = { ...filtered.assessment };
+
+    if (!access.redFlags) {
+      delete a.redFlags;
+    }
+    if (!access.predictions) {
+      delete a.predictions;
+    }
+    if (!access.subtestDetail) {
+      delete a.subtestResults;
+    }
+    if (!access.aiTranscripts) {
+      delete a.aiInteractions;
+    }
+    if (!access.compositeScores) {
+      delete a.compositeScores;
+    }
+
+    filtered.assessment = a;
+  }
+
+  return filtered;
+}
+
 export function getRoleLabel(role: AppUserRole): string {
   const labels: Record<AppUserRole, string> = {
+    EXTERNAL_COLLABORATOR: "External Collaborator",
     RECRUITER_COORDINATOR: "Recruiter Coordinator",
     RECRUITING_MANAGER: "Recruiting Manager",
     HIRING_MANAGER: "Hiring Manager",

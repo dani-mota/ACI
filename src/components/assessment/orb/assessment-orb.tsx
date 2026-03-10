@@ -6,26 +6,31 @@ import { OrbRenderer, type OrbStateMode } from "./orb-renderer";
 interface AssessmentOrbProps {
   mode: OrbStateMode;
   amplitude: number;
-  compact: boolean;
+  /** Target orb diameter in px. Animated with CSS transitions. */
+  targetSize: number;
+  /** @deprecated Use targetSize instead. Still supported for backwards compat. */
+  compact?: boolean;
 }
 
-// Canvas needs extra padding for glow
+// Canvas padding for glow/aura — keep tight to avoid overlapping subtitles
 const CANVAS_PADDING = 1.6;
 
-function getOrbSizes() {
+function getDefaultSizes() {
   const mobile = typeof window !== "undefined" && window.innerWidth < 768;
-  return { full: mobile ? 160 : 200, compact: mobile ? 56 : 72 };
+  return { full: mobile ? 140 : 160, compact: mobile ? 56 : 72 };
 }
 
-export function AssessmentOrb({ mode, amplitude, compact }: AssessmentOrbProps) {
+export function AssessmentOrb({ mode, amplitude, targetSize, compact }: AssessmentOrbProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<OrbRenderer | null>(null);
-  const [sizes, setSizes] = useState({ full: 200, compact: 72 });
+  const [defaults] = useState(getDefaultSizes);
 
-  // Compute sizes client-side
-  useEffect(() => {
-    setSizes(getOrbSizes());
-  }, []);
+  // Resolve effective size: prefer targetSize, fall back to compact boolean
+  const effectiveSize = targetSize > 0
+    ? targetSize
+    : compact ? defaults.compact : defaults.full;
+
+  const isCompact = effectiveSize <= defaults.compact;
 
   // Initialize renderer
   useEffect(() => {
@@ -34,16 +39,14 @@ export function AssessmentOrb({ mode, amplitude, compact }: AssessmentOrbProps) 
 
     const renderer = new OrbRenderer(canvas);
     rendererRef.current = renderer;
-
-    const orbSize = compact ? sizes.compact : sizes.full;
-    renderer.resize(Math.round(orbSize * CANVAS_PADDING));
+    renderer.resize(Math.round(effectiveSize * CANVAS_PADDING));
     renderer.start();
 
     return () => {
       renderer.stop();
       rendererRef.current = null;
     };
-  }, [sizes]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync mode
   useEffect(() => {
@@ -55,14 +58,12 @@ export function AssessmentOrb({ mode, amplitude, compact }: AssessmentOrbProps) 
     rendererRef.current?.setAmplitude(amplitude);
   }, [amplitude]);
 
-  // Sync size
+  // Sync size — animate canvas resize when targetSize changes
   useEffect(() => {
-    const orbSize = compact ? sizes.compact : sizes.full;
-    rendererRef.current?.resize(Math.round(orbSize * CANVAS_PADDING));
-  }, [compact, sizes]);
+    rendererRef.current?.resize(Math.round(effectiveSize * CANVAS_PADDING));
+  }, [effectiveSize]);
 
-  const wrapperSize = compact ? sizes.compact : sizes.full;
-  const canvasSize = Math.round(wrapperSize * CANVAS_PADDING);
+  const canvasSize = Math.round(effectiveSize * CANVAS_PADDING);
 
   // Status dot color based on mode
   const statusColor =
@@ -73,10 +74,10 @@ export function AssessmentOrb({ mode, amplitude, compact }: AssessmentOrbProps) 
 
   return (
     <div
-      className="relative flex items-center justify-center"
+      className="relative flex items-center justify-center flex-shrink-0 pointer-events-none"
       style={{
-        width: wrapperSize,
-        height: wrapperSize,
+        width: canvasSize,
+        height: canvasSize,
         transition: "width 2s cubic-bezier(0.25, 0.1, 0.25, 1), height 2s cubic-bezier(0.25, 0.1, 0.25, 1)",
       }}
       role="img"
@@ -90,7 +91,7 @@ export function AssessmentOrb({ mode, amplitude, compact }: AssessmentOrbProps) 
               : "AI evaluator is ready"
       }
     >
-      {/* Canvas (neural particle system) */}
+      {/* Canvas (neural particle system) — radial mask prevents square edge */}
       <canvas
         ref={canvasRef}
         style={{
@@ -100,16 +101,18 @@ export function AssessmentOrb({ mode, amplitude, compact }: AssessmentOrbProps) 
           left: "50%",
           top: "50%",
           transform: "translate(-50%, -50%)",
+          maskImage: "radial-gradient(circle closest-side at center, black 60%, transparent 90%)",
+          WebkitMaskImage: "radial-gradient(circle closest-side at center, black 60%, transparent 90%)",
         }}
       />
 
       {/* Glass highlight — subtle top-left crescent */}
-      {!compact && (
+      {!isCompact && (
         <div
           className="absolute rounded-full pointer-events-none"
           style={{
-            width: wrapperSize * 0.7,
-            height: wrapperSize * 0.7,
+            width: effectiveSize * 0.7,
+            height: effectiveSize * 0.7,
             top: "8%",
             left: "8%",
             background: "radial-gradient(ellipse at 30% 30%, rgba(255, 255, 255, 0.04) 0%, transparent 60%)",
@@ -117,25 +120,27 @@ export function AssessmentOrb({ mode, amplitude, compact }: AssessmentOrbProps) 
         />
       )}
 
-      {/* Fresnel ring — outer edge glow */}
+      {/* Fresnel ring — outer edge glow, reactive to mode */}
       <div
         className="absolute rounded-full pointer-events-none"
         style={{
-          width: wrapperSize - 2,
-          height: wrapperSize - 2,
-          border: "1px solid rgba(37, 99, 235, 0.08)",
-          boxShadow: "0 0 20px rgba(37, 99, 235, 0.06), inset 0 0 20px rgba(37, 99, 235, 0.03)",
-          transition: "all 2s cubic-bezier(0.25, 0.1, 0.25, 1)",
+          width: effectiveSize - 2,
+          height: effectiveSize - 2,
+          border: `1px solid rgba(37, 99, 235, ${mode === "speaking" ? 0.15 : 0.08})`,
+          boxShadow: mode === "speaking"
+            ? "0 0 30px rgba(37, 99, 235, 0.12), 0 0 60px rgba(37, 99, 235, 0.06), inset 0 0 25px rgba(37, 99, 235, 0.05)"
+            : "0 0 20px rgba(37, 99, 235, 0.06), inset 0 0 20px rgba(37, 99, 235, 0.03)",
+          transition: "all 0.8s cubic-bezier(0.25, 0.1, 0.25, 1)",
         }}
       />
 
       {/* Orbital ring 1 — slow rotate */}
-      {!compact && (
+      {!isCompact && (
         <div
           className="absolute rounded-full pointer-events-none"
           style={{
-            width: wrapperSize + 20,
-            height: wrapperSize + 20,
+            width: effectiveSize + 20,
+            height: effectiveSize + 20,
             border: "1px solid rgba(37, 99, 235, 0.04)",
             animation: "orbitalSpin1 30s linear infinite",
           }}
@@ -143,12 +148,12 @@ export function AssessmentOrb({ mode, amplitude, compact }: AssessmentOrbProps) 
       )}
 
       {/* Orbital ring 2 — counter-rotate, tilted */}
-      {!compact && (
+      {!isCompact && (
         <div
           className="absolute rounded-full pointer-events-none"
           style={{
-            width: wrapperSize + 36,
-            height: wrapperSize + 36,
+            width: effectiveSize + 36,
+            height: effectiveSize + 36,
             border: "1px solid rgba(37, 99, 235, 0.025)",
             animation: "orbitalSpin2 45s linear infinite",
             transform: "rotateX(60deg)",
@@ -160,11 +165,11 @@ export function AssessmentOrb({ mode, amplitude, compact }: AssessmentOrbProps) 
       <div
         className="absolute pointer-events-none"
         style={{
-          bottom: compact ? -6 : -10,
+          bottom: isCompact ? -6 : -10,
           left: "50%",
           transform: "translateX(-50%)",
-          width: compact ? 4 : 6,
-          height: compact ? 4 : 6,
+          width: isCompact ? 4 : 6,
+          height: isCompact ? 4 : 6,
           borderRadius: "50%",
           backgroundColor: statusColor,
           boxShadow: `0 0 8px ${statusColor}`,

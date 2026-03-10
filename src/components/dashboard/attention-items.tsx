@@ -142,9 +142,9 @@ function AttentionCard({
           <p className="text-xs text-muted-foreground truncate">{candidate.primaryRole.name}</p>
         </div>
       </div>
-      <div className="flex items-center justify-between mt-2">
+      <div className="flex items-center justify-between gap-3 mt-2 flex-wrap">
         <StatusBadge status={candidate.status} size="sm" />
-        <span className="text-[10px] text-muted-foreground">{detail}</span>
+        <span className="text-[10px] text-muted-foreground whitespace-nowrap">{detail}</span>
       </div>
     </Link>
   );

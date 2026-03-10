@@ -98,18 +98,18 @@ export function WelcomeScreen({ token, candidateName, roleName, companyName }: W
   const allChecked = checklist.quiet && checklist.mic && checklist.time;
 
   return (
-    <div className="flex items-center justify-center px-4 py-12" style={{ minHeight: "calc(100dvh - 48px)" }}>
-      <div className="w-full max-w-lg bg-card border border-border rounded-lg shadow-sm">
+    <div className="flex items-center justify-center px-4 h-[100dvh] overflow-hidden">
+      <div className="w-full max-w-2xl bg-card border border-border rounded-lg shadow-sm">
         {/* Header */}
-        <div className="p-8 pb-0 text-center">
+        <div className="px-8 pt-6 pb-0 text-center">
           <p
-            className="text-[10px] uppercase tracking-[2.5px] mb-4 text-muted-foreground"
+            className="text-[10px] uppercase tracking-[2.5px] mb-2 text-muted-foreground"
             style={{ fontFamily: "var(--font-mono)" }}
           >
             Assessment Invitation
           </p>
           <h1
-            className="text-xl font-semibold mb-2 text-foreground"
+            className="text-xl font-semibold mb-1 text-foreground"
             style={{ fontFamily: "var(--font-dm-sans)" }}
           >
             Welcome, {candidateName}
@@ -123,12 +123,12 @@ export function WelcomeScreen({ token, candidateName, roleName, companyName }: W
           </p>
         </div>
 
-        <div className="p-8 space-y-6">
+        <div className="px-8 py-5 space-y-4">
           {/* What to expect */}
           <div>
             <SectionLabel>What to Expect</SectionLabel>
             <p
-              className="text-[13px] leading-relaxed text-muted-foreground"
+              className="text-[12px] leading-relaxed text-muted-foreground"
               style={{ fontFamily: "var(--font-dm-sans)" }}
             >
               You&apos;ll have a conversation with <strong className="text-foreground">Aria</strong>, an AI
@@ -140,7 +140,7 @@ export function WelcomeScreen({ token, candidateName, roleName, companyName }: W
           {/* Readiness checklist */}
           <div>
             <SectionLabel>Readiness Checklist</SectionLabel>
-            <div className="space-y-3">
+            <div className="space-y-2">
               <CheckItem
                 label="Quiet environment"
                 checked={checklist.quiet}
@@ -205,10 +205,10 @@ export function WelcomeScreen({ token, candidateName, roleName, companyName }: W
           </div>
 
           {/* Privacy disclosure */}
-          <div className="p-4 rounded-lg bg-muted/50 border border-border">
+          <div className="p-3 rounded-lg bg-muted/50 border border-border">
             <SectionLabel>Privacy</SectionLabel>
             <p
-              className="text-[11px] leading-relaxed text-muted-foreground"
+              className="text-[11px] leading-snug text-muted-foreground"
               style={{ fontFamily: "var(--font-dm-sans)" }}
             >
               Your responses — spoken and typed — will be recorded, transcribed, and evaluated.
@@ -272,7 +272,7 @@ export function WelcomeScreen({ token, candidateName, roleName, companyName }: W
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <h2
-      className="text-[9px] font-medium uppercase tracking-[2px] mb-3 text-muted-foreground"
+      className="text-[9px] font-medium uppercase tracking-[2px] mb-2 text-muted-foreground"
       style={{ fontFamily: "var(--font-mono)" }}
     >
       {children}

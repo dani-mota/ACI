@@ -15,6 +15,7 @@ model Organization {
   id              String           @id @default(cuid())
   name            String
   slug            String           @unique
+  domain          String?
   isDemo          Boolean          @default(false)
   createdAt       DateTime         @default(now())
   users           User[]
@@ -22,7 +23,6 @@ model Organization {
   roles           Role[]
   cutlines        Cutline[]
   teamInvitations TeamInvitation[]
-  accessRequests  AccessRequest[]
 }
 
 model User {
@@ -36,13 +36,14 @@ model User {
   isActive         Boolean               @default(true)
   notes            Note[]
   invitations      AssessmentInvitation[]
-  reviewedRequests AccessRequest[]        @relation("ReviewedRequests")
-  recordedOutcomes OutcomeRecord[]
-  teamInvitesSent  TeamInvitation[]       @relation("TeamInvitesSent")
-  createdAt        DateTime              @default(now())
+  recordedOutcomes     OutcomeRecord[]
+  teamInvitesSent      TeamInvitation[]       @relation("TeamInvitesSent")
+  candidateAssignments CandidateAssignment[]
+  createdAt            DateTime              @default(now())
 }
 
 enum UserRole {
+  EXTERNAL_COLLABORATOR
   RECRUITER_COORDINATOR
   RECRUITING_MANAGER
   HIRING_MANAGER
@@ -196,11 +197,25 @@ model Candidate {
   invitations   AssessmentInvitation[]
   notes         Note[]
   outcomes      OutcomeRecord[]
+  assignments   CandidateAssignment[]
   resultsEmailSentAt DateTime?
   createdAt     DateTime              @default(now())
   updatedAt     DateTime              @updatedAt
 
   @@unique([email, orgId])
+}
+
+model CandidateAssignment {
+  id          String    @id @default(cuid())
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignedAt  DateTime  @default(now())
+
+  @@unique([candidateId, userId])
+  @@index([userId])
+  @@index([candidateId])
 }
 
 enum CandidateStatus {
@@ -516,40 +531,6 @@ model PostAssessmentSurvey {
   faceValidity Int
   openFeedback String?
   createdAt    DateTime   @default(now())
-}
-
-// ──────────────────────────────────────────────
-// ACCESS REQUESTS
-// ──────────────────────────────────────────────
-
-enum AccessRequestStatus {
-  PENDING
-  APPROVED
-  REJECTED
-}
-
-model AccessRequest {
-  id              String              @id @default(cuid())
-  email           String
-  firstName       String
-  lastName        String
-  companyName     String
-  requestedRole   UserRole
-  jobTitle        String?
-  reason          String?
-  orgId           String?
-  org             Organization?       @relation(fields: [orgId], references: [id])
-  supabaseId      String?             @unique
-  status          AccessRequestStatus @default(PENDING)
-  reviewedBy      String?
-  reviewer        User?               @relation("ReviewedRequests", fields: [reviewedBy], references: [id])
-  reviewedAt      DateTime?
-  rejectionReason String?
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-
-  @@index([email, orgId])
-  @@index([orgId, status])
 }
 
 // ──────────────────────────────────────────────

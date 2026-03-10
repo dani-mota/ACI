@@ -41,7 +41,8 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/compare") ||
     request.nextUrl.pathname.startsWith("/export") ||
     request.nextUrl.pathname.startsWith("/invitations") ||
-    request.nextUrl.pathname.startsWith("/settings");
+    request.nextUrl.pathname.startsWith("/settings") ||
+    request.nextUrl.pathname.startsWith("/admin");
 
   if (!user && isProtectedRoute) {
     const url = request.nextUrl.clone();
@@ -50,8 +51,8 @@ export async function updateSession(request: NextRequest) {
   }
 
   // Note: we do NOT redirect authenticated users from /login to /dashboard here,
-  // because unapproved users (Supabase auth exists but no Prisma User) would
-  // create a redirect loop. This redirect is handled at the page level instead.
+  // because users who need onboarding (Supabase auth exists but no Prisma User)
+  // would create a redirect loop. This redirect is handled at the page level.
 
   return supabaseResponse;
 }

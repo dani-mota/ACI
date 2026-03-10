@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import prisma from "@/lib/prisma";
-import { canManageTeam, canAssignRole, getRoleLabel } from "@/lib/rbac";
+import { canManageTeam, canAssignRole } from "@/lib/rbac";
 import type { AppUserRole } from "@/lib/rbac";
 import { sendEmail } from "@/lib/email/resend";
 import { buildTeamInviteEmail } from "@/lib/email/templates/team-invite";
@@ -33,6 +33,15 @@ export async function POST(request: NextRequest) {
     if (!canAssignRole(session.user.role, role as AppUserRole)) {
       return NextResponse.json({ error: "You cannot assign this role" }, { status: 403 });
     }
+
+    // Domain check: auto-detect internal vs external
+    const org = await prisma.organization.findUnique({
+      where: { id: session.user.orgId },
+      select: { domain: true },
+    });
+    const emailDomain = normalizedEmail.split("@")[1];
+    const isExternal = org?.domain ? emailDomain !== org.domain : false;
+    const effectiveRole = isExternal ? "EXTERNAL_COLLABORATOR" : (role as AppUserRole);
 
     // Check if user already exists in this org
     const existingUser = await prisma.user.findFirst({
@@ -74,7 +83,7 @@ export async function POST(request: NextRequest) {
         orgId: session.user.orgId,
         email: normalizedEmail,
         name: name?.trim() || null,
-        role: role as AppUserRole,
+        role: effectiveRole,
         invitedBy: session.user.id,
         expiresAt,
       },
@@ -89,7 +98,7 @@ export async function POST(request: NextRequest) {
         inviterEmail: session.user.email,
         inviterRole: session.user.role,
         orgName: invitation.org.name,
-        role: role as AppUserRole,
+        role: effectiveRole,
         acceptUrl,
         expiresAt,
       });
@@ -106,7 +115,7 @@ export async function POST(request: NextRequest) {
         entityId: invitation.id,
         action: "TEAM_INVITE_SENT",
         actorId: session.user.id,
-        metadata: { email: normalizedEmail, role, orgId: session.user.orgId },
+        metadata: { email: normalizedEmail, role: effectiveRole, orgId: session.user.orgId, isExternal },
       },
     });
 
@@ -119,6 +128,7 @@ export async function POST(request: NextRequest) {
         role: invitation.role,
         expiresAt: invitation.expiresAt,
         createdAt: invitation.createdAt,
+        isExternal,
       },
     }, { status: 201 });
   } catch (error) {

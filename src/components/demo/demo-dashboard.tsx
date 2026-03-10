@@ -63,7 +63,7 @@ export function DemoDashboard({ answers }: DemoDashboardProps) {
       {/* Demo Banner */}
       <div className="bg-aci-gold text-aci-navy text-center py-2 px-4 text-xs font-medium uppercase tracking-wider">
         You&apos;re viewing the interactive demo.{" "}
-        <Link href="/signup" className="underline font-bold">Create an account</Link> to assess your real candidates.
+        <Link href="/login" className="underline font-bold">Sign in</Link> to assess your real candidates.
       </div>
 
       {/* Nav */}
@@ -71,7 +71,7 @@ export function DemoDashboard({ answers }: DemoDashboardProps) {
         <span className="text-lg font-bold text-foreground tracking-[0.15em]" style={{ fontFamily: "var(--font-dm-sans)" }}>
           ACI
         </span>
-        <Link href="/signup">
+        <Link href="/login">
           <Button variant="gold" size="sm">Get Started</Button>
         </Link>
       </header>
@@ -166,9 +166,9 @@ export function DemoDashboard({ answers }: DemoDashboardProps) {
             Get composite scores, intelligence reports, and actionable hiring recommendations.
           </p>
           <div className="flex justify-center gap-3">
-            <Link href="/signup">
+            <Link href="/login">
               <Button variant="gold" size="lg" className="px-8">
-                Create Account
+                Sign In
               </Button>
             </Link>
             <Button variant="outline" size="lg" className="px-8 text-white border-white/30 hover:bg-white/10">

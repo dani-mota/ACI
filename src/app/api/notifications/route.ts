@@ -13,7 +13,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { orgId, role } = session.user;
+  const { orgId } = session.user;
   const notifications: Notification[] = [];
   const now = Date.now();
   const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
@@ -127,27 +127,6 @@ export async function GET() {
       read: false,
       candidateId: c.id,
     });
-  }
-
-  // 5. ADMIN only: pending access requests
-  if (role === "ADMIN") {
-    const pendingRequests = await prisma.accessRequest.findMany({
-      where: { status: "PENDING", orgId: null },
-      orderBy: { createdAt: "desc" },
-      take: 3,
-    });
-
-    for (const req of pendingRequests) {
-      notifications.push({
-        id: `notif-access-${req.id}`,
-        type: "ACCESS_REQUEST_PENDING",
-        title: "Access Request",
-        message: `${req.firstName} ${req.lastName} (${req.companyName}) requested access.`,
-        timestamp: req.createdAt,
-        read: false,
-        linkTo: "/admin",
-      });
-    }
   }
 
   // Sort by timestamp desc, limit to 20

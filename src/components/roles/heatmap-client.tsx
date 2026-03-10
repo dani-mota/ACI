@@ -199,7 +199,7 @@ export function HeatmapClient({ candidates, roles, weights, cutlines }: HeatmapC
           {canCreateRole && (
             <Link
               href={`${basePath}/roles/new`}
-              className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-aci-gold border border-aci-gold/30 hover:bg-aci-gold/5 transition-colors"
+              className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-aci-blue border border-slate-200 rounded-lg hover:bg-accent transition-colors"
             >
               <Plus className="w-3 h-3" />
               New Role

@@ -29,9 +29,9 @@ function LiveNotificationBell() {
 }
 
 const BASE_NAV_ITEMS = [
-  { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { path: "/roles", label: "Roles", icon: Grid3X3 },
-  { path: "/compare", label: "Compare", icon: GitCompareArrows },
+  { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard, internal: false },
+  { path: "/roles", label: "Roles", icon: Grid3X3, internal: true },
+  { path: "/compare", label: "Compare", icon: GitCompareArrows, internal: true },
 ];
 
 /** Settings nav link — visible only to TA_LEADER+ */
@@ -58,19 +58,10 @@ function SettingsNavLink() {
   );
 }
 
-/** Admin nav link — extracted so useAuth() is only called in live mode */
+/** Admin nav link — visible only to ADMIN */
 function AdminNavLink() {
   const { user } = useAuth();
   const pathname = usePathname();
-  const [pendingCount, setPendingCount] = useState(0);
-
-  useEffect(() => {
-    if (user.role !== "ADMIN") return;
-    fetch("/api/access-requests?status=PENDING")
-      .then((r) => r.ok ? r.json() : [])
-      .then((data: unknown[]) => setPendingCount(data.length))
-      .catch(() => {});
-  }, [user.role]);
 
   if (user.role !== "ADMIN") return null;
 
@@ -87,17 +78,69 @@ function AdminNavLink() {
     >
       <Shield className="w-3.5 h-3.5" />
       <span className="hidden sm:inline">Admin</span>
-      {pendingCount > 0 && (
-        <span className="ml-0.5 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold bg-aci-red text-white rounded-full px-1">
-          {pendingCount}
-        </span>
-      )}
     </Link>
   );
 }
 
-export function TopNav({ mode = "live" }: { mode?: "live" | "tutorial" }) {
+/** Nav items filtered by role (live mode) */
+function LiveNavItems() {
+  const { user } = useAuth();
   const pathname = usePathname();
+  const isExternal = user.role === "EXTERNAL_COLLABORATOR";
+  const items = isExternal ? BASE_NAV_ITEMS.filter((i) => !i.internal) : BASE_NAV_ITEMS;
+
+  return (
+    <>
+      {items.map(({ path, label, icon: Icon }) => {
+        const isActive = pathname.startsWith(path);
+        return (
+          <Link
+            key={path}
+            href={path}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
+              isActive
+                ? "text-aci-gold border-b-2 border-aci-gold"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Icon className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">{label}</span>
+          </Link>
+        );
+      })}
+    </>
+  );
+}
+
+/** Nav items for tutorial mode (no auth context) */
+function TutorialNavItems() {
+  const pathname = usePathname();
+
+  return (
+    <>
+      {BASE_NAV_ITEMS.map(({ path, label, icon: Icon }) => {
+        const href = `/tutorial${path}`;
+        const isActive = pathname.startsWith(href);
+        return (
+          <Link
+            key={href}
+            href={href}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
+              isActive
+                ? "text-aci-gold border-b-2 border-aci-gold"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Icon className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">{label}</span>
+          </Link>
+        );
+      })}
+    </>
+  );
+}
+
+export function TopNav({ mode = "live" }: { mode?: "live" | "tutorial" }) {
   const { theme, toggleTheme } = useTheme();
   const isTutorial = mode === "tutorial";
   const prefix = isTutorial ? "/tutorial" : "";
@@ -116,24 +159,7 @@ export function TopNav({ mode = "live" }: { mode?: "live" | "tutorial" }) {
         </Link>
 
         <nav className="flex items-center gap-0.5">
-          {BASE_NAV_ITEMS.map(({ path, label, icon: Icon }) => {
-            const href = `${prefix}${path}`;
-            const isActive = pathname.startsWith(href);
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
-                  isActive
-                    ? "text-aci-gold border-b-2 border-aci-gold"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">{label}</span>
-              </Link>
-            );
-          })}
+          {!isTutorial ? <LiveNavItems /> : <TutorialNavItems />}
           {!isTutorial && <SettingsNavLink />}
           {!isTutorial && <AdminNavLink />}
           <div className="w-px h-5 bg-border mx-1.5" />

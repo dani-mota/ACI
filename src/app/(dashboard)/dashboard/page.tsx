@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { getDashboardData } from "@/lib/data";
-import { getSession } from "@/lib/auth";
+import { requireAuth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import Link from "next/link";
 import { PipelineCards } from "@/components/dashboard/pipeline-cards";
@@ -14,13 +14,16 @@ import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 
 export default async function DashboardPage() {
-  const session = await getSession();
-  const orgId = session?.user.orgId ?? undefined;
-  const { candidates, rolePipelines, stats } = await getDashboardData(orgId);
-  const canCreateRole = session?.user.role && ["TA_LEADER", "ADMIN"].includes(session.user.role);
+  const session = await requireAuth();
+  const orgId = session.user.orgId;
+  const { candidates, rolePipelines, stats } = await getDashboardData(orgId, {
+    userId: session.user.id,
+    role: session.user.role,
+  });
+  const canCreateRole = ["TA_LEADER", "ADMIN"].includes(session.user.role);
 
   const roles = await prisma.role.findMany({
-    where: orgId ? { orgId } : {},
+    where: { orgId },
     include: { compositeWeights: true },
   });
   const serializedRoles = JSON.parse(JSON.stringify(roles));
@@ -39,7 +42,7 @@ export default async function DashboardPage() {
           </div>
           {canCreateRole && (
             <Link href="/roles/new">
-              <Button variant="outline" size="sm" className="gap-1.5">
+              <Button variant="outline" size="sm" className="gap-1.5 rounded-lg">
                 <Plus className="w-3.5 h-3.5" />
                 New Role
               </Button>
@@ -65,7 +68,7 @@ export default async function DashboardPage() {
         <div className="flex items-center gap-2">
           {canCreateRole && (
             <Link href="/roles/new">
-              <Button variant="outline" size="sm" className="gap-1.5">
+              <Button variant="outline" size="sm" className="gap-1.5 rounded-lg">
                 <Plus className="w-3.5 h-3.5" />
                 New Role
               </Button>

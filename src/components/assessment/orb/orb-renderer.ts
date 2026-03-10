@@ -99,6 +99,8 @@ export class OrbRenderer {
   private mode: OrbStateMode = "idle";
   private amp = 0;
   private sAmp = 0; // smoothed amplitude
+  private auraAmp = 0; // slower-smoothed amplitude for aura
+  private coreBright = 0; // core brightness boost
 
   // State blend values
   private speakBlend = 0;
@@ -234,9 +236,11 @@ export class OrbRenderer {
     ctx.clearRect(0, 0, RES, RES);
 
     // Smooth state blends
-    this.speakBlend += ((this.mode === "speaking" ? 1 : 0) - this.speakBlend) * 0.025;
+    this.speakBlend += ((this.mode === "speaking" ? 1 : 0) - this.speakBlend) * 0.04;
     this.listenBlend += ((this.mode === "listening" ? 1 : 0) - this.listenBlend) * 0.025;
-    this.sAmp += (this.amp - this.sAmp) * 0.15;
+    this.sAmp += (this.amp - this.sAmp) * 0.2;
+    this.auraAmp += (this.amp - this.auraAmp) * 0.08;
+    this.coreBright += (this.amp - this.coreBright) * 0.15;
 
     const dt = 16.67;
     if (this.mode === "speaking") {
@@ -251,6 +255,52 @@ export class OrbRenderer {
 
     const sb = this.speakBlend;
     const lb = this.listenBlend;
+
+    // ── Outer aura (drawn before clip — behind the sphere) ──
+    {
+      // Idle breathing rhythm
+      const breathe = 0.3 + Math.sin(t * 0.8) * 0.12;
+      // Audio-reactive expansion — much stronger during speech
+      const auraStrength = breathe + this.auraAmp * 1.2 + sb * 0.3;
+      const auraRadius = R * (1.2 + auraStrength * 0.5);
+      const auraAlpha = 0.025 + auraStrength * 0.09;
+
+      // Primary blue aura
+      const ag = ctx.createRadialGradient(CX, CY, R * 0.8, CX, CY, auraRadius);
+      ag.addColorStop(0, `rgba(37, 99, 235, ${auraAlpha * 1.8})`);
+      ag.addColorStop(0.3, `rgba(60, 130, 246, ${auraAlpha * 0.8})`);
+      ag.addColorStop(0.6, `rgba(37, 99, 235, ${auraAlpha * 0.3})`);
+      ag.addColorStop(1, "rgba(37, 99, 235, 0)");
+      ctx.fillStyle = ag;
+      ctx.beginPath();
+      ctx.arc(CX, CY, auraRadius, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Soft diffused outer glow — always present, amplified during speech
+      const outerGlowR = R * (1.5 + sb * 0.4 + this.auraAmp * 0.3);
+      const outerGlowA = 0.012 + sb * 0.025 + this.auraAmp * 0.015;
+      const og = ctx.createRadialGradient(CX, CY, R, CX, CY, outerGlowR);
+      og.addColorStop(0, `rgba(50, 120, 240, ${outerGlowA})`);
+      og.addColorStop(0.5, `rgba(37, 99, 235, ${outerGlowA * 0.3})`);
+      og.addColorStop(1, "rgba(37, 99, 235, 0)");
+      ctx.fillStyle = og;
+      ctx.beginPath();
+      ctx.arc(CX, CY, outerGlowR, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Warm accent aura (gold when speaking — more visible)
+      if (sb > 0.01) {
+        const warmAlpha = sb * (0.04 + this.auraAmp * 0.06);
+        const wg = ctx.createRadialGradient(CX, CY, R * 0.85, CX, CY, auraRadius * 0.95);
+        wg.addColorStop(0, `rgba(201, 168, 76, ${warmAlpha})`);
+        wg.addColorStop(0.4, `rgba(201, 168, 76, ${warmAlpha * 0.4})`);
+        wg.addColorStop(1, "rgba(201, 168, 76, 0)");
+        ctx.fillStyle = wg;
+        ctx.beginPath();
+        ctx.arc(CX, CY, auraRadius * 0.95, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
 
     // ── Clip to circle ──
     ctx.save();
@@ -326,7 +376,7 @@ export class OrbRenderer {
 
     // ── Edges ──
     ctx.globalCompositeOperation = "screen";
-    const edgeAlpha = this.mode === "speaking" ? 0.07 + this.orientAmount * 0.05 : 0.03;
+    const edgeAlpha = this.mode === "speaking" ? 0.09 + this.orientAmount * 0.06 + this.sAmp * 0.05 : 0.035;
     ctx.lineWidth = 0.6;
     for (const e of this.edges) {
       const pa = this.particles[e.a];
@@ -392,40 +442,57 @@ export class OrbRenderer {
       const pulse = Math.sin(t * p.pSpeed * 1000 + p.pPhase) * 0.5 + 0.5;
       const dB = (p.depth + 1) / 2;
       let alpha = p.bright * (0.15 + dB * 0.55) * (0.6 + pulse * 0.4);
-      const speakMul = this.mode === "speaking" ? 1.4 : 1;
+      // Stronger brightness boost during speech — particles come alive
+      const speakMul = this.mode === "speaking" ? 1.6 + this.sAmp * 1.2 : 1;
       alpha = Math.min(1, alpha * speakMul);
-      const sz = p.sz * (0.7 + dB * 0.5 + pulse * 0.12);
+      // Particles grow slightly with amplitude
+      const ampSize = this.mode === "speaking" ? 1 + this.sAmp * 0.3 : 1;
+      const sz = p.sz * (0.7 + dB * 0.5 + pulse * 0.12) * ampSize;
       let r: number, g: number, b: number;
-      if (p.colorMix < 0.82) {
-        r = 37 + Math.round(dB * 50);
-        g = 99 + Math.round(dB * 40);
-        b = 200 + Math.round(dB * 35);
+      if (p.colorMix < 0.75) {
+        // Blue particles — shift toward lighter blue during speech
+        r = 37 + Math.round(dB * 50) + Math.round(sb * this.sAmp * 30);
+        g = 99 + Math.round(dB * 40) + Math.round(sb * this.sAmp * 25);
+        b = 200 + Math.round(dB * 35) + Math.round(sb * 15);
+      } else if (p.colorMix < 0.9) {
+        // Cyan/teal accent particles (new color variation)
+        r = 40 + Math.round(dB * 30);
+        g = 160 + Math.round(dB * 50) + Math.round(sb * this.sAmp * 20);
+        b = 200 + Math.round(dB * 40);
       } else {
-        r = 180 + Math.round(dB * 40);
-        g = 155 + Math.round(dB * 20);
+        // Gold particles — warmer and brighter during speech
+        r = 190 + Math.round(dB * 40) + Math.round(sb * 20);
+        g = 160 + Math.round(dB * 25) + Math.round(sb * 15);
         b = 60 + Math.round(dB * 20);
       }
       ctx.beginPath();
       ctx.arc(CX + p.x, CY + p.y, sz, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
       ctx.fill();
-      if (p.bright > 0.55 && dB > 0.45) {
+      // Glow halo around bright particles — more visible during speech
+      if (p.bright > 0.5 && dB > 0.4) {
+        const glowSize = sz + 3 + (sb * this.sAmp * 4);
+        const glowAlpha = alpha * (0.06 + sb * 0.08);
         ctx.beginPath();
-        ctx.arc(CX + p.x, CY + p.y, sz + 3, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(${r},${g},${b},${alpha * 0.06})`;
+        ctx.arc(CX + p.x, CY + p.y, glowSize, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${r},${g},${b},${glowAlpha})`;
         ctx.fill();
       }
     }
 
-    // ── Energy core ──
-    const coreA = 0.035 + Math.sin(t * 0.5) * 0.015 + sb * 0.05 + lb * 0.025;
-    const cg = ctx.createRadialGradient(CX, CY, 0, CX, CY, R * 0.4);
-    cg.addColorStop(0, `rgba(80,150,250,${coreA})`);
-    cg.addColorStop(0.5, `rgba(37,99,235,${coreA * 0.25})`);
+    // ── Energy core (amplitude-reactive brightness) ──
+    const coreBoost = this.coreBright * 0.2;
+    const corePulse = Math.sin(t * 1.5) * 0.02 * (1 + sb * 2);
+    const coreA = 0.04 + corePulse + sb * 0.1 + lb * 0.03 + coreBoost;
+    const coreRadius = R * (0.4 + sb * this.sAmp * 0.1);
+    const cg = ctx.createRadialGradient(CX, CY, 0, CX, CY, coreRadius);
+    cg.addColorStop(0, `rgba(${90 + Math.round(this.coreBright * 60)},${160 + Math.round(this.coreBright * 40)},255,${coreA * 1.5})`);
+    cg.addColorStop(0.4, `rgba(60,130,250,${coreA * 0.5})`);
+    cg.addColorStop(0.7, `rgba(37,99,235,${coreA * 0.15})`);
     cg.addColorStop(1, "rgba(37,99,235,0)");
     ctx.fillStyle = cg;
     ctx.beginPath();
-    ctx.arc(CX, CY, R * 0.4, 0, Math.PI * 2);
+    ctx.arc(CX, CY, coreRadius, 0, Math.PI * 2);
     ctx.fill();
 
     // ── Caustic ──
@@ -440,24 +507,27 @@ export class OrbRenderer {
     ctx.arc(CX, CY, R, 0, Math.PI * 2);
     ctx.fill();
 
-    // ── Speaking ripples ──
+    // ── Speaking ripples (sound waves — amplitude reactive) ──
     ctx.globalCompositeOperation = "screen";
     this.ripples = this.ripples.filter((rp) => {
       const age = t - rp.birth;
-      if (age > 2.5) return false;
-      const prog = age / 2.5;
-      const rr = R * 0.15 + R * 0.85 * prog;
-      const alpha = (1 - prog) * (1 - prog) * 0.08 * Math.max(sb, 0.01);
-      const w = 2 + prog * 3;
+      if (age > 2.0) return false;
+      const prog = age / 2.0;
+      const rr = R * 0.1 + R * 0.9 * prog;
+      // Ripple intensity scales with speaking blend AND amplitude
+      const intensity = Math.max(sb, 0.01) * (0.6 + this.sAmp * 0.8);
+      const alpha = (1 - prog) * (1 - prog) * 0.12 * intensity;
+      const w = 1.5 + prog * 4 + this.sAmp * 2;
       ctx.beginPath();
       ctx.arc(rp.cx, rp.cy, rr, 0, Math.PI * 2);
       ctx.strokeStyle = `rgba(80,150,250,${alpha})`;
       ctx.lineWidth = w;
       ctx.stroke();
+      // Secondary warm ripple ring
       ctx.beginPath();
-      ctx.arc(rp.cx, rp.cy, rr * 0.85, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(201,168,76,${alpha * 0.2})`;
-      ctx.lineWidth = w * 0.5;
+      ctx.arc(rp.cx, rp.cy, rr * 0.82, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(201,168,76,${alpha * 0.3})`;
+      ctx.lineWidth = w * 0.6;
       ctx.stroke();
       return true;
     });
@@ -486,24 +556,26 @@ export class OrbRenderer {
 
     ctx.restore();
 
-    // ── Ripple scheduling ──
+    // ── Ripple scheduling — faster when amplitude is high ──
     if (this.mode === "speaking") {
       this.rippleTimer += 0.016;
-      if (this.rippleTimer > 0.8 + Math.random() * 0.5) {
+      // Ripple interval: faster when speaking louder (0.3s at peak, 0.6s at quiet)
+      const rippleInterval = 0.6 - this.sAmp * 0.3 + Math.random() * 0.15;
+      if (this.rippleTimer > rippleInterval) {
         this.ripples.push({
           birth: t,
-          cx: CX + Math.random() * 8 - 4,
-          cy: CY + R * 0.08 + Math.random() * 6 - 3,
+          cx: CX + Math.random() * 6 - 3,
+          cy: CY + Math.random() * 6 - 3,
         });
-        if (this.ripples.length > 5) this.ripples.shift();
+        if (this.ripples.length > 8) this.ripples.shift();
         this.rippleTimer = 0;
       }
     } else {
       this.rippleTimer = 0;
     }
 
-    // ── Idle/speaking signals ──
-    if (this.mode === "idle" && Math.random() < 0.012) this.spawnSignal();
-    if (this.mode === "speaking" && Math.random() < 0.08) this.spawnSignal();
+    // ── Idle/speaking signals — more neural activity during speech ──
+    if (this.mode === "idle" && Math.random() < 0.015) this.spawnSignal();
+    if (this.mode === "speaking" && Math.random() < 0.12 + this.sAmp * 0.08) this.spawnSignal();
   }
 }

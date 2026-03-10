@@ -109,10 +109,10 @@ export function buildOrgAdminWelcomeEmail({
               </p>
               <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
                 <tr>
-                  <td style="padding: 0 0 10px 16px; font-size: 13px; color: #334155; line-height: 1.7; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">1. Set your password using the button below</td>
+                  <td style="padding: 0 0 10px 16px; font-size: 13px; color: #334155; line-height: 1.7; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">1. Set your password using the button below, or sign in with Google/Microsoft</td>
                 </tr>
                 <tr>
-                  <td style="padding: 0 0 10px 16px; font-size: 13px; color: #334155; line-height: 1.7; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">2. Log in and review pre-configured assessment roles</td>
+                  <td style="padding: 0 0 10px 16px; font-size: 13px; color: #334155; line-height: 1.7; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">2. Complete your profile and review pre-configured assessment roles</td>
                 </tr>
                 <tr>
                   <td style="padding: 0 0 10px 16px; font-size: 13px; color: #334155; line-height: 1.7; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">3. Invite your team members</td>

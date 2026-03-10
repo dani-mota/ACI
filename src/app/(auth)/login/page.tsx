@@ -7,8 +7,8 @@ import { LoginForm } from "@/components/auth/login-form";
 export default async function LoginPage() {
   const { status } = await getAuthStatus();
 
-  if (status === "approved") redirect("/dashboard");
-  if (status === "pending") redirect("/pending");
+  if (status === "authenticated") redirect("/dashboard");
+  if (status === "needs_onboarding") redirect("/onboarding");
 
   return <LoginForm />;
 }

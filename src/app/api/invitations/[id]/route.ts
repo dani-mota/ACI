@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { isExternalCollaborator } from "@/lib/rbac";
 import { sendEmail } from "@/lib/email/resend";
 import { buildInvitationEmail } from "@/lib/email/templates/invitation";
 
@@ -12,6 +13,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (isExternalCollaborator(session.user.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const { id } = await params;

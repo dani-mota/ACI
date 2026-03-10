@@ -41,6 +41,11 @@ const ROLE_DESCRIPTIONS: Record<string, string[]> = {
     "Access interview focus areas and development plans",
     "Coordinate the hiring pipeline with bulk actions",
   ],
+  EXTERNAL_COLLABORATOR: [
+    "View assigned candidate profiles and composite scores",
+    "Access interview guides for your assigned candidates",
+    "Review contact information and status updates",
+  ],
 };
 
 export function buildTeamInviteEmail({
@@ -144,7 +149,7 @@ export function buildTeamInviteEmail({
                 <tr>
                   <td style="background-color: #0EA5E9;">
                     <a href="${safeUrl}" target="_blank" style="display: inline-block; background-color: #0EA5E9; color: #FFFFFF; font-size: 12px; font-weight: 700; text-decoration: none; padding: 14px 40px; text-transform: uppercase; letter-spacing: 2px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-                      Set Up Your Account
+                      Accept Invitation
                     </a>
                   </td>
                 </tr>
@@ -156,7 +161,7 @@ export function buildTeamInviteEmail({
           <tr>
             <td style="background-color: #FFFFFF; padding: 0 32px 28px;">
               <p style="margin: 0 0 8px; font-size: 11px; color: #94A3B8; line-height: 1.6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-                This invitation expires on <strong>${escapeHtml(expiryStr)}</strong>.
+                This invitation expires on <strong>${escapeHtml(expiryStr)}</strong>. You can sign in with your email/password or use Google/Microsoft SSO.
               </p>
               <p style="margin: 0; font-size: 11px; color: #94A3B8; line-height: 1.6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
                 If you have questions, contact ${safeName} at <a href="mailto:${safeEmail}" style="color: #64748B;">${safeEmail}</a>.

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { filterCandidateForRole } from "@/lib/rbac";
 
 const SORTABLE_FIELDS = ["createdAt", "lastName", "firstName", "status", "email"] as const;
 
@@ -33,6 +34,11 @@ export async function GET(request: NextRequest) {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: any = { orgId: session.user.orgId };
+
+  // External collaborators can only see candidates assigned to them
+  if (session.user.role === "EXTERNAL_COLLABORATOR") {
+    where.assignments = { some: { userId: session.user.id } };
+  }
 
   if (search) {
     where.OR = [
@@ -69,8 +75,10 @@ export async function GET(request: NextRequest) {
     prisma.candidate.count({ where }),
   ]);
 
+  const filtered = candidates.map((c) => filterCandidateForRole(c, session.user.role));
+
   return NextResponse.json({
-    candidates,
+    candidates: filtered,
     total,
     page,
     pageSize,

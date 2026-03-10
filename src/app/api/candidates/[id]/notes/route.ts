@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { isExternalCollaborator } from "@/lib/rbac";
 
 export async function POST(
   request: NextRequest,
@@ -9,6 +10,9 @@ export async function POST(
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (isExternalCollaborator(session.user.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const { id: candidateId } = await params;

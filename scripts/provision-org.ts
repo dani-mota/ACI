@@ -9,6 +9,7 @@ import { buildOrgAdminWelcomeEmail } from "../src/lib/email/templates/org-admin-
 // ─── CLI ARGUMENT PARSING ────────────────────────────────
 function parseArgs(): {
   name: string;
+  domain: string;
   adminEmail: string;
   adminName: string;
   roles?: string[];
@@ -22,10 +23,11 @@ function parseArgs(): {
     }
   }
 
-  if (!map["name"] || !map["admin-email"] || !map["admin-name"]) {
+  if (!map["name"] || !map["domain"] || !map["admin-email"] || !map["admin-name"]) {
     console.error(
       "Usage: npx tsx scripts/provision-org.ts \\\n" +
         '  --name "Anduril Industries" \\\n' +
+        '  --domain "anduril.com" \\\n' +
         '  --admin-email "tasha@anduril.com" \\\n' +
         '  --admin-name "Tasha Aquino Vance" \\\n' +
         '  --roles "manufacturing-engineer,cnc-machinist,generic-aptitude"  (optional)'
@@ -33,9 +35,21 @@ function parseArgs(): {
     process.exit(1);
   }
 
+  const domain = map["domain"].toLowerCase();
+  const adminEmail = map["admin-email"].toLowerCase();
+  const emailDomain = adminEmail.split("@")[1];
+
+  if (emailDomain !== domain) {
+    console.error(
+      `ABORT: Admin email domain "${emailDomain}" does not match org domain "${domain}".`
+    );
+    process.exit(1);
+  }
+
   return {
     name: map["name"],
-    adminEmail: map["admin-email"],
+    domain,
+    adminEmail,
     adminName: map["admin-name"],
     roles: map["roles"]
       ? map["roles"].split(",").map((s) => s.trim())
@@ -59,7 +73,7 @@ function generateSlug(name: string): string {
 
 // ─── MAIN ────────────────────────────────────────────────
 async function main() {
-  const { name, adminEmail, adminName, roles: requestedRoleSlugs } = parseArgs();
+  const { name, domain, adminEmail, adminName, roles: requestedRoleSlugs } = parseArgs();
   const slug = generateSlug(name);
 
   // ─── Environment checks ──────────────────────────────
@@ -190,7 +204,7 @@ async function main() {
     const result = await prisma.$transaction(async (tx) => {
       // Create org
       const org = await tx.organization.create({
-        data: { name, slug, isDemo: false },
+        data: { name, slug, domain, isDemo: false },
       });
 
       // Clone roles with weights and cutlines
@@ -332,7 +346,7 @@ async function main() {
 
   // ─── Step 6: Summary ─────────────────────────────────
   console.log(
-    `\n\u2705 Organization created: ${name} (id: ${orgId}, slug: ${slug})`
+    `\n\u2705 Organization created: ${name} (id: ${orgId}, slug: ${slug}, domain: ${domain})`
   );
   console.log(
     `\u2705 Roles cloned: ${clonedRoleNames.join(", ")} (${clonedRoleNames.length} roles with weights + cutlines)`

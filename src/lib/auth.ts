@@ -35,7 +35,7 @@ export async function getSession(): Promise<AppSession | null> {
 
   if (!user || !user.isActive) return null;
 
-  return {
+  const session: AppSession = {
     user: {
       id: user.id,
       supabaseId: supabaseUser.id,
@@ -45,6 +45,18 @@ export async function getSession(): Promise<AppSession | null> {
       orgId: user.orgId,
     },
   };
+
+  // Dev-mode role impersonation via cookie
+  if (process.env.NODE_ENV === "development") {
+    const { cookies } = await import("next/headers");
+    const cookieStore = await cookies();
+    const devRole = cookieStore.get("__dev_role")?.value;
+    if (devRole && Object.keys(await import("@/lib/rbac").then((m) => m.ROLE_LEVEL)).includes(devRole)) {
+      session.user.role = devRole as AppUserRole;
+    }
+  }
+
+  return session;
 }
 
 /**
@@ -59,11 +71,13 @@ export async function requireAuth(): Promise<AppSession> {
   return session;
 }
 
-export type AuthStatus = "unauthenticated" | "pending" | "rejected" | "approved";
+export type AuthStatus = "unauthenticated" | "needs_onboarding" | "authenticated";
 
 /**
  * Check the full auth status of the current user.
- * Distinguishes between unauthenticated, pending approval, rejected, and approved.
+ * - unauthenticated: no Supabase session
+ * - needs_onboarding: Supabase session exists but no Prisma User record
+ * - authenticated: Supabase session + active Prisma User
  */
 export async function getAuthStatus(): Promise<{ status: AuthStatus }> {
   const supabase = await createSupabaseServerClient();
@@ -75,31 +89,11 @@ export async function getAuthStatus(): Promise<{ status: AuthStatus }> {
 
   if (!supabaseUser) return { status: "unauthenticated" };
 
-  // Check if they have a Prisma User (means they're approved)
   const user = await prisma.user.findUnique({
     where: { supabaseId: supabaseUser.id },
   });
-  if (user) return { status: "approved" };
 
-  // Check their access request (by supabaseId first, then by email for org-join requests)
-  const request = await prisma.accessRequest.findFirst({
-    where: { supabaseId: supabaseUser.id },
-    orderBy: { createdAt: "desc" },
-  });
+  if (user && user.isActive) return { status: "authenticated" };
 
-  if (request) {
-    if (request.status === "REJECTED") return { status: "rejected" };
-    return { status: "pending" };
-  }
-
-  // Fallback: check by email (org-join requests may not have supabaseId)
-  if (supabaseUser.email) {
-    const emailRequest = await prisma.accessRequest.findFirst({
-      where: { email: supabaseUser.email },
-      orderBy: { createdAt: "desc" },
-    });
-    if (emailRequest?.status === "REJECTED") return { status: "rejected" };
-  }
-
-  return { status: "pending" };
+  return { status: "needs_onboarding" };
 }

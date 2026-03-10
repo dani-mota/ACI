@@ -1,8 +1,10 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getCompareData } from "@/lib/data";
-import { getSession } from "@/lib/auth";
+import { requireAuth } from "@/lib/auth";
+import { isExternalCollaborator } from "@/lib/rbac";
 import { CompareClient } from "@/components/compare/compare-client";
 
 interface PageProps {
@@ -10,8 +12,9 @@ interface PageProps {
 }
 
 export default async function ComparePage({ searchParams }: PageProps) {
-  const session = await getSession();
-  const orgId = session?.user.orgId ?? undefined;
+  const session = await requireAuth();
+  if (isExternalCollaborator(session.user.role)) redirect("/dashboard");
+  const orgId = session.user.orgId;
   const params = await searchParams;
   const ids = params.ids?.split(",").filter(Boolean) || [];
 

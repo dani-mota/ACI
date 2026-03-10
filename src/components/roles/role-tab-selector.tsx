@@ -37,7 +37,7 @@ export function RoleTabSelector({ roles, currentSlug, canCreateRole }: RoleTabSe
           {canCreateRole && (
             <Link
               href={`${basePath}/roles/new`}
-              className="flex items-center gap-1 px-3 py-3 text-[10px] font-medium uppercase tracking-wider text-aci-gold hover:bg-aci-gold/5 transition-colors border-r border-border"
+              className="flex items-center gap-1 px-3 py-3 text-[10px] font-medium uppercase tracking-wider text-aci-blue hover:bg-accent transition-colors border-r border-border"
             >
               <Plus className="w-3 h-3" />
               New Role

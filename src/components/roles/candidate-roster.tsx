@@ -94,9 +94,9 @@ export function CandidateRoster({ title, subtitle, candidates, variant }: Candid
                   </div>
                 )}
                 {/* Red flags for doNotAdvance */}
-                {variant === "doNotAdvance" && c.redFlags.length > 0 && (
+                {variant === "doNotAdvance" && c.redFlags?.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-1">
-                    {c.redFlags.filter((f) => f.severity === "CRITICAL").map((f, j) => (
+                    {c.redFlags?.filter((f) => f.severity === "CRITICAL").map((f, j) => (
                       <span key={j} className="text-[9px] font-mono text-aci-red px-1 py-0.5 bg-aci-red/5 border border-aci-red/20">
                         {f.title}
                       </span>

@@ -16,7 +16,7 @@ export function InviteButton({ roles, canCreateRole }: InviteButtonProps) {
 
   return (
     <>
-      <Button variant="gold" size="sm" onClick={() => setOpen(true)} className="gap-1.5">
+      <Button variant="blue" size="sm" onClick={() => setOpen(true)} className="gap-1.5">
         <UserPlus className="w-3.5 h-3.5" />
         Assess Candidate
       </Button>

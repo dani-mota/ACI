@@ -1,5 +1,5 @@
 import { getCandidateData } from "@/lib/data";
-import { getSession } from "@/lib/auth";
+import { requireAuth } from "@/lib/auth";
 import { notFound } from "next/navigation";
 import { ProfileClient } from "@/components/profile/profile-client";
 
@@ -8,11 +8,14 @@ interface PageProps {
 }
 
 export default async function CandidateProfilePage({ params }: PageProps) {
-  const session = await getSession();
-  const orgId = session?.user.orgId ?? undefined;
-  const userRole = session?.user.role ?? undefined;
+  const session = await requireAuth();
+  const orgId = session.user.orgId;
+  const userRole = session.user.role;
   const { id } = await params;
-  const data = await getCandidateData(id, orgId);
+  const data = await getCandidateData(id, orgId, {
+    userId: session.user.id,
+    role: session.user.role,
+  });
 
   if (!data) notFound();
 

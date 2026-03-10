@@ -37,11 +37,20 @@ export interface NudgeCallbacks {
 export class NudgeManager {
   private timers: ReturnType<typeof setTimeout>[] = [];
   private context: NudgeContext | null = null;
+  private paused = false;
+  private pausedCallbacks: NudgeCallbacks | null = null;
+  private pausedElapsed = 0;
+  private pauseStartTime = 0;
+  private startTime = 0;
 
   /** Start monitoring silence for the given context. */
   start(context: NudgeContext, callbacks: NudgeCallbacks) {
     this.stop();
     this.context = context;
+    this.paused = false;
+    this.pausedCallbacks = callbacks;
+    this.startTime = Date.now();
+    this.pausedElapsed = 0;
     const t = THRESHOLDS[context];
 
     this.timers.push(
@@ -58,11 +67,50 @@ export class NudgeManager {
     this.context = ctx;
   }
 
+  /** Pause all timers (e.g. during phase transitions). */
+  pause() {
+    if (this.paused || !this.context) return;
+    this.paused = true;
+    this.pauseStartTime = Date.now();
+    this.pausedElapsed += Date.now() - this.startTime;
+    for (const t of this.timers) clearTimeout(t);
+    this.timers = [];
+  }
+
+  /** Resume paused timers with adjusted remaining time. */
+  resume() {
+    if (!this.paused || !this.context || !this.pausedCallbacks) return;
+    this.paused = false;
+    const ctx = this.context;
+    const callbacks = this.pausedCallbacks;
+    const elapsed = this.pausedElapsed;
+    const t = THRESHOLDS[ctx];
+
+    this.startTime = Date.now();
+    this.pausedElapsed = elapsed;
+
+    const remaining = (ms: number) => Math.max(0, ms - elapsed);
+
+    this.timers.push(
+      setTimeout(() => callbacks.onNudge("first"), remaining(t.first * 1000)),
+      setTimeout(() => callbacks.onNudge("second"), remaining(t.second * 1000)),
+      setTimeout(() => callbacks.onNudge("final"), remaining(t.final * 1000)),
+    );
+  }
+
   /** Stop all timers. */
   stop() {
     for (const t of this.timers) clearTimeout(t);
     this.timers = [];
     this.context = null;
+    this.paused = false;
+    this.pausedCallbacks = null;
+    this.pausedElapsed = 0;
+  }
+
+  /** Whether the manager is currently paused. */
+  isPaused(): boolean {
+    return this.paused;
   }
 }
 

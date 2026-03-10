@@ -89,7 +89,7 @@ function getAct1Action(
       return {
         type: "AGENT_MESSAGE",
         systemPrompt: buildAct1SystemPrompt(scenario, beatIndex),
-        userContext: `[TRANSITION] The candidate has completed Scenario ${scenarioIndex + 1}. Generate a brief transition message acknowledging they've covered a lot of ground and that you're moving to a different situation. Then introduce the next scenario: "${SCENARIOS[scenarioIndex + 1]?.name || "next scenario"}"`,
+        userContext: `[TRANSITION] The candidate has completed Scenario ${scenarioIndex + 1}. Generate a 1-2 sentence transition to the next scenario: "${SCENARIOS[scenarioIndex + 1]?.name || "next scenario"}". Example: "Good — let me shift to a different situation." Do not summarize what was just discussed. Then introduce the new scenario following the Beat 0 output format.`,
         act: "ACT_1",
         metadata: {
           scenarioIndex: scenarioIndex + 1,
@@ -138,7 +138,7 @@ function getAct1Action(
     return {
       type: "AGENT_MESSAGE",
       systemPrompt: buildAct1SystemPrompt(scenario, beatIndex),
-      userContext: `Ask the candidate what they would do in this situation. Use an open-ended question like "What do you do?" or "How would you handle this?" Do not provide options — the candidate must generate their own response.`,
+      userContext: `Ask the candidate what they would do in this situation. Use an open-ended question like "What do you do?" or "How would you handle this?" Do not provide options — the candidate must generate their own response. Do NOT re-explain the scenario. The candidate heard it and has the reference card. Just ask the question in 1 sentence.`,
       act: "ACT_1",
       metadata: {
         scenarioIndex,
@@ -181,7 +181,61 @@ function getAct1Action(
 }
 
 function buildAct1SystemPrompt(scenario: typeof SCENARIOS[number], beatIndex: number): string {
-  return `You are an assessment agent conducting a structured workplace scenario investigation. Your role is to present realistic situations, respond to the candidate's choices, and adapt the scenario based on their responses.
+  const referenceFormat = beatIndex === 0
+    ? `
+
+OUTPUT FORMAT (you MUST follow this exactly):
+
+PART 1 — SPOKEN TEXT:
+Write EXACTLY 4-5 short sentences. You are speaking out loud — the candidate HEARS these words.
+
+Rules:
+- Each sentence must be under 20 words
+- Sentence 1: Who they are and where they are (the role and setting)
+- Sentence 2: How the system normally works (ONE sentence summary, not a process walkthrough)
+- Sentence 3: What went wrong (the problem, with the key number)
+- Sentence 4: What makes it tricky (the constraint or twist)
+- Sentence 5: The question
+- DO NOT verbally list specifications, process steps, temperatures, tolerances, or cycle times. Those go in the reference card JSON. The candidate will see them on screen.
+- Think: briefing a colleague in 30 seconds over coffee. Not reading a technical report.
+- No markdown, no headers, no bracket tags, no structural markers. Plain English only.
+
+PART 2 — REFERENCE CARD (on its own line, after the spoken text):
+The reference card is a QUICK-REFERENCE CHEAT SHEET, not a transcript. Each item must be compressed shorthand — use numbers, symbols (→, ·, °, ±, %), abbreviations. Keep each item under 60 characters.
+
+Reference card examples:
+GOOD: "120 units/min · Weigh → Label → Seal"
+GOOD: "Rejection rate: 2% → 15% in 2 hours"
+GOOD: "Scanner + applicator + conveyor"
+BAD: "The system processes 120 units per minute through weighing, labeling, and sealing"
+BAD: "The rejection rate has increased from 2 percent to 15 percent over the last two hours"
+
+Use this EXACT delimiter and JSON format:
+
+---REFERENCE---
+{"role":"<short role title>","context":"<one-line scenario context, 10 words max>","sections":[{"label":"The System","items":["<compressed spec>","<compressed spec>"]},{"label":"The Problem","items":["<what changed>","<when>","<impact>"],"highlight":true},{"label":"Constraints","items":["<constraint>","<constraint>"]}],"question":"<the question you're asking>"}`
+    : `
+
+OUTPUT FORMAT (you MUST follow this exactly):
+
+PART 1 — SPOKEN TEXT:
+Write 1-2 short sentences. Each under 20 words.
+
+You are responding to what the candidate just said. Acknowledge their thinking in one sentence, then either:
+- Reveal a new detail and ask how it changes their approach, OR
+- Probe deeper into their reasoning with a specific follow-up question
+
+Do NOT repeat information already on the reference card. Do NOT summarize the scenario again. The candidate can see the card.
+No markdown, no headers, no bracket tags, no structural markers. Plain English only.
+
+PART 2 — REFERENCE UPDATE (on its own line, after the spoken text):
+
+---REFERENCE_UPDATE---
+{"newInformation":["<compressed new fact, under 60 chars>"],"question":"<the updated question>"}
+
+If this beat reveals no new factual information (e.g., you're just asking a follow-up question), use an empty newInformation array.`;
+
+  return `You are Aria, an assessment guide conducting a structured workplace scenario investigation. Your tone is warm, curious, and conversational — like a smart colleague walking through a problem together. Present realistic situations, respond to the candidate's choices, and adapt based on their responses.
 
 SCENARIO: ${scenario.name}
 DESCRIPTION: ${scenario.description}
@@ -194,7 +248,9 @@ RULES:
 - Make transitions between beats feel natural and continuous
 - Keep the scenario feeling realistic and immersive
 - Adapt your language to match the candidate's communication style
-- Responses should be 2-4 paragraphs for situation descriptions, 1-2 sentences for follow-up probes`;
+- CRITICAL: The spoken text must be plain English only. No markdown formatting (**, *, #, ---, backticks). No headers. No bracket tags. No beat labels. No structural markers. It is read aloud by a voice AI — the candidate hears it.
+- CRITICAL: Be concise. Aria speaks the narrative, the reference card holds the data. Never verbally list specifications, process steps, temperatures, tolerances, or numbers — those belong in the reference card JSON. The candidate sees the card on screen. Spoken text should feel like a 30-second briefing, not a lecture.
+${referenceFormat}`;
 }
 
 function buildBeatPrompt(
@@ -209,7 +265,7 @@ function buildBeatPrompt(
 Template: ${beat.agentPromptTemplate}
 Branch script (${branchKey}): ${branchScript}
 
-Generate the scenario content following the template and branch script. Present it naturally as part of an ongoing conversation.`;
+Generate the scenario content following the template and branch script. IMPORTANT: Keep spoken text to 4-5 short sentences max for initial situations, 1-2 sentences for follow-ups. All specifications, numbers, and process details go in the reference card JSON, not in spoken text. The candidate sees the card on screen — you do not need to say everything out loud.`;
 }
 
 // ──────────────────────────────────────────────

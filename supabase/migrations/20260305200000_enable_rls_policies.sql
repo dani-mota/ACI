@@ -477,15 +477,30 @@ CREATE POLICY "org_isolation" ON public."AIEvaluationRun"
   );
 
 
+-- CandidateAssignment (via candidateId -> Candidate.orgId)
+ALTER TABLE public."CandidateAssignment" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "org_isolation" ON public."CandidateAssignment"
+  FOR ALL USING (
+    "candidateId" IN (
+      SELECT id FROM public."Candidate"
+      WHERE "orgId" = public.get_current_org_id()
+    )
+  )
+  WITH CHECK (
+    "candidateId" IN (
+      SELECT id FROM public."Candidate"
+      WHERE "orgId" = public.get_current_org_id()
+    )
+    AND "userId" IN (
+      SELECT id FROM public."User"
+      WHERE "orgId" = public.get_current_org_id()
+    )
+  );
+
+
 -- ============================================================================
 -- NOT org-scoped (RLS intentionally NOT enabled):
---
---   AccessRequest:
---     Public intake form — unauthenticated visitors submit these. No orgId
---     column. The POST route is public; GET/PATCH are ADMIN-only. Contains
---     PII (email, name, company) and reviewer User.id references. If a
---     non-owner analytics role is ever added, REVOKE SELECT on this table
---     individually to prevent cross-org PII exposure.
 --
 --   ItemCalibration:
 --     Global IRT psychometric parameters (difficulty, discrimination,

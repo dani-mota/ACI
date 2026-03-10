@@ -88,12 +88,16 @@ export class TTSEngine {
   /**
    * Speak the given text via ElevenLabs TTS.
    * Returns a promise that resolves when all audio has finished playing.
+   *
+   * @param onPlaybackStart Optional callback fired when audio playback begins,
+   *   receives the total audio duration in seconds. Use this to synchronize
+   *   word reveal timing with actual audio length.
    */
-  async speak(text: string, token: string): Promise<void> {
+  async speak(text: string, token: string, onPlaybackStart?: (totalDurationSec: number) => void): Promise<void> {
     this.stop();
 
     if (this.fallbackActive) {
-      return this.speakFallback(text);
+      return this.speakFallback(text, onPlaybackStart);
     }
 
     const chunks = chunkText(text);
@@ -109,7 +113,7 @@ export class TTSEngine {
       if (ctx.state === "suspended") {
         this.fallbackActive = true;
         this.onFallback();
-        return this.speakFallback(text);
+        return this.speakFallback(text, onPlaybackStart);
       }
 
       // Fetch and decode all chunks
@@ -131,7 +135,7 @@ export class TTSEngine {
             if (err.fallback) {
               this.fallbackActive = true;
               this.onFallback();
-              return this.speakFallback(text);
+              return this.speakFallback(text, onPlaybackStart);
             }
           } catch { /* ignore parse errors */ }
           console.error(`[TTS] Chunk fetch failed: ${res.status}`);
@@ -156,7 +160,7 @@ export class TTSEngine {
           if (buffers.length === 0) {
             this.fallbackActive = true;
             this.onFallback();
-            return this.speakFallback(text);
+            return this.speakFallback(text, onPlaybackStart);
           }
           // Otherwise skip this chunk and continue with remaining
           continue;
@@ -165,6 +169,10 @@ export class TTSEngine {
       }
 
       if (buffers.length === 0 || signal.aborted) return;
+
+      // Calculate total audio duration and notify caller
+      const totalDuration = buffers.reduce((sum, b) => sum + b.duration, 0);
+      onPlaybackStart?.(totalDuration);
 
       // Play buffers sequentially
       this.playQueue = buffers;
@@ -178,7 +186,7 @@ export class TTSEngine {
         // Fall back to browser speech
         this.fallbackActive = true;
         this.onFallback();
-        return this.speakFallback(text);
+        return this.speakFallback(text, onPlaybackStart);
       }
     }
   }
@@ -241,7 +249,7 @@ export class TTSEngine {
   }
 
   /** Browser SpeechSynthesis fallback */
-  private speakFallback(text: string): Promise<void> {
+  private speakFallback(text: string, onPlaybackStart?: (totalDurationSec: number) => void): Promise<void> {
     return new Promise((resolve) => {
       if (typeof window === "undefined" || !("speechSynthesis" in window)) {
         resolve();
@@ -256,6 +264,11 @@ export class TTSEngine {
 
       this.isPlaying = true;
       this.onStateChange(true);
+
+      // Estimate duration for fallback: ~150 words/min = ~0.4s/word
+      const wordCount = text.split(/\s+/).length;
+      const estimatedDuration = wordCount * 0.4;
+      onPlaybackStart?.(estimatedDuration);
 
       utterance.onend = () => {
         this.isPlaying = false;

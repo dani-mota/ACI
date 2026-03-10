@@ -23,25 +23,25 @@ export interface Phase0Segment {
 export const PHASE_0_SEGMENTS: Phase0Segment[] = [
   {
     id: "introduction",
-    text: "Hello, and welcome. My name is Aria, and I'll be guiding you through your assessment today. It's good to have you here.",
-    durationEstimateMs: 8000,
+    text: "Hey there! I'm Aria — really glad you're here. I'll be your guide through this whole thing, and honestly, I think you're going to find it pretty interesting.",
+    durationEstimateMs: 9000,
     pauseAfterMs: 1500,
   },
   {
     id: "format_orientation",
-    text: "This will take about 60 to 90 minutes. I'll walk you through some scenarios and problems — and you'll respond by speaking. I'll also give you some questions you can answer by tapping on screen. There are no trick questions, and there's no single right answer to most of what we'll discuss.",
-    durationEstimateMs: 15000,
+    text: "So here's how this works — we'll spend about 60 to 90 minutes together. I'm going to walk you through some real-world scenarios, and you'll just talk through how you'd handle them. We'll also mix in a few quick questions you can tap on screen. There's no trick questions, and honestly, most of what we'll talk about doesn't have one right answer. I'm just curious to hear how you think.",
+    durationEstimateMs: 18000,
     pauseAfterMs: 1000,
   },
   {
     id: "mic_check",
-    text: "Before we begin, let's make sure I can hear you clearly. Tap the microphone button and tell me — what role are you here for today?",
-    durationEstimateMs: 8000,
+    text: "One quick thing before we dive in — let's make sure your mic is working. Tap that microphone button and just tell me, what role are you here for today?",
+    durationEstimateMs: 9000,
     showMic: true,
   },
   {
     id: "confirmation",
-    text: "Perfect, I can hear you. Let's get started.",
+    text: "Great, I can hear you perfectly! Alright, let's jump in.",
     durationEstimateMs: 4000,
     triggersTransition: true,
   },
@@ -49,8 +49,8 @@ export const PHASE_0_SEGMENTS: Phase0Segment[] = [
 
 /** Nudge when candidate hasn't responded to mic check after 15s. */
 export const MIC_NUDGE_15S =
-  "If you'd like, you can also type your response instead.";
+  "No rush! If the mic's being tricky, you can always type instead — totally fine either way.";
 
 /** Nudge when candidate still hasn't responded after 30s — auto-switch to text. */
 export const MIC_NUDGE_30S =
-  "No worries — let's continue with typing.";
+  "Hey, no worries at all — let's just switch to typing. Works just as well!";

@@ -3,8 +3,7 @@ export type NotificationType =
   | "AWAITING_DECISION"
   | "STATUS_CHANGED"
   | "NEW_CANDIDATE"
-  | "RED_FLAG_DETECTED"
-  | "ACCESS_REQUEST_PENDING";
+  | "RED_FLAG_DETECTED";
 
 export interface Notification {
   id: string;

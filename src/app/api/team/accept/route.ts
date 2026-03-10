@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create Supabase auth user
-    // Follow the same pattern as provision-org.ts and access-requests/[id]/route.ts
+    // Follow the same pattern as provision-org.ts
     const supabase = getSupabaseAdmin();
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email: invitation.email,

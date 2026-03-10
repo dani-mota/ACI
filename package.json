@@ -7,7 +7,9 @@
     "build": "prisma generate && next build",
     "postinstall": "prisma generate",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:setup": "npx tsx scripts/test-setup.ts",
+    "test:reset": "npx tsx scripts/test-setup.ts --reset"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.54",

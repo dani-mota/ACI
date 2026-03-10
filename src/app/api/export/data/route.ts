@@ -134,7 +134,7 @@ async function exportFullData(orgId: string, format: string) {
       supervisionLoad: prediction?.supervisionLoad ?? null,
       performanceCeiling: prediction?.performanceCeiling ?? null,
       attritionRisk: prediction?.attritionRisk ?? null,
-      redFlagCount: a?.redFlags.length ?? 0,
+      redFlagCount: a?.redFlags?.length ?? 0,
       surveyDifficulty: survey?.difficulty ?? null,
       surveyFairness: survey?.fairness ?? null,
       surveyFaceValidity: survey?.faceValidity ?? null,

@@ -1,12 +1,18 @@
 import prisma from "@/lib/prisma";
+import { type AppUserRole, filterCandidateForRole } from "@/lib/rbac";
 
 /**
  * Shared data-fetching helpers used by both the live dashboard and tutorial demo.
  * Each function accepts an optional orgId to scope queries.
  */
 
-export async function getDashboardData(orgId?: string) {
-  const where = orgId ? { orgId } : {};
+export async function getDashboardData(orgId?: string, opts?: { userId?: string; role?: AppUserRole }) {
+  const isEC = opts?.role === "EXTERNAL_COLLABORATOR" && opts?.userId;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const where: any = orgId ? { orgId } : {};
+  if (isEC) {
+    where.assignments = { some: { userId: opts.userId } };
+  }
   const roleWhere = orgId ? { orgId } : {};
 
   const [candidates, roles] = await Promise.all([
@@ -59,14 +65,19 @@ export async function getDashboardData(orgId?: string) {
   oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
   const weeklyVolume = candidates.filter((c) => new Date(c.createdAt) > oneWeekAgo).length;
 
+  const serialized = JSON.parse(JSON.stringify(candidates));
+  const filtered = opts?.role
+    ? serialized.map((c: unknown) => filterCandidateForRole(c, opts.role!))
+    : serialized;
+
   return {
-    candidates: JSON.parse(JSON.stringify(candidates)),
+    candidates: filtered,
     rolePipelines,
     stats: { totalAssessed, strongFitRate, avgDuration, weeklyVolume },
   };
 }
 
-export async function getCandidateData(id: string, orgId?: string) {
+export async function getCandidateData(id: string, orgId?: string, opts?: { userId?: string; role?: AppUserRole }) {
   const candidate = await prisma.candidate.findUnique({
     where: { id },
     include: {
@@ -95,6 +106,14 @@ export async function getCandidateData(id: string, orgId?: string) {
   // If orgId provided, verify candidate belongs to that org
   if (orgId && candidate.orgId !== orgId) return null;
 
+  // External collaborators can only view candidates assigned to them
+  if (opts?.role === "EXTERNAL_COLLABORATOR" && opts?.userId) {
+    const assignment = await prisma.candidateAssignment.findUnique({
+      where: { candidateId_userId: { candidateId: id, userId: opts.userId } },
+    });
+    if (!assignment) return null;
+  }
+
   const roleWhere = orgId ? { orgId } : {};
   const allRoles = await prisma.role.findMany({
     where: roleWhere,
@@ -105,8 +124,13 @@ export async function getCandidateData(id: string, orgId?: string) {
     where: orgId ? { orgId } : {},
   });
 
+  const serialized = JSON.parse(JSON.stringify(candidate));
+  const filteredCandidate = opts?.role
+    ? filterCandidateForRole(serialized, opts.role)
+    : serialized;
+
   return {
-    candidate: JSON.parse(JSON.stringify(candidate)),
+    candidate: filteredCandidate,
     allRoles: JSON.parse(JSON.stringify(allRoles)),
     cutlines: JSON.parse(JSON.stringify(cutlines)),
   };
