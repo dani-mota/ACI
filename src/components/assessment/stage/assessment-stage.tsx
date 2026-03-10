@@ -98,7 +98,7 @@ export function AssessmentStage({
   const micNudgeTimers = useRef<{ t15?: ReturnType<typeof setTimeout>; t30?: ReturnType<typeof setTimeout> }>({});
   const nudgeRef = useRef(new NudgeManager());
   const transitionInProgress = useRef(false);
-  const sentenceSequenceRef = useRef(false);
+  const sequenceIdRef = useRef(0);
 
   // ── Session timer ──
   useEffect(() => {
@@ -250,13 +250,13 @@ export function AssessmentStage({
   // Sentence-by-sentence sequencer for Act 1 scenarios.
   const playSentenceSequence = useCallback(
     async (sentences: string[]) => {
-      sentenceSequenceRef.current = true;
+      const myId = ++sequenceIdRef.current;
       const s = getStore();
       s.setSentenceList(sentences);
       s.setOrbMode("speaking");
 
       for (let i = 0; i < sentences.length; i++) {
-        if (!sentenceSequenceRef.current) break;
+        if (sequenceIdRef.current !== myId) break;
 
         const sentence = sentences[i];
         s.setCurrentSentenceIndex(i);
@@ -303,17 +303,19 @@ export function AssessmentStage({
         getStore().setSubtitleRevealedWords(totalWords);
 
         // Brief pause between sentences
-        if (i < sentences.length - 1 && sentenceSequenceRef.current) {
+        if (i < sentences.length - 1 && sequenceIdRef.current === myId) {
           await new Promise((r) => setTimeout(r, 400));
         }
       }
 
-      sentenceSequenceRef.current = false;
-      getStore().setOrbMode("idle");
-      getStore().setAudioAmplitude(0);
-      // After all sentences played, reveal everything on the card
-      if (getStore().referenceRevealCount >= 0) {
-        getStore().setReferenceRevealCount(-1);
+      // Only clean up if this sequence is still the active one
+      if (sequenceIdRef.current === myId) {
+        getStore().setOrbMode("idle");
+        getStore().setAudioAmplitude(0);
+        // After all sentences played, reveal everything on the card
+        if (getStore().referenceRevealCount >= 0) {
+          getStore().setReferenceRevealCount(-1);
+        }
       }
     },
     [token],
@@ -699,6 +701,9 @@ export function AssessmentStage({
     if (displayIsHistory) return;
     if (transitionInProgress.current) return;
 
+    // Cancel any in-progress TTS before starting new sequence
+    ttsRef.current?.stop();
+
     if (sentenceList.length > 1) {
       playSentenceSequence(sentenceList).then(() => startNudgeForCurrentAct());
     } else if (subtitleText) {
@@ -787,7 +792,7 @@ export function AssessmentStage({
 
       ttsRef.current?.stop();
       nudgeRef.current.stop();
-      sentenceSequenceRef.current = false;
+      sequenceIdRef.current++;
 
       if (phase0Ref.current === "mic_check") {
         handlePhase0Response(text);
@@ -830,7 +835,7 @@ export function AssessmentStage({
 
     ttsRef.current?.stop();
     nudgeRef.current.stop();
-    sentenceSequenceRef.current = false;
+    sequenceIdRef.current++;
 
     if (phase0Ref.current === "mic_check") {
       handlePhase0Response(text);
