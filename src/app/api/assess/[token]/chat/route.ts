@@ -4,9 +4,11 @@ import { anthropic } from "@ai-sdk/anthropic";
 import prisma from "@/lib/prisma";
 import { getRoleContext } from "@/lib/assessment/role-context";
 import { getNextAction, computeStateUpdate, buildGreetingPrompt } from "@/lib/assessment/engine";
-import { AI_CONFIG } from "@/lib/assessment/config";
+import { AI_CONFIG, FEATURE_FLAGS } from "@/lib/assessment/config";
 import type { ResponseClassification, AdaptiveLoopState } from "@/lib/assessment/types";
 import { classifyResponse } from "@/lib/assessment/classification";
+import { generateAcknowledgment } from "@/lib/assessment/generate-acknowledgment";
+import { loadContentLibrary, lookupBeatContent, getReadyLibrary, selectRandomVariants } from "@/lib/assessment/content-serving";
 import { SCENARIOS } from "@/lib/assessment/scenarios";
 import { recordResult, initLoopState } from "@/lib/assessment/adaptive-loop";
 import { ITEM_BANK } from "@/lib/assessment/item-bank";
@@ -111,8 +113,23 @@ export async function POST(
   // Get or create assessment state
   let state = assessment.assessmentState;
   if (!state) {
+    // Snapshot content library if available
+    let contentLibraryId: string | undefined;
+    let variantSelections: Record<string, number> | undefined;
+
+    if (FEATURE_FLAGS.CONTENT_LIBRARY_ENABLED) {
+      const readyLib = await getReadyLibrary(invitation.roleId);
+      if (readyLib) {
+        contentLibraryId = readyLib.id;
+        variantSelections = selectRandomVariants(readyLib.content);
+      }
+    }
+
     state = await prisma.assessmentState.create({
-      data: { assessmentId: assessment.id },
+      data: {
+        assessmentId: assessment.id,
+        ...(contentLibraryId ? { contentLibraryId, variantSelections } : {}),
+      },
     });
   }
 
@@ -413,8 +430,91 @@ export async function POST(
     );
   }
 
-  // AGENT_MESSAGE: Stream the AI response
+  // AGENT_MESSAGE: Stream the AI response (or serve pre-generated content)
   if (action.type === "AGENT_MESSAGE") {
+    // ── Pre-generated content path ──
+    // When content library is available and we're in Act 1 with a real candidate response,
+    // serve pre-generated content with a personalized acknowledgment instead of streaming.
+    const usePreGenerated = FEATURE_FLAGS.CONTENT_LIBRARY_ENABLED
+      && state.contentLibraryId
+      && state.currentAct === "ACT_1"
+      && lastUserMessage
+      && !isSentinel
+      && !(action.metadata as Record<string, unknown>)?.transition;
+
+    if (usePreGenerated) {
+      const scenarioIndex = (action.metadata as Record<string, unknown>)?.scenarioIndex as number ?? state.currentScenario;
+      const beatIndex = (action.metadata as Record<string, unknown>)?.beatIndex as number ?? state.currentBeat;
+
+      try {
+        const library = await loadContentLibrary(state.contentLibraryId!);
+        const variantSelections = (state.variantSelections as Record<string, number>) ?? {};
+
+        // Classification already ran above (lines 282-316) and updated state.
+        // Get the classification from the updated branch path.
+        const branchPath = (state.branchPath as ResponseClassification[] | null) ?? [];
+        const classification = branchPath[branchPath.length - 1] ?? "ADEQUATE";
+
+        // Generate acknowledgment in parallel (single Haiku call, ~200ms)
+        const beat = SCENARIOS[scenarioIndex]?.beats[beatIndex];
+        const acknowledgment = await generateAcknowledgment(
+          lastUserMessage,
+          beat?.type ?? "INITIAL_RESPONSE",
+          (beat?.primaryConstructs as string[]) ?? [],
+        );
+
+        // Look up pre-generated content
+        const content = lookupBeatContent(library, scenarioIndex, beatIndex, classification, variantSelections);
+
+        // Compose full response
+        const fullText = beatIndex === 0
+          ? content.spokenText
+          : `${acknowledgment} ${content.spokenText}`;
+
+        // Persist message
+        const seq = await nextSequenceOrder();
+        await prisma.conversationMessage.create({
+          data: {
+            assessmentId: assessment.id,
+            role: "AGENT",
+            content: fullText,
+            act: action.act,
+            sequenceOrder: seq,
+            metadata: {
+              ...((action.metadata as Record<string, unknown>) ?? {}),
+              preGenerated: true,
+              classification,
+            } as any,
+          },
+        });
+
+        // Update state
+        if (action.metadata) {
+          const stateUpdate = computeStateUpdate(state, action);
+          if (Object.keys(stateUpdate).length > 0) {
+            await prisma.assessmentState.update({
+              where: { assessmentId: assessment.id },
+              data: stateUpdate as any,
+            });
+          }
+        }
+
+        return new Response(
+          JSON.stringify({
+            type: "agent_message",
+            message: fullText,
+            referenceCard: content.referenceCard || null,
+            referenceUpdate: content.referenceUpdate || null,
+          }),
+          { headers: { "Content-Type": "application/json" } },
+        );
+      } catch (err) {
+        // Fall through to streaming path on any content library error
+        console.error(`[V2] Pre-generated content failed, falling back to streaming:`, err);
+      }
+    }
+
+    // ── Streaming path (default / fallback) ──
     // Build conversation history for context
     const conversationHistory = buildConversationHistory(assessment.messages, clientMessages);
 

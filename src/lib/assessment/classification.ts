@@ -5,7 +5,8 @@ import { AI_CONFIG } from "./config";
 /**
  * Classifies a candidate's response to a scenario beat as STRONG, ADEQUATE, or WEAK.
  *
- * Uses triple-evaluation for reliability: 3 parallel AI calls, takes the median classification.
+ * Uses dual-evaluation for reliability: 2 parallel AI calls.
+ * Agreement logic: if both agree, use it. If they disagree, use the lower rubricScore (conservative).
  * Falls back to ADEQUATE if AI calls fail.
  */
 export async function classifyResponse(
@@ -22,9 +23,8 @@ export async function classifyResponse(
 
   const prompt = buildClassificationPrompt(candidateResponse, scenario, beat, conversationHistory, roleContext);
 
-  // Triple-evaluation: 3 parallel calls for reliability
+  // Dual-evaluation: 2 parallel calls for reliability with lower latency than triple
   const results = await Promise.allSettled([
-    callClassificationAI(apiKey, prompt),
     callClassificationAI(apiKey, prompt),
     callClassificationAI(apiKey, prompt),
   ]);
@@ -37,11 +37,19 @@ export async function classifyResponse(
     return fallbackClassification(candidateResponse);
   }
 
-  // Take median classification (by rubric score)
-  successful.sort((a, b) => a.rubricScore - b.rubricScore);
-  const median = successful[Math.floor(successful.length / 2)];
+  if (successful.length === 1) {
+    return successful[0];
+  }
 
-  return median;
+  // Agreement logic: if both agree on classification, use it
+  // If they disagree, use the one with the lower rubricScore (conservative)
+  if (successful[0].classification === successful[1].classification) {
+    // Agreed — use the one with higher rubricScore for richer evidence
+    return successful[0].rubricScore >= successful[1].rubricScore ? successful[0] : successful[1];
+  }
+
+  // Disagreement — use the conservative (lower rubricScore) result
+  return successful[0].rubricScore <= successful[1].rubricScore ? successful[0] : successful[1];
 }
 
 function buildClassificationPrompt(
