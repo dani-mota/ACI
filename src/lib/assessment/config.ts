@@ -21,6 +21,14 @@ export const AI_CONFIG = {
 } as const;
 
 /**
+ * Feature flags for progressive rollout of new capabilities.
+ */
+export const FEATURE_FLAGS = {
+  /** Enable pre-generated content libraries instead of live AI generation */
+  CONTENT_LIBRARY_ENABLED: process.env.FEATURE_CONTENT_LIBRARY === "true",
+} as const;
+
+/**
  * Assessment structure configuration.
  */
 export const ASSESSMENT_STRUCTURE = {

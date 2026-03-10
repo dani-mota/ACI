@@ -93,6 +93,7 @@ model Role {
   compositeWeights   CompositeWeight[]
   candidates         Candidate[]
   invitations        AssessmentInvitation[]
+  contentLibraries   ContentLibrary[]
   createdAt          DateTime              @default(now())
   // Role Builder fields
   isCustom           Boolean               @default(false)
@@ -146,6 +147,30 @@ enum WeightSource {
   RESEARCH_VALIDATED
   EMPIRICALLY_ADJUSTED
   CLIENT_CUSTOMIZED
+}
+
+model ContentLibrary {
+  id                    String               @id @default(cuid())
+  roleId                String
+  role                  Role                 @relation(fields: [roleId], references: [id])
+  version               Int                  @default(1)
+  status                ContentLibraryStatus @default(GENERATING)
+  content               Json                 // Full pre-generated content tree
+  generationStartedAt   DateTime?
+  generationCompletedAt DateTime?
+  errorLog              Json?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+
+  @@unique([roleId, version])
+  @@index([roleId, status])
+}
+
+enum ContentLibraryStatus {
+  GENERATING
+  READY
+  FAILED
+  DEPRECATED
 }
 
 model RoleVersion {
@@ -619,6 +644,8 @@ model AssessmentState {
   branchPath        Json?
   act2Progress      Json?
   act3Progress      Json?
+  contentLibraryId  String?       // Snapshot: which content library version this assessment uses
+  variantSelections Json?         // { scenarioId: variantIndex } random selection per scenario
   phase0Complete    Boolean       @default(false)
   isComplete        Boolean       @default(false)
   updatedAt         DateTime      @updatedAt
