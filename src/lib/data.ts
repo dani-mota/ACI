@@ -260,11 +260,20 @@ export async function getRoleDetailData(slug: string, orgId: string) {
 }
 
 /**
- * Get the demo organization ID. Returns null if no demo org exists.
+ * Get the demo organization ID for a given industry segment.
+ * Falls back to the first demo org if no industry is specified or matched.
  */
-export async function getDemoOrgId(): Promise<string | null> {
+const DEMO_ORG_SLUGS: Record<string, string> = {
+  "defense-manufacturing": "atlas-defense",
+  "space-satellite": "orbital-dynamics",
+  "hardware-ai": "nexus-robotics",
+  "ai-software": "vertex-ai-labs",
+};
+
+export async function getDemoOrgId(industry?: string | null): Promise<string | null> {
+  const slug = industry ? DEMO_ORG_SLUGS[industry] : null;
   const org = await prisma.organization.findFirst({
-    where: { isDemo: true },
+    where: slug ? { slug, isDemo: true } : { isDemo: true },
   });
   return org?.id ?? null;
 }

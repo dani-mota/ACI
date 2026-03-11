@@ -333,6 +333,7 @@ export function ProfileClient({ candidate, allRoles, cutlines, userRole }: Profi
               roleWeights={selectedRole?.compositeWeights || []}
               cutline={cutline}
               roleSlug={selectedRoleSlug}
+              roleName={selectedRole?.name}
               weightDiffs={weightDiffs}
               showAnimation={showAnimation}
             />

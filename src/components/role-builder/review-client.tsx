@@ -15,9 +15,11 @@ import type { RoleBuilderPipelineResult } from "@/lib/role-builder/pipeline";
 
 interface ReviewClientProps {
   result: RoleBuilderPipelineResult;
+  saveEndpoint?: string;
+  redirectPath?: (slug: string) => string;
 }
 
-export function ReviewClient({ result }: ReviewClientProps) {
+export function ReviewClient({ result, saveEndpoint = "/api/roles", redirectPath = (slug) => `/roles/${slug}` }: ReviewClientProps) {
   const router = useRouter();
 
   const [name, setName] = useState(result.extracted.title || "New Role");
@@ -48,7 +50,7 @@ export function ReviewClient({ result }: ReviewClientProps) {
     setSaveError(null);
 
     try {
-      const res = await fetch("/api/roles", {
+      const res = await fetch(saveEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -79,12 +81,12 @@ export function ReviewClient({ result }: ReviewClientProps) {
 
       // Clear session storage and redirect
       sessionStorage.removeItem("roleBuilderResult");
-      router.push(`/roles/${role.slug}`);
+      router.push(redirectPath(role.slug));
     } catch {
       setSaveError("Network error. Please try again.");
       setSaving(false);
     }
-  }, [isValid, name, description, weights, cutlines, result, router]);
+  }, [isValid, name, description, weights, cutlines, result, router, saveEndpoint, redirectPath]);
 
   const outsideScope = result.pipelineMetadata.warnings.some((w) =>
     w.toLowerCase().includes("scope") || w.toLowerCase().includes("manufactur")

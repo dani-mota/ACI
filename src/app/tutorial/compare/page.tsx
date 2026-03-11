@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { getCompareData, getDemoOrgId } from "@/lib/data";
 import { CompareClient } from "@/components/compare/compare-client";
 import { redirect } from "next/navigation";
@@ -10,8 +11,12 @@ interface PageProps {
 }
 
 export default async function TutorialComparePage({ searchParams }: PageProps) {
-  const demoOrgId = await getDemoOrgId();
-  if (!demoOrgId) redirect("/login");
+  const cookieStore = await cookies();
+  const raw = cookieStore.get("aci-tutorial")?.value;
+  const _parsed = raw ? JSON.parse(decodeURIComponent(raw)) : null;
+  const industry = (_parsed?.state?.tutorialIndustry ?? _parsed?.tutorialIndustry ?? null) as string | null;
+  const demoOrgId = await getDemoOrgId(industry);
+  if (!demoOrgId) redirect("/tutorial");
 
   const params = await searchParams;
   const ids = params.ids?.split(",").filter(Boolean) || [];

@@ -188,7 +188,18 @@ async function doReset(
     console.log(`  ✅ Deleted ${deletedAssignments.count} candidate assignments`);
   }
 
-  // 5. Delete test users
+  // 5. Delete assessment invitations created by test users (FK constraint)
+  if (testUserRecords.length > 0) {
+    const testUserIds = testUserRecords.map((u) => u.id);
+    const deletedInvitedBy = await prisma.assessmentInvitation.deleteMany({
+      where: { invitedBy: { in: testUserIds } },
+    });
+    if (deletedInvitedBy.count > 0) {
+      console.log(`  ✅ Deleted ${deletedInvitedBy.count} assessment invitations (invitedBy test users)`);
+    }
+  }
+
+  // 6. Delete test users
   const deletedUsers = await prisma.user.deleteMany({
     where: { email: { in: invEmails } },
   });

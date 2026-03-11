@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 
 const ACT_NAMES: Record<string, string> = {
-  ACT_1: "The Scenario Gauntlet",
-  ACT_2: "The Precision Gauntlet",
+  ACT_1: "Part One",
+  ACT_2: "Part Two",
   ACT_3: "Calibration",
 };
 

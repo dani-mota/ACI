@@ -169,11 +169,11 @@ export function TopNav({ mode = "live" }: { mode?: "live" | "tutorial" }) {
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-aci-gold hover:text-aci-gold/80 transition-colors"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Exit Tutorial</span>
+              <span className="hidden sm:inline">Back to Dashboard</span>
             </Link>
           ) : (
             <Link
-              href="/tutorial/dashboard"
+              href="/tutorial"
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-aci-gold hover:text-aci-gold/80 transition-colors"
             >
               <Sparkles className="w-3.5 h-3.5" />

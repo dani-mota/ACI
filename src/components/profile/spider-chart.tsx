@@ -1,17 +1,154 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import {
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar,
-  ResponsiveContainer, Customized,
+  ResponsiveContainer, useChartWidth, useChartHeight, useOffset,
 } from "recharts";
 import { CONSTRUCTS, LAYER_INFO, type LayerType } from "@/lib/constructs";
+
+// ─── types shared by overlay components ──────────────────────────────────────
+type SpiderDataItem = {
+  key: string;
+  construct: string;
+  fullName: string;
+  definition: string;
+  roleRelevance: string | undefined;
+  percentile: number;
+  benchmark: number;
+  weight: number;
+  layer: LayerType;
+  layerColor: string;
+};
+
+// ─── LayerOverlay ─────────────────────────────────────────────────────────────
+// Rendered as a direct child of RadarChart so Recharts context hooks work.
+function LayerOverlay({ data }: { data: SpiderDataItem[] }) {
+  const chartWidth = useChartWidth() ?? 0;
+  const chartHeight = useChartHeight() ?? 0;
+  const offset = useOffset();
+
+  // Match Recharts' internal polar layout computation
+  const plotW = chartWidth - (offset?.left ?? 0) - (offset?.right ?? 0);
+  const plotH = chartHeight - (offset?.top ?? 0) - (offset?.bottom ?? 0);
+  const maxRadius = Math.min(plotW, plotH) / 2;
+  const outerRadius = maxRadius * 0.72;
+  const cx = chartWidth / 2;
+  const cy = chartHeight / 2;
+
+  if (!outerRadius || !cx || !cy) return null;
+
+  const count = data.length;
+
+  const scorePoints = data.map((d, i) => {
+    const angle = (Math.PI * 2 * i) / count - Math.PI / 2;
+    const r = (d.percentile / 100) * outerRadius;
+    return { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle), color: d.layerColor, layer: d.layer };
+  });
+
+  // Per-sector gradient triangles: center → point[i] → point[i+1]
+  // Each sector reuses the same gradient ID as its outline edge
+  const sectors = scorePoints.map((pt, i) => {
+    const next = scorePoints[(i + 1) % count];
+    return {
+      path: `M ${cx} ${cy} L ${pt.x} ${pt.y} L ${next.x} ${next.y} Z`,
+      gradId: `edge-grad-${i}`,
+    };
+  });
+
+  const edgeGradients = scorePoints.map((pt, i) => {
+    const next = scorePoints[(i + 1) % count];
+    const id = `edge-grad-${i}`;
+    return { id, x1: pt.x, y1: pt.y, x2: next.x, y2: next.y, color1: pt.color, color2: next.color };
+  });
+
+  const gapSegments = data.map((d, i) => {
+    if (!d.benchmark || d.benchmark <= 0 || d.percentile >= d.benchmark) return null;
+    const angle = (Math.PI * 2 * i) / count - Math.PI / 2;
+    const r1 = (d.percentile / 100) * outerRadius;
+    const r2 = (d.benchmark / 100) * outerRadius;
+    return {
+      x1: cx + r1 * Math.cos(angle), y1: cy + r1 * Math.sin(angle),
+      x2: cx + r2 * Math.cos(angle), y2: cy + r2 * Math.sin(angle),
+    };
+  }).filter(Boolean);
+
+  return (
+    <g>
+      <defs>
+        {edgeGradients.map((g) => (
+          <linearGradient key={g.id} id={g.id} gradientUnits="userSpaceOnUse" x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2}>
+            <stop offset="0%" stopColor={g.color1} />
+            <stop offset="100%" stopColor={g.color2} />
+          </linearGradient>
+        ))}
+      </defs>
+      {sectors.map((s, i) => (
+        <path key={`sector-${i}`} d={s.path} fill={`url(#${s.gradId})`} fillOpacity={0.2} stroke="none" />
+      ))}
+      {edgeGradients.map((seg) => (
+        <line key={seg.id} x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2}
+          stroke={`url(#${seg.id})`} strokeWidth={2.5} strokeLinecap="round" />
+      ))}
+      {gapSegments.map((seg, i) => (
+        <line key={`gap-${i}`} x1={seg!.x1} y1={seg!.y1} x2={seg!.x2} y2={seg!.y2}
+          stroke="#DC2626" strokeWidth={3} strokeOpacity={0.55} strokeLinecap="round" />
+      ))}
+    </g>
+  );
+}
+
+// ─── ScoreLabels ──────────────────────────────────────────────────────────────
+function ScoreLabels({ data, top3Keys }: { data: SpiderDataItem[]; top3Keys: string[] }) {
+  const chartWidth = useChartWidth() ?? 0;
+  const chartHeight = useChartHeight() ?? 0;
+  const offset = useOffset();
+
+  const plotW = chartWidth - (offset?.left ?? 0) - (offset?.right ?? 0);
+  const plotH = chartHeight - (offset?.top ?? 0) - (offset?.bottom ?? 0);
+  const maxRadius = Math.min(plotW, plotH) / 2;
+  const outerRadius = maxRadius * 0.72;
+  const cx = chartWidth / 2;
+  const cy = chartHeight / 2;
+
+  if (!outerRadius || !cx || !cy) return null;
+
+  const count = data.length;
+
+  return (
+    <g>
+      {data.map((d, i) => {
+        if (d.percentile === 0) return null;
+        const angle = (Math.PI * 2 * i) / count - Math.PI / 2;
+        const r = (d.percentile / 100) * outerRadius;
+        const isTop3 = top3Keys.includes(d.key);
+        const belowBenchmark = d.benchmark > 0 && d.percentile < d.benchmark;
+        const labelColor = belowBenchmark ? "#DC2626" : d.layerColor;
+        const labelR = r + 13;
+        const lx = cx + labelR * Math.cos(angle);
+        const ly = cy + labelR * Math.sin(angle);
+        const cosA = Math.cos(angle);
+        const textAnchor = cosA > 0.15 ? "start" : cosA < -0.15 ? "end" : "middle";
+        return (
+          <text key={d.key} x={lx} y={ly} textAnchor={textAnchor} dominantBaseline="central"
+            fill={labelColor} fontSize={isTop3 ? 11 : 9} fontWeight={isTop3 ? 700 : 400}
+            opacity={isTop3 ? 0.9 : 0.55}
+            style={{ fontFamily: "var(--font-mono, monospace)", pointerEvents: "none" }}
+          >
+            {d.percentile}
+          </text>
+        );
+      })}
+    </g>
+  );
+}
 
 interface SpiderChartProps {
   subtestResults: any[];
   roleWeights: any[];
   cutline?: any;
   roleSlug?: string;
+  roleName?: string;
   weightDiffs?: Record<string, number>;
   showAnimation?: boolean;
 }
@@ -24,12 +161,12 @@ function getBenchmark(constructKey: string, layer: LayerType, cutline: any): num
   return cutline.overallMinimum ?? 30;
 }
 
-export function SpiderChart({ subtestResults, roleWeights, cutline, roleSlug, weightDiffs, showAnimation }: SpiderChartProps) {
+export function SpiderChart({ subtestResults, roleWeights, cutline, roleSlug, roleName, weightDiffs, showAnimation }: SpiderChartProps) {
   const [viewType, setViewType] = useState<"radar" | "bar">("radar");
   const [hoveredLabel, setHoveredLabel] = useState<string | null>(null);
   const [labelPos, setLabelPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
-  const data = Object.entries(CONSTRUCTS).map(([key, meta]) => {
+  const data = useMemo(() => Object.entries(CONSTRUCTS).map(([key, meta]) => {
     const result = subtestResults.find((r: any) => r.construct === key);
     const weight = roleWeights.find((w: any) => w.constructId === key);
     const layer = meta.layer as LayerType;
@@ -48,51 +185,57 @@ export function SpiderChart({ subtestResults, roleWeights, cutline, roleSlug, we
       layer,
       layerColor: LAYER_INFO[layer].color,
     };
-  });
+  }), [subtestResults, roleWeights, cutline, roleSlug]);
+
+  // Top 3 weighted constructs — shown with bold score labels
+  const top3Keys = useMemo(
+    () => [...data].sort((a, b) => b.weight - a.weight).slice(0, 3).map((d) => d.key),
+    [data]
+  );
 
   const hoveredData = hoveredLabel ? data.find((d) => d.construct === hoveredLabel) : null;
 
-  // Custom dot — only for candidate score, colored by layer
+  // Diamond dot — red when below benchmark, layer color otherwise
   const CustomDot = useCallback((props: any) => {
     const { cx, cy, payload } = props;
     if (!payload) return null;
+
+    const belowBenchmark = payload.benchmark > 0 && payload.percentile < payload.benchmark;
+    const dotColor = belowBenchmark ? "#DC2626" : payload.layerColor;
+    const s = 4;
+    const points = `${cx},${cy - s} ${cx + s},${cy} ${cx},${cy + s} ${cx - s},${cy}`;
+
     const diff = showAnimation && weightDiffs ? weightDiffs[payload.key] : 0;
     const pulseColor = diff > 0 ? "rgba(5, 150, 105, 0.6)" : diff < 0 ? "rgba(217, 119, 6, 0.6)" : null;
+
     return (
       <g>
         {pulseColor && (
-          <circle
-            cx={cx}
-            cy={cy}
-            r={10}
-            fill="none"
-            stroke={pulseColor}
-            strokeWidth={2}
-          >
+          <circle cx={cx} cy={cy} r={10} fill="none" stroke={pulseColor} strokeWidth={2}>
             <animate attributeName="r" from="4" to="14" dur="0.6s" repeatCount="2" />
             <animate attributeName="opacity" from="1" to="0" dur="0.6s" repeatCount="2" />
           </circle>
         )}
-        <circle
-          cx={cx}
-          cy={cy}
-          r={4}
-          fill={payload.layerColor}
+        <polygon
+          points={points}
+          fill={dotColor}
           stroke="var(--card)"
-          strokeWidth={2}
+          strokeWidth={1.5}
         />
       </g>
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showAnimation, weightDiffs]);
 
-  // Axis labels colored by layer, hover triggers tooltip
+  // Axis labels — red when below benchmark
   const CustomTick = useCallback((props: any) => {
     const { x, y, payload } = props;
     const d = data.find((item) => item.construct === payload.value);
-    const color = d?.layerColor ?? "var(--muted-foreground)";
+    const belowBenchmark = d && d.benchmark > 0 && d.percentile < d.benchmark;
+    const baseColor = belowBenchmark ? "#DC2626" : (d?.layerColor ?? "var(--muted-foreground)");
     const diff = showAnimation && weightDiffs && d ? weightDiffs[d.key] : 0;
     const animColor = diff > 0 ? "#059669" : diff < 0 ? "#D97706" : null;
+    const color = animColor ?? baseColor;
 
     return (
       <g
@@ -114,7 +257,7 @@ export function SpiderChart({ subtestResults, roleWeights, cutline, roleSlug, we
           y={y}
           textAnchor="middle"
           dominantBaseline="central"
-          fill={animColor ?? color}
+          fill={color}
           fontSize={11}
           fontWeight={700}
           style={{ fontFamily: "var(--font-mono, monospace)" }}
@@ -126,69 +269,6 @@ export function SpiderChart({ subtestResults, roleWeights, cutline, roleSlug, we
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, showAnimation, weightDiffs]);
 
-  // Colored radial lines + subtle layer wedge fills, rendered behind the grid
-  const LayerOverlay = useCallback((props: any) => {
-    // Customized passes width/height; compute cx/cy/outerRadius matching RadarChart's 50%/50%/72%
-    const width = props.width ?? 0;
-    const height = props.height ?? 0;
-    const cx = props.cx ?? width / 2;
-    const cy = props.cy ?? height / 2;
-    const outerRadius = props.outerRadius ?? Math.min(width, height) * 0.72 / 2;
-    if (!outerRadius) return null;
-
-    const count = data.length;
-
-    // Build wedge paths for each layer section
-    const wedges: { path: string; color: string }[] = [];
-    for (let i = 0; i < count; i++) {
-      const d = data[i];
-      const nextD = data[(i + 1) % count];
-
-      // Only draw wedge fill between adjacent constructs of the same layer
-      if (d.layer === nextD.layer) {
-        const angle1 = (Math.PI * 2 * i) / count - Math.PI / 2;
-        const angle2 = (Math.PI * 2 * (i + 1)) / count - Math.PI / 2;
-        const x1 = cx + outerRadius * Math.cos(angle1);
-        const y1 = cy + outerRadius * Math.sin(angle1);
-        const x2 = cx + outerRadius * Math.cos(angle2);
-        const y2 = cy + outerRadius * Math.sin(angle2);
-        const largeArc = 0;
-
-        wedges.push({
-          path: `M ${cx} ${cy} L ${x1} ${y1} A ${outerRadius} ${outerRadius} 0 ${largeArc} 1 ${x2} ${y2} Z`,
-          color: d.layerColor,
-        });
-      }
-    }
-
-    return (
-      <g>
-        {/* Subtle layer wedge fills */}
-        {wedges.map((w, i) => (
-          <path key={`wedge-${i}`} d={w.path} fill={w.color} fillOpacity={0.04} />
-        ))}
-        {/* Colored radial lines from center to each axis */}
-        {data.map((d, i) => {
-          const angle = (Math.PI * 2 * i) / count - Math.PI / 2;
-          const x2 = cx + outerRadius * Math.cos(angle);
-          const y2 = cy + outerRadius * Math.sin(angle);
-          return (
-            <line
-              key={d.key}
-              x1={cx}
-              y1={cy}
-              x2={x2}
-              y2={y2}
-              stroke={d.layerColor}
-              strokeWidth={1.5}
-              strokeOpacity={0.7}
-            />
-          );
-        })}
-      </g>
-    );
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data]);
 
   return (
     <div className="bg-card border border-border p-5 relative">
@@ -222,10 +302,13 @@ export function SpiderChart({ subtestResults, roleWeights, cutline, roleSlug, we
         <div className="h-[400px]">
           <ResponsiveContainer width="100%" height="100%">
             <RadarChart cx="50%" cy="50%" outerRadius="72%" data={data}>
-              {/* Default polygon grid (concentric rings), no radial lines — we draw our own */}
-              <PolarGrid stroke="var(--border)" radialLines={false} />
-              {/* Layer-colored radial lines + subtle wedge fills */}
-              <Customized component={(props: any) => <LayerOverlay {...props} />} />
+              {/* Concentric rings + radial spokes — the full spider web grid */}
+              <PolarGrid
+                stroke="rgba(100, 116, 139, 0.18)"
+                radialLines={true}
+              />
+              {/* Layer wedge fills + red gap segments (rendered behind data) */}
+              <LayerOverlay data={data} />
               <PolarAngleAxis
                 dataKey="construct"
                 tick={<CustomTick />}
@@ -236,11 +319,11 @@ export function SpiderChart({ subtestResults, roleWeights, cutline, roleSlug, we
                 tick={{ fill: "var(--muted-foreground)", fontSize: 9 }}
                 tickCount={5}
               />
-              {/* Role benchmark — dashed, absolutely no dots */}
+              {/* Role benchmark — dashed muted polygon */}
               <Radar
                 name="Benchmark"
                 dataKey="benchmark"
-                stroke="var(--muted-foreground)"
+                stroke="rgba(100, 116, 139, 0.45)"
                 strokeDasharray="4 4"
                 fill="none"
                 strokeWidth={1}
@@ -248,18 +331,18 @@ export function SpiderChart({ subtestResults, roleWeights, cutline, roleSlug, we
                 activeDot={false}
                 isAnimationActive={false}
               />
-              {/* Candidate score — filled polygon with layer-colored dots */}
+              {/* Single unified candidate profile polygon — stroke drawn by LayerOverlay */}
               <Radar
                 name="Score"
                 dataKey="percentile"
-                stroke="var(--muted-foreground)"
-                strokeOpacity={0.4}
-                fill="var(--muted-foreground)"
-                fillOpacity={0.06}
-                strokeWidth={1.5}
+                stroke="transparent"
+                fill="rgba(203, 213, 225, 0.04)"
+                strokeWidth={0}
                 dot={<CustomDot />}
                 activeDot={false}
               />
+              {/* Score labels positioned outward from each dot */}
+              <ScoreLabels data={data} top3Keys={top3Keys} />
             </RadarChart>
           </ResponsiveContainer>
         </div>
@@ -268,15 +351,21 @@ export function SpiderChart({ subtestResults, roleWeights, cutline, roleSlug, we
           {data.map((d) => {
             const diff = showAnimation && weightDiffs ? weightDiffs[d.key] : 0;
             const animClass = diff > 0 ? "animate-pulse-green" : diff < 0 ? "animate-pulse-amber" : "";
+            const belowBenchmark = d.benchmark > 0 && d.percentile < d.benchmark;
             return (
               <div key={d.construct} className={`flex items-center gap-3 ${animClass}`}>
-                <span className={`w-7 text-[10px] font-mono font-medium text-right ${diff > 0 ? "animate-pulse-green-text" : diff < 0 ? "animate-pulse-amber-text" : ""}`} style={{ color: d.layerColor }}>{d.construct}</span>
+                <span
+                  className={`w-7 text-[10px] font-mono font-medium text-right ${diff > 0 ? "animate-pulse-green-text" : diff < 0 ? "animate-pulse-amber-text" : ""}`}
+                  style={{ color: belowBenchmark ? "#DC2626" : d.layerColor }}
+                >
+                  {d.construct}
+                </span>
                 <div className="flex-1 h-5 bg-muted overflow-hidden relative">
                   <div
                     className="h-full transition-all duration-500"
                     style={{
                       width: `${d.percentile}%`,
-                      backgroundColor: d.layerColor,
+                      backgroundColor: belowBenchmark ? "#DC2626" : d.layerColor,
                       opacity: 0.8,
                     }}
                   />
@@ -286,7 +375,10 @@ export function SpiderChart({ subtestResults, roleWeights, cutline, roleSlug, we
                     style={{ left: `${d.benchmark}%` }}
                   />
                 </div>
-                <span className="w-8 text-[10px] font-mono font-medium tabular-nums text-right" style={{ color: d.layerColor }}>
+                <span
+                  className="w-8 text-[10px] font-mono font-medium tabular-nums text-right"
+                  style={{ color: belowBenchmark ? "#DC2626" : d.layerColor }}
+                >
                   {d.percentile}
                 </span>
               </div>
@@ -295,7 +387,7 @@ export function SpiderChart({ subtestResults, roleWeights, cutline, roleSlug, we
         </div>
       )}
 
-      {/* Tooltip — only appears when hovering axis labels (FL, EC, etc.) */}
+      {/* Tooltip — on axis label hover */}
       {hoveredData && (
         <div
           className="fixed z-50 bg-card/95 backdrop-blur-sm p-4 shadow-xl border border-border max-w-[280px]"
@@ -331,7 +423,7 @@ export function SpiderChart({ subtestResults, roleWeights, cutline, roleSlug, we
       )}
 
       {/* Legend */}
-      <div className="flex justify-center gap-5 mt-4 pt-3 border-t border-border">
+      <div className="flex justify-center gap-5 mt-4 pt-3 border-t border-border flex-wrap">
         {Object.entries(LAYER_INFO).map(([key, info]) => (
           <div key={key} className="flex items-center gap-1.5">
             <div className="w-2 h-2" style={{ backgroundColor: info.color }} />
@@ -339,8 +431,14 @@ export function SpiderChart({ subtestResults, roleWeights, cutline, roleSlug, we
           </div>
         ))}
         <div className="flex items-center gap-1.5">
-          <div className="w-4 h-0 border-t border-dashed border-muted-foreground" />
-          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Role Benchmark</span>
+          <div className="w-4 h-0 border-t border-dashed" style={{ borderColor: "rgba(100, 116, 139, 0.5)" }} />
+          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+            Benchmark{roleName ? `: ${roleName}` : ""}
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-0.5 rounded" style={{ backgroundColor: "rgba(220, 38, 38, 0.5)" }} />
+          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Below cutline</span>
         </div>
       </div>
     </div>

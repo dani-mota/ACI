@@ -2,18 +2,25 @@
  * AI model configuration for the assessment engine.
  * Haiku for real-time interactions (classification, follow-ups, probes).
  * Sonnet for heavyweight tasks (scenario generation, item generation).
+ *
+ * Set ASSESSMENT_TEST_MODE=true in .env.local to run entirely on Haiku
+ * with a single evaluation pass — ~20× cheaper, for local UX testing.
  */
+const TEST_MODE = process.env.ASSESSMENT_TEST_MODE === "true";
+
 export const AI_CONFIG = {
   /** Model for real-time assessment interactions (low latency) */
   realtimeModel: "claude-haiku-4-5-20251001" as const,
-  /** Model for content generation (higher quality) */
-  generationModel: "claude-sonnet-4-20250514" as const,
+  /** Model for content generation (higher quality, or Haiku in test mode) */
+  generationModel: TEST_MODE
+    ? ("claude-haiku-4-5-20251001" as const)
+    : ("claude-sonnet-4-20250514" as const),
   /** Timeout for real-time AI calls (ms) */
   realtimeTimeoutMs: 15_000,
   /** Timeout for generation AI calls (ms) */
   generationTimeoutMs: 30_000,
-  /** Number of independent evaluation runs for Layer B scoring */
-  evaluationRunCount: 3,
+  /** Number of independent evaluation runs for Layer B scoring (1 in test mode) */
+  evaluationRunCount: TEST_MODE ? 1 : 3,
   /** Standard deviation threshold for high-variance flagging */
   highVarianceThreshold: 0.3,
   /** Downweight factor for high-variance scores */

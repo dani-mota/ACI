@@ -23,7 +23,7 @@ interface NudgeThresholds {
 
 const THRESHOLDS: Record<NudgeContext, NudgeThresholds> = {
   phase_0: { first: 15, second: 30, final: 45 },
-  act_1:   { first: 20, second: 40, final: 60 },
+  act_1:   { first: 30, second: 55, final: 90 },
   act_2:   { first: 15, second: 30, final: 45 },
   act_3:   { first: 25, second: 50, final: 75 },
 };
@@ -125,7 +125,7 @@ export const NUDGE_FIRST: Record<NudgeContext, string> = {
 /** Second nudge — offer text fallback. */
 export const NUDGE_SECOND: Record<NudgeContext, string> = {
   phase_0: "If you'd prefer to type your response, that's completely fine too.",
-  act_1: "If you'd prefer to type your response, that's completely fine too.",
+  act_1: "Take your time — when you're ready, tap the microphone or type your thoughts.",
   act_2: "You can type your answer if that's easier.",
   act_3: "Feel free to type your thoughts if you'd prefer.",
 };
@@ -133,7 +133,7 @@ export const NUDGE_SECOND: Record<NudgeContext, string> = {
 /** Final nudge — auto-advance. */
 export const NUDGE_FINAL: Record<NudgeContext, string> = {
   phase_0: "No worries — let's move on.",
-  act_1: "No worries — let's move on to the next part.",
+  act_1: "I'll move us along, but we can revisit this if you'd like.",
   act_2: "Let's continue with the next question.",
   act_3: "Let's keep going.",
 };

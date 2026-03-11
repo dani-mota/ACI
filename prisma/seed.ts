@@ -25,65 +25,15 @@ const CONSTRUCTS = [
 
 type ConstructId = (typeof CONSTRUCTS)[number]["id"];
 
-// ─── ROLE COMPOSITE WEIGHTS (from PRD Section 6.4) ───────
-// Values are PRD weights × 100 (e.g., 0.22 → 22). Sum = 100 per role.
-const ROLE_WEIGHTS: Record<string, Record<ConstructId, number>> = {
-  "factory-technician": {
-    FLUID_REASONING: 10, EXECUTIVE_CONTROL: 10, COGNITIVE_FLEXIBILITY: 5,
-    METACOGNITIVE_CALIBRATION: 8, LEARNING_VELOCITY: 22,
-    SYSTEMS_DIAGNOSTICS: 3, PATTERN_RECOGNITION: 7, QUANTITATIVE_REASONING: 5,
-    SPATIAL_VISUALIZATION: 2, MECHANICAL_REASONING: 3,
-    PROCEDURAL_RELIABILITY: 20, ETHICAL_JUDGMENT: 5,
-  },
-  "cnc-machinist": {
-    FLUID_REASONING: 8, EXECUTIVE_CONTROL: 10, COGNITIVE_FLEXIBILITY: 8,
-    METACOGNITIVE_CALIBRATION: 5, LEARNING_VELOCITY: 8,
-    SYSTEMS_DIAGNOSTICS: 5, PATTERN_RECOGNITION: 12, QUANTITATIVE_REASONING: 15,
-    SPATIAL_VISUALIZATION: 15, MECHANICAL_REASONING: 12,
-    PROCEDURAL_RELIABILITY: 2, ETHICAL_JUDGMENT: 0,
-  },
-  "cam-programmer": {
-    FLUID_REASONING: 15, EXECUTIVE_CONTROL: 8, COGNITIVE_FLEXIBILITY: 5,
-    METACOGNITIVE_CALIBRATION: 5, LEARNING_VELOCITY: 7,
-    SYSTEMS_DIAGNOSTICS: 10, PATTERN_RECOGNITION: 5, QUANTITATIVE_REASONING: 18,
-    SPATIAL_VISUALIZATION: 20, MECHANICAL_REASONING: 5,
-    PROCEDURAL_RELIABILITY: 0, ETHICAL_JUDGMENT: 2,
-  },
-  "cmm-programmer": {
-    FLUID_REASONING: 10, EXECUTIVE_CONTROL: 10, COGNITIVE_FLEXIBILITY: 5,
-    METACOGNITIVE_CALIBRATION: 8, LEARNING_VELOCITY: 5,
-    SYSTEMS_DIAGNOSTICS: 5, PATTERN_RECOGNITION: 15, QUANTITATIVE_REASONING: 20,
-    SPATIAL_VISUALIZATION: 5, MECHANICAL_REASONING: 2,
-    PROCEDURAL_RELIABILITY: 12, ETHICAL_JUDGMENT: 3,
-  },
-  "manufacturing-engineer": {
-    FLUID_REASONING: 18, EXECUTIVE_CONTROL: 5, COGNITIVE_FLEXIBILITY: 8,
-    METACOGNITIVE_CALIBRATION: 8, LEARNING_VELOCITY: 12,
-    SYSTEMS_DIAGNOSTICS: 18, PATTERN_RECOGNITION: 5, QUANTITATIVE_REASONING: 8,
-    SPATIAL_VISUALIZATION: 5, MECHANICAL_REASONING: 3,
-    PROCEDURAL_RELIABILITY: 3, ETHICAL_JUDGMENT: 7,
-  },
-};
-
-// ─── CUTLINES (minimum percentile thresholds, PRD Section 6.5) ─
-const CUTLINES: Record<string, { tech: number; behav: number; lv: number }> = {
-  "factory-technician": { tech: 40, behav: 60, lv: 60 },
-  "cnc-machinist": { tech: 60, behav: 55, lv: 50 },
-  "cam-programmer": { tech: 75, behav: 50, lv: 55 },
-  "cmm-programmer": { tech: 70, behav: 75, lv: 45 },
-  "manufacturing-engineer": { tech: 65, behav: 70, lv: 65 },
-};
-
 // ─── CANDIDATE ARCHETYPES ────────────────────────────────
-// Each archetype defines a percentile range for each construct
 type Archetype = {
   name: string;
-  scores: Record<ConstructId, [number, number]>; // [min, max] percentile range
-  flagProbability: number; // 0-1
+  scores: Record<ConstructId, [number, number]>;
+  flagProbability: number;
 };
 
-const ARCHETYPES: Archetype[] = [
-  {
+const ARCHETYPES: Record<string, Archetype> = {
+  Star: {
     name: "Star",
     scores: {
       FLUID_REASONING: [82, 97], EXECUTIVE_CONTROL: [78, 95], COGNITIVE_FLEXIBILITY: [80, 96],
@@ -94,7 +44,7 @@ const ARCHETYPES: Archetype[] = [
     },
     flagProbability: 0.05,
   },
-  {
+  Specialist: {
     name: "Specialist",
     scores: {
       FLUID_REASONING: [70, 88], EXECUTIVE_CONTROL: [55, 75], COGNITIVE_FLEXIBILITY: [60, 78],
@@ -105,7 +55,7 @@ const ARCHETYPES: Archetype[] = [
     },
     flagProbability: 0.15,
   },
-  {
+  SteadyHand: {
     name: "Steady Hand",
     scores: {
       FLUID_REASONING: [45, 62], EXECUTIVE_CONTROL: [65, 82], COGNITIVE_FLEXIBILITY: [40, 58],
@@ -116,7 +66,7 @@ const ARCHETYPES: Archetype[] = [
     },
     flagProbability: 0.05,
   },
-  {
+  QuickStudy: {
     name: "Quick Study",
     scores: {
       FLUID_REASONING: [72, 90], EXECUTIVE_CONTROL: [55, 72], COGNITIVE_FLEXIBILITY: [70, 88],
@@ -127,7 +77,7 @@ const ARCHETYPES: Archetype[] = [
     },
     flagProbability: 0.1,
   },
-  {
+  Concern: {
     name: "Concern",
     scores: {
       FLUID_REASONING: [15, 35], EXECUTIVE_CONTROL: [18, 38], COGNITIVE_FLEXIBILITY: [20, 40],
@@ -138,7 +88,7 @@ const ARCHETYPES: Archetype[] = [
     },
     flagProbability: 0.7,
   },
-  {
+  DiamondInTheRough: {
     name: "Diamond in the Rough",
     scores: {
       FLUID_REASONING: [60, 80], EXECUTIVE_CONTROL: [35, 52], COGNITIVE_FLEXIBILITY: [65, 82],
@@ -149,7 +99,7 @@ const ARCHETYPES: Archetype[] = [
     },
     flagProbability: 0.25,
   },
-  {
+  VeteranProfile: {
     name: "Veteran Profile",
     scores: {
       FLUID_REASONING: [42, 58], EXECUTIVE_CONTROL: [70, 88], COGNITIVE_FLEXIBILITY: [35, 52],
@@ -160,7 +110,7 @@ const ARCHETYPES: Archetype[] = [
     },
     flagProbability: 0.05,
   },
-  {
+  WildCard: {
     name: "Wild Card",
     scores: {
       FLUID_REASONING: [55, 92], EXECUTIVE_CONTROL: [20, 85], COGNITIVE_FLEXIBILITY: [60, 95],
@@ -171,104 +121,40 @@ const ARCHETYPES: Archetype[] = [
     },
     flagProbability: 0.4,
   },
-];
+  BrightUnpolished: {
+    name: "Bright but Unpolished",
+    scores: {
+      FLUID_REASONING: [75, 92], EXECUTIVE_CONTROL: [28, 48], COGNITIVE_FLEXIBILITY: [68, 85],
+      METACOGNITIVE_CALIBRATION: [32, 52], LEARNING_VELOCITY: [80, 95],
+      SYSTEMS_DIAGNOSTICS: [60, 78], PATTERN_RECOGNITION: [65, 82], QUANTITATIVE_REASONING: [62, 80],
+      SPATIAL_VISUALIZATION: [58, 76], MECHANICAL_REASONING: [40, 60],
+      PROCEDURAL_RELIABILITY: [30, 48], ETHICAL_JUDGMENT: [62, 78],
+    },
+    flagProbability: 0.3,
+  },
+  Borderline: {
+    name: "Borderline",
+    scores: {
+      FLUID_REASONING: [48, 66], EXECUTIVE_CONTROL: [50, 68], COGNITIVE_FLEXIBILITY: [45, 62],
+      METACOGNITIVE_CALIBRATION: [50, 68], LEARNING_VELOCITY: [52, 70],
+      SYSTEMS_DIAGNOSTICS: [48, 65], PATTERN_RECOGNITION: [50, 68], QUANTITATIVE_REASONING: [48, 65],
+      SPATIAL_VISUALIZATION: [48, 65], MECHANICAL_REASONING: [50, 68],
+      PROCEDURAL_RELIABILITY: [52, 70], ETHICAL_JUDGMENT: [55, 72],
+    },
+    flagProbability: 0.2,
+  },
+};
 
-// ─── CANDIDATE NAMES ─────────────────────────────────────
-const CANDIDATES = [
-  { first: "Marcus", last: "Chen", email: "m.chen", archetype: 0, role: 0 },
-  { first: "Sarah", last: "Okafor", email: "s.okafor", archetype: 0, role: 2 },
-  { first: "James", last: "Petrov", email: "j.petrov", archetype: 0, role: 4 },
-  { first: "Elena", last: "Vasquez", email: "e.vasquez", archetype: 1, role: 1 },
-  { first: "Raj", last: "Patel", email: "r.patel", archetype: 1, role: 3 },
-  { first: "Tyler", last: "Morrison", email: "t.morrison", archetype: 1, role: 2 },
-  { first: "Linda", last: "Nakamura", email: "l.nakamura", archetype: 2, role: 0 },
-  { first: "David", last: "Okonkwo", email: "d.okonkwo", archetype: 2, role: 1 },
-  { first: "Maria", last: "Santos", email: "m.santos", archetype: 2, role: 0 },
-  { first: "Kevin", last: "Park", email: "k.park", archetype: 3, role: 4 },
-  { first: "Aisha", last: "Mohammed", email: "a.mohammed", archetype: 3, role: 2 },
-  { first: "Ryan", last: "O'Brien", email: "r.obrien", archetype: 3, role: 1 },
-  { first: "Tony", last: "Rizzo", email: "t.rizzo", archetype: 4, role: 0 },
-  { first: "Brenda", last: "Taylor", email: "b.taylor", archetype: 4, role: 1 },
-  { first: "Derek", last: "Washington", email: "d.washington", archetype: 4, role: 3 },
-  { first: "Yuki", last: "Tanaka", email: "y.tanaka", archetype: 5, role: 1 },
-  { first: "Carlos", last: "Mendez", email: "c.mendez", archetype: 5, role: 0 },
-  { first: "Jasmine", last: "Lewis", email: "j.lewis", archetype: 5, role: 4 },
-  { first: "Frank", last: "Kowalski", email: "f.kowalski", archetype: 6, role: 1 },
-  { first: "Patricia", last: "Henderson", email: "p.henderson", archetype: 6, role: 0 },
-  { first: "Mike", last: "Zhang", email: "m.zhang", archetype: 6, role: 3 },
-  { first: "Nina", last: "Volkov", email: "n.volkov", archetype: 7, role: 2 },
-  { first: "Alex", last: "Kim", email: "a.kim", archetype: 7, role: 4 },
-  { first: "Jordan", last: "Brooks", email: "j.brooks", archetype: 7, role: 0 },
-  { first: "Samira", last: "Al-Rashid", email: "s.alrashid", archetype: 3, role: 3 },
-];
-
-// Candidates that should be INCOMPLETE (assessment started but not finished)
-const INCOMPLETE_CANDIDATES = new Set(["n.volkov", "a.kim", "j.brooks"]);
-
-// Candidates that must have CRITICAL red flags (passes composite but integrity issue)
-const FORCED_RED_FLAG_CANDIDATES = new Set(["t.rizzo", "d.washington"]);
-
-const ROLE_SLUGS = ["factory-technician", "cnc-machinist", "cam-programmer", "cmm-programmer", "manufacturing-engineer"];
-const ROLE_NAMES = ["Factory Technician", "CNC Machinist", "CAM Programmer", "CMM Programmer", "Manufacturing Engineer"];
-const ROLE_DESCRIPTIONS = [
-  "Entry-level production floor role. Operates equipment, follows procedures, maintains quality standards.",
-  "Operates CNC machines. Reads G-code, manages feeds/speeds, maintains tolerances.",
-  "Programs toolpaths using CAM software. Requires spatial reasoning and process knowledge.",
-  "Programs coordinate measuring machines. Requires precision, GD&T mastery, statistical skills.",
-  "Designs and optimizes manufacturing processes. Cross-functional problem-solving role.",
-];
-
-// ─── HELPERS ─────────────────────────────────────────────
-function rand(min: number, max: number): number {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
-function generateScores(archetype: Archetype): Record<ConstructId, number> {
-  const scores: Partial<Record<ConstructId, number>> = {};
-  for (const c of CONSTRUCTS) {
-    const [min, max] = archetype.scores[c.id];
-    scores[c.id] = rand(min, max);
-  }
-  return scores as Record<ConstructId, number>;
-}
-
-function calculateComposite(scores: Record<ConstructId, number>, roleSlug: string): number {
-  const weights = ROLE_WEIGHTS[roleSlug];
-  let weightedSum = 0;
-  let totalWeight = 0;
-  for (const c of CONSTRUCTS) {
-    weightedSum += scores[c.id] * weights[c.id];
-    totalWeight += weights[c.id];
-  }
-  return Math.round(weightedSum / totalWeight);
-}
-
-function evaluateCutline(scores: Record<ConstructId, number>, roleSlug: string) {
-  const cutline = CUTLINES[roleSlug];
-  const techConstructs = CONSTRUCTS.filter(c => c.layer === "TECHNICAL_APTITUDE");
-  const behavConstructs = CONSTRUCTS.filter(c => c.layer === "BEHAVIORAL_INTEGRITY");
-
-  const techAvg = Math.round(techConstructs.reduce((sum, c) => sum + scores[c.id], 0) / techConstructs.length);
-  const behavAvg = Math.round(behavConstructs.reduce((sum, c) => sum + scores[c.id], 0) / behavConstructs.length);
-  const lv = scores.LEARNING_VELOCITY;
-
-  const passed = techAvg >= cutline.tech && behavAvg >= cutline.behav && lv >= cutline.lv;
-  const distance = Math.min(techAvg - cutline.tech, behavAvg - cutline.behav, lv - cutline.lv);
-  return { passed, distance };
-}
-
-function determineStatus(passed: boolean, distance: number, hasRedFlag: boolean): string {
-  if (hasRedFlag) return "DO_NOT_ADVANCE";
-  if (!passed) return distance >= -5 ? "REVIEW_REQUIRED" : "DO_NOT_ADVANCE";
-  return "RECOMMENDED";
-}
-
+// ─── RED FLAG TEMPLATES ───────────────────────────────────
 const RED_FLAG_TEMPLATES = [
   { severity: "CRITICAL", category: "Integrity", title: "Significant Ethical Concern", description: "Candidate demonstrated pattern of choosing expedient over correct actions in 3+ scenarios.", constructs: ["ETHICAL_JUDGMENT"] },
   { severity: "CRITICAL", category: "Safety", title: "Procedural Shortcutting Pattern", description: "Consistently chose to skip safety verification steps when presented with time pressure.", constructs: ["PROCEDURAL_RELIABILITY"] },
+  { severity: "CRITICAL", category: "Integrity", title: "Random Responding Pattern", description: "Response timing analysis indicates pattern inconsistent with genuine engagement. Unusually fast responses on 35% of complex items.", constructs: ["FLUID_REASONING", "PATTERN_RECOGNITION"] },
   { severity: "WARNING", category: "Calibration", title: "Overconfidence Pattern", description: "Candidate expressed high confidence on items answered incorrectly in 60%+ of flagged cases.", constructs: ["METACOGNITIVE_CALIBRATION"] },
   { severity: "WARNING", category: "Attention", title: "Sustained Attention Concern", description: "Response quality degraded significantly in final third of assessment. May indicate fatigue sensitivity.", constructs: ["EXECUTIVE_CONTROL"] },
   { severity: "WARNING", category: "Adaptability", title: "Rigidity Under Pressure", description: "Candidate struggled to shift strategies when initial approach failed, repeating unsuccessful methods.", constructs: ["COGNITIVE_FLEXIBILITY"] },
+  { severity: "WARNING", category: "Engagement", title: "Scenario Disengagement", description: "Average response length in Act 1 scenarios was below threshold, suggesting limited engagement with complex situations.", constructs: ["FLUID_REASONING", "SYSTEMS_DIAGNOSTICS"] },
+  { severity: "WARNING", category: "Consistency", title: "Act Consistency Failure", description: "3+ constructs showed significant divergence between Act 1 and Act 3 performance, suggesting inconsistent effort.", constructs: ["METACOGNITIVE_CALIBRATION", "EXECUTIVE_CONTROL"] },
   { severity: "INFO", category: "Speed", title: "Response Time Anomaly", description: "Unusually fast response times on complex items may indicate pattern-matching rather than reasoning.", constructs: ["FLUID_REASONING", "PATTERN_RECOGNITION"] },
   { severity: "INFO", category: "Learning", title: "Inconsistent Learning Curve", description: "Performance improved non-linearly, suggesting prior exposure to some content areas.", constructs: ["LEARNING_VELOCITY"] },
 ];
@@ -340,6 +226,50 @@ const AI_RESPONSES_LOW = [
   "It's close enough to spec. Probably fine to ship.",
 ];
 
+// ─── HELPERS ─────────────────────────────────────────────
+function rand(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function generateScores(archetype: Archetype): Record<ConstructId, number> {
+  const scores: Partial<Record<ConstructId, number>> = {};
+  for (const c of CONSTRUCTS) {
+    const [min, max] = archetype.scores[c.id];
+    scores[c.id] = rand(min, max);
+  }
+  return scores as Record<ConstructId, number>;
+}
+
+function calculateComposite(scores: Record<ConstructId, number>, weights: Record<ConstructId, number>): number {
+  let weightedSum = 0;
+  let totalWeight = 0;
+  for (const c of CONSTRUCTS) {
+    weightedSum += scores[c.id] * weights[c.id];
+    totalWeight += weights[c.id];
+  }
+  return Math.round(weightedSum / totalWeight);
+}
+
+function evaluateCutline(
+  scores: Record<ConstructId, number>,
+  cutline: { tech: number; behav: number; lv: number }
+) {
+  const techConstructs = CONSTRUCTS.filter((c) => c.layer === "TECHNICAL_APTITUDE");
+  const behavConstructs = CONSTRUCTS.filter((c) => c.layer === "BEHAVIORAL_INTEGRITY");
+  const techAvg = Math.round(techConstructs.reduce((sum, c) => sum + scores[c.id], 0) / techConstructs.length);
+  const behavAvg = Math.round(behavConstructs.reduce((sum, c) => sum + scores[c.id], 0) / behavConstructs.length);
+  const lv = scores.LEARNING_VELOCITY;
+  const passed = techAvg >= cutline.tech && behavAvg >= cutline.behav && lv >= cutline.lv;
+  const distance = Math.min(techAvg - cutline.tech, behavAvg - cutline.behav, lv - cutline.lv);
+  return { passed, distance };
+}
+
+function determineStatus(passed: boolean, distance: number, hasRedFlag: boolean): string {
+  if (hasRedFlag) return "DO_NOT_ADVANCE";
+  if (!passed) return distance >= -5 ? "REVIEW_REQUIRED" : "DO_NOT_ADVANCE";
+  return "RECOMMENDED";
+}
+
 function randomDate(daysAgo: number): Date {
   const d = new Date();
   d.setDate(d.getDate() - rand(1, daysAgo));
@@ -347,62 +277,94 @@ function randomDate(daysAgo: number): Date {
   return d;
 }
 
-// ─── MAIN SEED ───────────────────────────────────────────
-async function main() {
-  console.log("🌱 Seeding ACI database...");
+// ─── ORG SPEC TYPES ──────────────────────────────────────
+interface RoleSpec {
+  name: string;
+  slug: string;
+  description: string;
+  complexityLevel: number;
+  weights: Record<ConstructId, number>;
+  cutline: { tech: number; behav: number; lv: number };
+}
 
-  // Clean existing data
-  await prisma.activityLog.deleteMany();
-  await prisma.note.deleteMany();
-  await prisma.aIInteraction.deleteMany();
-  await prisma.redFlag.deleteMany();
-  await prisma.prediction.deleteMany();
-  await prisma.compositeScore.deleteMany();
-  await prisma.subtestResult.deleteMany();
-  await prisma.assessment.deleteMany();
-  await prisma.candidate.deleteMany();
-  await prisma.compositeWeight.deleteMany();
-  await prisma.cutline.deleteMany();
-  await prisma.role.deleteMany();
-  await prisma.user.deleteMany();
-  await prisma.organization.deleteMany();
+interface CandidateSpec {
+  firstName: string;
+  lastName: string;
+  emailPrefix: string;
+  primaryRoleSlug: string;
+  archetype: string;
+  forcedRedFlag?: boolean;
+  incomplete?: boolean;
+}
 
-  console.log("  Cleaned existing data.");
+interface OrgSpec {
+  name: string;
+  slug: string;
+  domain: string;
+  adminEmail: string;
+  adminName: string;
+  roles: RoleSpec[];
+  candidates: CandidateSpec[];
+}
 
-  // 1. Organization
+// ─── SEED FUNCTION ───────────────────────────────────────
+async function seedDemoOrg(spec: OrgSpec): Promise<void> {
+  console.log(`\n  Seeding: ${spec.name}`);
+
   const org = await prisma.organization.create({
-    data: { name: "Hadrian Manufacturing", slug: "hadrian-manufacturing", isDemo: true },
+    data: { name: spec.name, slug: spec.slug, domain: spec.domain, isDemo: true },
   });
-  console.log("  Created organization:", org.name);
 
-  // 2. User
-  const user = await prisma.user.create({
+  const adminUser = await prisma.user.create({
     data: {
-      email: "alex.chen@arklight.io",
-      name: "Alex Chen",
+      email: spec.adminEmail,
+      name: spec.adminName,
       role: "TA_LEADER",
       orgId: org.id,
     },
   });
-  console.log("  Created user:", user.name);
 
-  // 3. Roles
-  const roleRecords: Record<string, string> = {};
-  for (let i = 0; i < ROLE_SLUGS.length; i++) {
+  // Roles
+  const roleRecords: Record<string, { id: string; weights: Record<ConstructId, number>; cutline: { tech: number; behav: number; lv: number } }> = {};
+  for (const r of spec.roles) {
     const role = await prisma.role.create({
       data: {
-        name: ROLE_NAMES[i],
-        slug: ROLE_SLUGS[i],
-        description: ROLE_DESCRIPTIONS[i],
+        name: r.name,
+        slug: r.slug,
+        description: r.description,
         orgId: org.id,
         isCustom: false,
         sourceType: "SYSTEM_DEFAULT",
       },
     });
-    roleRecords[ROLE_SLUGS[i]] = role.id;
+    roleRecords[r.slug] = { id: role.id, weights: r.weights, cutline: r.cutline };
+
+    await prisma.cutline.create({
+      data: {
+        roleId: role.id,
+        orgId: org.id,
+        technicalAptitude: r.cutline.tech,
+        behavioralIntegrity: r.cutline.behav,
+        learningVelocity: r.cutline.lv,
+        overallMinimum: 30,
+      },
+    });
+
+    for (const c of CONSTRUCTS) {
+      await prisma.compositeWeight.create({
+        data: {
+          roleId: role.id,
+          constructId: c.id,
+          weight: r.weights[c.id],
+          version: 1,
+          source: "RESEARCH_VALIDATED",
+          effectiveFrom: new Date(),
+        },
+      });
+    }
   }
 
-  // Generic Aptitude role (equal weights, moderate cutlines)
+  // Generic Aptitude role
   const genericRole = await prisma.role.create({
     data: {
       name: "Generic Aptitude",
@@ -414,24 +376,12 @@ async function main() {
       sourceType: "SYSTEM_DEFAULT",
     },
   });
-  roleRecords["generic-aptitude"] = genericRole.id;
-  console.log("  Created", ROLE_SLUGS.length + 1, "roles (including Generic Aptitude).");
-
-  // 4. Cutlines
-  for (const slug of ROLE_SLUGS) {
-    const c = CUTLINES[slug];
-    await prisma.cutline.create({
-      data: {
-        roleId: roleRecords[slug],
-        orgId: org.id,
-        technicalAptitude: c.tech,
-        behavioralIntegrity: c.behav,
-        learningVelocity: c.lv,
-        overallMinimum: 30,
-      },
-    });
+  const genericWeights: Record<ConstructId, number> = {} as Record<ConstructId, number>;
+  for (const c of CONSTRUCTS) {
+    genericWeights[c.id] = Math.round((100 / 12) * 100) / 100;
   }
-  // Generic Aptitude cutline (moderate 25th percentile thresholds)
+  roleRecords["generic-aptitude"] = { id: genericRole.id, weights: genericWeights, cutline: { tech: 25, behav: 25, lv: 25 } };
+
   await prisma.cutline.create({
     data: {
       roleId: genericRole.id,
@@ -442,51 +392,34 @@ async function main() {
       overallMinimum: 25,
     },
   });
-  console.log("  Created cutlines for all roles.");
-
-  // 5. Composite Weights
-  for (const slug of ROLE_SLUGS) {
-    const weights = ROLE_WEIGHTS[slug];
-    for (const c of CONSTRUCTS) {
-      await prisma.compositeWeight.create({
-        data: {
-          roleId: roleRecords[slug],
-          constructId: c.id,
-          weight: weights[c.id],
-          version: 1,
-          source: "RESEARCH_VALIDATED",
-          effectiveFrom: new Date(),
-        },
-      });
-    }
-  }
-  // Generic Aptitude weights (equal 1/12 per construct)
   for (const c of CONSTRUCTS) {
     await prisma.compositeWeight.create({
       data: {
         roleId: genericRole.id,
         constructId: c.id,
-        weight: Math.round((100 / 12) * 100) / 100, // ~8.33
+        weight: genericWeights[c.id],
         version: 1,
         source: "RESEARCH_VALIDATED",
         effectiveFrom: new Date(),
       },
     });
   }
-  console.log("  Created composite weights (", (ROLE_SLUGS.length + 1) * CONSTRUCTS.length, "entries).");
 
-  // 6. Candidates + Assessments
-  let candidateCount = 0;
-  for (const cand of CANDIDATES) {
+  console.log(`    Created ${spec.roles.length + 1} roles.`);
+
+  // Candidates
+  let count = 0;
+  for (const cand of spec.candidates) {
     const archetype = ARCHETYPES[cand.archetype];
-    const primaryRoleSlug = ROLE_SLUGS[cand.role];
-    const scores = generateScores(archetype);
-    const isIncomplete = INCOMPLETE_CANDIDATES.has(cand.email);
-    const hasForcedRedFlag = FORCED_RED_FLAG_CANDIDATES.has(cand.email);
+    if (!archetype) throw new Error(`Unknown archetype: ${cand.archetype}`);
 
-    // Determine status for primary role
-    const { passed, distance } = evaluateCutline(scores, primaryRoleSlug);
-    const hasRedFlag = hasForcedRedFlag || Math.random() < archetype.flagProbability;
+    const primaryRole = roleRecords[cand.primaryRoleSlug];
+    if (!primaryRole) throw new Error(`Unknown role slug: ${cand.primaryRoleSlug} in org ${spec.slug}`);
+
+    const scores = generateScores(archetype);
+    const isIncomplete = !!cand.incomplete;
+    const { passed, distance } = evaluateCutline(scores, primaryRole.cutline);
+    const hasRedFlag = cand.forcedRedFlag || Math.random() < archetype.flagProbability;
     const status = isIncomplete ? "INCOMPLETE" : determineStatus(passed, distance, hasRedFlag);
 
     const assessmentDate = randomDate(60);
@@ -495,17 +428,16 @@ async function main() {
 
     const candidate = await prisma.candidate.create({
       data: {
-        firstName: cand.first,
-        lastName: cand.last,
-        email: `${cand.email}@example.com`,
+        firstName: cand.firstName,
+        lastName: cand.lastName,
+        email: `${cand.emailPrefix}@example.com`,
         phone: `+1${rand(200, 999)}${rand(100, 999)}${rand(1000, 9999)}`,
         orgId: org.id,
-        primaryRoleId: roleRecords[primaryRoleSlug],
+        primaryRoleId: primaryRole.id,
         status: status as "RECOMMENDED" | "REVIEW_REQUIRED" | "DO_NOT_ADVANCE" | "INCOMPLETE",
       },
     });
 
-    // Assessment
     const assessment = await prisma.assessment.create({
       data: {
         candidateId: candidate.id,
@@ -515,19 +447,16 @@ async function main() {
       },
     });
 
-    // Skip scoring data for incomplete assessments
     if (isIncomplete) {
-      candidateCount++;
-      console.log(`  [${candidateCount}/25] Created ${cand.first} ${cand.last} (${archetype.name}) → INCOMPLETE`);
+      count++;
       continue;
     }
 
-    // Subtest Results
+    // Subtest results
     for (const c of CONSTRUCTS) {
       const percentile = scores[c.id];
       const rawScore = percentile * 0.8 + rand(-5, 5);
       const theta = (percentile - 50) / 25 + (Math.random() * 0.4 - 0.2);
-
       await prisma.subtestResult.create({
         data: {
           assessmentId: assessment.id,
@@ -542,21 +471,21 @@ async function main() {
           aiFollowUpCount: rand(1, 4),
           calibrationScore: percentile >= 50 ? Math.round((0.6 + Math.random() * 0.35) * 100) / 100 : Math.round((0.3 + Math.random() * 0.4) * 100) / 100,
           calibrationBias: percentile >= 70 ? "well-calibrated" : percentile >= 50 ? "slightly-overconfident" : "overconfident",
-          narrativeInsight: `${cand.first} demonstrated ${percentile >= 75 ? "strong" : percentile >= 50 ? "adequate" : "developing"} capability in this area.`,
+          narrativeInsight: `${cand.firstName} demonstrated ${percentile >= 75 ? "strong" : percentile >= 50 ? "adequate" : "developing"} capability in this area.`,
         },
       });
     }
 
-    // Composite Scores for ALL roles
-    for (const slug of ROLE_SLUGS) {
-      const compositePercentile = calculateComposite(scores, slug);
-      const { passed: p, distance: d } = evaluateCutline(scores, slug);
-
+    // Composite scores for ALL roles (enables Role Switcher)
+    for (const [slug, roleData] of Object.entries(roleRecords)) {
+      if (slug === "generic-aptitude") continue;
+      const compositePercentile = calculateComposite(scores, roleData.weights);
+      const { passed: p, distance: d } = evaluateCutline(scores, roleData.cutline);
       await prisma.compositeScore.create({
         data: {
           assessmentId: assessment.id,
           roleSlug: slug,
-          indexName: `${ROLE_NAMES[ROLE_SLUGS.indexOf(slug)]} Composite`,
+          indexName: `${spec.roles.find((r) => r.slug === slug)?.name ?? slug} Composite`,
           score: compositePercentile,
           percentile: compositePercentile,
           passed: p,
@@ -567,10 +496,10 @@ async function main() {
 
     // Predictions
     const lv = scores.LEARNING_VELOCITY;
-    const rampMonths = lv >= 80 ? 0.75 : lv >= 60 ? 1.5 : lv >= 40 ? 2.5 : 3.5;
     const mc = scores.METACOGNITIVE_CALIBRATION;
     const prl = scores.PROCEDURAL_RELIABILITY;
     const fr = scores.FLUID_REASONING;
+    const rampMonths = lv >= 80 ? 0.75 : lv >= 60 ? 1.5 : lv >= 40 ? 2.5 : 3.5;
 
     await prisma.prediction.create({
       data: {
@@ -579,7 +508,7 @@ async function main() {
         rampTimeLabel: rampMonths <= 1 ? "Fast Ramp" : rampMonths <= 2 ? "Standard" : "Extended",
         rampTimeFactors: { learningVelocity: lv, executiveControl: scores.EXECUTIVE_CONTROL, systemsDiagnostics: scores.SYSTEMS_DIAGNOSTICS },
         supervisionLoad: mc >= 65 && prl >= 60 ? "LOW" : mc >= 40 ? "MEDIUM" : "HIGH",
-        supervisionScore: Math.round((mc * 0.4 + prl * 0.3 + scores.ETHICAL_JUDGMENT * 0.3)),
+        supervisionScore: Math.round(mc * 0.4 + prl * 0.3 + scores.ETHICAL_JUDGMENT * 0.3),
         supervisionFactors: { metacognition: mc, proceduralReliability: prl, ethicalJudgment: scores.ETHICAL_JUDGMENT },
         performanceCeiling: fr >= 75 && lv >= 70 ? "HIGH" : fr >= 50 ? "MEDIUM" : "LOW",
         ceilingFactors: { fluidReasoning: fr, learningVelocity: lv, systemsDiagnostics: scores.SYSTEMS_DIAGNOSTICS },
@@ -590,53 +519,51 @@ async function main() {
       },
     });
 
-    // Red Flags
+    // Red flags
     if (hasRedFlag) {
-      if (hasForcedRedFlag) {
-        // Forced red flag candidates always get a CRITICAL flag
-        const criticalTemplates = RED_FLAG_TEMPLATES.filter(t => t.severity === "CRITICAL");
-        const template = criticalTemplates[rand(0, criticalTemplates.length - 1)];
+      if (cand.forcedRedFlag) {
+        const critical = RED_FLAG_TEMPLATES.filter((t) => t.severity === "CRITICAL");
+        const tpl = critical[rand(0, critical.length - 1)];
         await prisma.redFlag.create({
           data: {
             assessmentId: assessment.id,
             severity: "CRITICAL",
-            category: template.category,
-            title: template.title,
-            description: template.description,
-            constructs: template.constructs,
+            category: tpl.category,
+            title: tpl.title,
+            description: tpl.description,
+            constructs: tpl.constructs,
           },
         });
       }
       const flagCount = rand(1, 2);
-      const usedIndices = new Set<number>();
+      const used = new Set<number>();
       for (let f = 0; f < flagCount; f++) {
-        let flagIdx: number;
-        do { flagIdx = rand(0, RED_FLAG_TEMPLATES.length - 1); } while (usedIndices.has(flagIdx));
-        usedIndices.add(flagIdx);
-        const template = RED_FLAG_TEMPLATES[flagIdx];
+        let idx: number;
+        do { idx = rand(0, RED_FLAG_TEMPLATES.length - 1); } while (used.has(idx));
+        used.add(idx);
+        const tpl = RED_FLAG_TEMPLATES[idx];
         await prisma.redFlag.create({
           data: {
             assessmentId: assessment.id,
-            severity: template.severity as "CRITICAL" | "WARNING" | "INFO",
-            category: template.category,
-            title: template.title,
-            description: template.description,
-            constructs: template.constructs,
+            severity: tpl.severity as "CRITICAL" | "WARNING" | "INFO",
+            category: tpl.category,
+            title: tpl.title,
+            description: tpl.description,
+            constructs: tpl.constructs,
           },
         });
       }
     }
 
-    // AI Interactions (2-3 per candidate, spread across constructs)
+    // AI interactions
     const interactionCount = rand(2, 4);
-    const shuffledConstructs = [...CONSTRUCTS].sort(() => Math.random() - 0.5).slice(0, interactionCount);
-    for (let i = 0; i < shuffledConstructs.length; i++) {
-      const c = shuffledConstructs[i];
+    const shuffled = [...CONSTRUCTS].sort(() => Math.random() - 0.5).slice(0, interactionCount);
+    for (let i = 0; i < shuffled.length; i++) {
+      const c = shuffled[i];
       const prompts = AI_PROMPTS[c.id];
       const prompt = prompts[rand(0, prompts.length - 1)];
       const isHigh = scores[c.id] >= 60;
       const responses = isHigh ? AI_RESPONSES_HIGH : AI_RESPONSES_LOW;
-
       await prisma.aIInteraction.create({
         data: {
           assessmentId: assessment.id,
@@ -654,30 +581,460 @@ async function main() {
       });
     }
 
-    // Notes (1-2 per candidate)
+    // Notes
     const noteTemplates = [
-      `${cand.first} completed the assessment ${durationMinutes! < 45 ? "quickly" : "at a steady pace"}. ${status === "RECOMMENDED" ? "Strong candidate for next round." : status === "REVIEW_REQUIRED" ? "Borderline — needs hiring manager discussion." : "Significant concerns noted."}`,
-      `Initial phone screen was positive. ${cand.first} has ${rand(2, 15)} years of manufacturing experience. ${archetype.name === "Star" ? "Very promising." : archetype.name === "Concern" ? "Skills may not match role requirements." : "Worth evaluating further."}`,
-      `Referred by current employee. Background check in progress.`,
+      `${cand.firstName} completed the assessment ${durationMinutes! < 45 ? "quickly" : "at a steady pace"}. ${status === "RECOMMENDED" ? "Strong candidate for next round." : status === "REVIEW_REQUIRED" ? "Borderline — needs hiring manager discussion." : "Significant concerns noted."}`,
+      `Initial screen was positive. ${cand.firstName} has relevant background for the ${roleRecords[cand.primaryRoleSlug] ? cand.primaryRoleSlug.replace(/-/g, " ") : "role"}. ${archetype.name === "Star" ? "Very promising." : archetype.name === "Concern" ? "Skills may not match role requirements." : "Worth evaluating further."}`,
     ];
-
     const noteCount = rand(1, 2);
     for (let n = 0; n < noteCount; n++) {
       await prisma.note.create({
         data: {
           candidateId: candidate.id,
-          authorId: user.id,
+          authorId: adminUser.id,
           content: noteTemplates[n % noteTemplates.length],
         },
       });
     }
 
-    candidateCount++;
-    console.log(`  [${candidateCount}/25] Created ${cand.first} ${cand.last} (${archetype.name}) → ${status}`);
+    count++;
   }
+
+  console.log(`    Created ${count} candidates.`);
+}
+
+// ─── ORG 1: ATLAS DEFENSE CORP ────────────────────────────
+const atlasDefenseSpec: OrgSpec = {
+  name: "Atlas Defense Corp",
+  slug: "atlas-defense",
+  domain: "atlasdefense.com",
+  adminEmail: "alex.chen@arklight.io",
+  adminName: "Alex Chen",
+  roles: [
+    {
+      name: "Factory Technician",
+      slug: "factory-technician",
+      description: "Entry-level production floor role. Operates equipment, follows procedures, maintains quality standards.",
+      complexityLevel: 2,
+      weights: {
+        FLUID_REASONING: 10, EXECUTIVE_CONTROL: 10, COGNITIVE_FLEXIBILITY: 5,
+        METACOGNITIVE_CALIBRATION: 8, LEARNING_VELOCITY: 22,
+        SYSTEMS_DIAGNOSTICS: 3, PATTERN_RECOGNITION: 7, QUANTITATIVE_REASONING: 5,
+        SPATIAL_VISUALIZATION: 2, MECHANICAL_REASONING: 3,
+        PROCEDURAL_RELIABILITY: 20, ETHICAL_JUDGMENT: 5,
+      },
+      cutline: { tech: 40, behav: 60, lv: 60 },
+    },
+    {
+      name: "CNC Machinist",
+      slug: "cnc-machinist",
+      description: "Operates CNC machines. Reads G-code, manages feeds/speeds, maintains tolerances.",
+      complexityLevel: 3,
+      weights: {
+        FLUID_REASONING: 8, EXECUTIVE_CONTROL: 10, COGNITIVE_FLEXIBILITY: 8,
+        METACOGNITIVE_CALIBRATION: 5, LEARNING_VELOCITY: 8,
+        SYSTEMS_DIAGNOSTICS: 5, PATTERN_RECOGNITION: 12, QUANTITATIVE_REASONING: 15,
+        SPATIAL_VISUALIZATION: 15, MECHANICAL_REASONING: 12,
+        PROCEDURAL_RELIABILITY: 2, ETHICAL_JUDGMENT: 0,
+      },
+      cutline: { tech: 60, behav: 55, lv: 50 },
+    },
+    {
+      name: "CAM Programmer",
+      slug: "cam-programmer",
+      description: "Programs toolpaths using CAM software. Requires spatial reasoning and process knowledge.",
+      complexityLevel: 4,
+      weights: {
+        FLUID_REASONING: 15, EXECUTIVE_CONTROL: 8, COGNITIVE_FLEXIBILITY: 5,
+        METACOGNITIVE_CALIBRATION: 5, LEARNING_VELOCITY: 7,
+        SYSTEMS_DIAGNOSTICS: 10, PATTERN_RECOGNITION: 5, QUANTITATIVE_REASONING: 18,
+        SPATIAL_VISUALIZATION: 20, MECHANICAL_REASONING: 5,
+        PROCEDURAL_RELIABILITY: 0, ETHICAL_JUDGMENT: 2,
+      },
+      cutline: { tech: 75, behav: 50, lv: 55 },
+    },
+    {
+      name: "CMM Programmer",
+      slug: "cmm-programmer",
+      description: "Programs coordinate measuring machines. Requires precision, GD&T mastery, statistical skills.",
+      complexityLevel: 4,
+      weights: {
+        FLUID_REASONING: 10, EXECUTIVE_CONTROL: 10, COGNITIVE_FLEXIBILITY: 5,
+        METACOGNITIVE_CALIBRATION: 8, LEARNING_VELOCITY: 5,
+        SYSTEMS_DIAGNOSTICS: 5, PATTERN_RECOGNITION: 15, QUANTITATIVE_REASONING: 20,
+        SPATIAL_VISUALIZATION: 5, MECHANICAL_REASONING: 2,
+        PROCEDURAL_RELIABILITY: 12, ETHICAL_JUDGMENT: 3,
+      },
+      cutline: { tech: 70, behav: 75, lv: 45 },
+    },
+    {
+      name: "Manufacturing Engineer",
+      slug: "manufacturing-engineer",
+      description: "Designs and optimizes manufacturing processes. Cross-functional problem-solving role.",
+      complexityLevel: 5,
+      weights: {
+        FLUID_REASONING: 18, EXECUTIVE_CONTROL: 5, COGNITIVE_FLEXIBILITY: 8,
+        METACOGNITIVE_CALIBRATION: 8, LEARNING_VELOCITY: 12,
+        SYSTEMS_DIAGNOSTICS: 18, PATTERN_RECOGNITION: 5, QUANTITATIVE_REASONING: 8,
+        SPATIAL_VISUALIZATION: 5, MECHANICAL_REASONING: 3,
+        PROCEDURAL_RELIABILITY: 3, ETHICAL_JUDGMENT: 7,
+      },
+      cutline: { tech: 65, behav: 70, lv: 65 },
+    },
+  ],
+  candidates: [
+    { firstName: "Jordan", lastName: "Brooks", emailPrefix: "j.brooks.atlas", primaryRoleSlug: "factory-technician", archetype: "Star" },
+    { firstName: "Elena", lastName: "Vasquez", emailPrefix: "e.vasquez.atlas", primaryRoleSlug: "cnc-machinist", archetype: "Star" },
+    { firstName: "Marcus", lastName: "Chen", emailPrefix: "m.chen.atlas", primaryRoleSlug: "manufacturing-engineer", archetype: "Star" },
+    { firstName: "Priya", lastName: "Sharma", emailPrefix: "p.sharma.atlas", primaryRoleSlug: "cam-programmer", archetype: "Specialist" },
+    { firstName: "Frank", lastName: "Kowalski", emailPrefix: "f.kowalski.atlas", primaryRoleSlug: "cnc-machinist", archetype: "Specialist" },
+    { firstName: "Keisha", lastName: "Williams", emailPrefix: "k.williams.atlas", primaryRoleSlug: "cmm-programmer", archetype: "SteadyHand" },
+    { firstName: "Carlos", lastName: "Mendez", emailPrefix: "c.mendez.atlas", primaryRoleSlug: "factory-technician", archetype: "QuickStudy" },
+    { firstName: "Tyler", lastName: "Morrison", emailPrefix: "t.morrison.atlas", primaryRoleSlug: "factory-technician", archetype: "Borderline" },
+    { firstName: "David", lastName: "Kim", emailPrefix: "d.kim.atlas", primaryRoleSlug: "cnc-machinist", archetype: "Borderline" },
+    { firstName: "Sarah", lastName: "O'Brien", emailPrefix: "s.obrien.atlas", primaryRoleSlug: "manufacturing-engineer", archetype: "WildCard" },
+    { firstName: "Jasmine", lastName: "Nguyen", emailPrefix: "j.nguyen.atlas", primaryRoleSlug: "cmm-programmer", archetype: "Borderline" },
+    { firstName: "Aisha", lastName: "Okafor", emailPrefix: "a.okafor.atlas", primaryRoleSlug: "cam-programmer", archetype: "DiamondInTheRough" },
+    { firstName: "Robert", lastName: "Hawkins", emailPrefix: "r.hawkins.atlas", primaryRoleSlug: "manufacturing-engineer", archetype: "Concern", forcedRedFlag: true },
+    { firstName: "Maria", lastName: "Santos", emailPrefix: "m.santos.atlas", primaryRoleSlug: "factory-technician", archetype: "DiamondInTheRough" },
+    { firstName: "Devon", lastName: "Jackson", emailPrefix: "d.jackson.atlas", primaryRoleSlug: "cam-programmer", archetype: "Concern" },
+    { firstName: "Angela", lastName: "Torres", emailPrefix: "a.torres.atlas", primaryRoleSlug: "cnc-machinist", archetype: "Concern" },
+    { firstName: "James", lastName: "Mitchell", emailPrefix: "j.mitchell.atlas", primaryRoleSlug: "factory-technician", archetype: "QuickStudy", incomplete: true },
+    { firstName: "Samantha", lastName: "Park", emailPrefix: "s.park.atlas", primaryRoleSlug: "manufacturing-engineer", archetype: "Star", incomplete: true },
+  ],
+};
+
+// ─── ORG 2: ORBITAL DYNAMICS ─────────────────────────────
+const orbitalDynamicsSpec: OrgSpec = {
+  name: "Orbital Dynamics",
+  slug: "orbital-dynamics",
+  domain: "orbitaldynamics.com",
+  adminEmail: "taylor.brooks@arklight.io",
+  adminName: "Taylor Brooks",
+  roles: [
+    {
+      name: "Systems Engineer",
+      slug: "systems-engineer",
+      description: "Owns system-level architecture and interface definitions for spacecraft subsystems. Manages requirements traceability and integration testing.",
+      complexityLevel: 5,
+      weights: {
+        FLUID_REASONING: 16, EXECUTIVE_CONTROL: 8, COGNITIVE_FLEXIBILITY: 10,
+        METACOGNITIVE_CALIBRATION: 8, LEARNING_VELOCITY: 10,
+        SYSTEMS_DIAGNOSTICS: 20, PATTERN_RECOGNITION: 8, QUANTITATIVE_REASONING: 10,
+        SPATIAL_VISUALIZATION: 5, MECHANICAL_REASONING: 3,
+        PROCEDURAL_RELIABILITY: 5, ETHICAL_JUDGMENT: 7,
+      },
+      cutline: { tech: 70, behav: 65, lv: 60 },
+    },
+    {
+      name: "Propulsion Engineer",
+      slug: "propulsion-engineer",
+      description: "Designs and analyzes propulsion systems for launch vehicles and spacecraft. Strong math and mechanics background required.",
+      complexityLevel: 5,
+      weights: {
+        FLUID_REASONING: 12, EXECUTIVE_CONTROL: 7, COGNITIVE_FLEXIBILITY: 5,
+        METACOGNITIVE_CALIBRATION: 7, LEARNING_VELOCITY: 6,
+        SYSTEMS_DIAGNOSTICS: 10, PATTERN_RECOGNITION: 8, QUANTITATIVE_REASONING: 20,
+        SPATIAL_VISUALIZATION: 12, MECHANICAL_REASONING: 15,
+        PROCEDURAL_RELIABILITY: 8, ETHICAL_JUDGMENT: 5,
+      },
+      cutline: { tech: 75, behav: 60, lv: 55 },
+    },
+    {
+      name: "Avionics Engineer",
+      slug: "avionics-engineer",
+      description: "Develops and validates avionics systems including flight computers, sensor integration, and communication links.",
+      complexityLevel: 5,
+      weights: {
+        FLUID_REASONING: 10, EXECUTIVE_CONTROL: 10, COGNITIVE_FLEXIBILITY: 8,
+        METACOGNITIVE_CALIBRATION: 7, LEARNING_VELOCITY: 8,
+        SYSTEMS_DIAGNOSTICS: 15, PATTERN_RECOGNITION: 18, QUANTITATIVE_REASONING: 12,
+        SPATIAL_VISUALIZATION: 6, MECHANICAL_REASONING: 4,
+        PROCEDURAL_RELIABILITY: 8, ETHICAL_JUDGMENT: 5,
+      },
+      cutline: { tech: 72, behav: 65, lv: 55 },
+    },
+    {
+      name: "Test Engineer",
+      slug: "test-engineer",
+      description: "Plans and executes environmental, functional, and system-level tests. Generates test reports and interfaces with integration teams.",
+      complexityLevel: 4,
+      weights: {
+        FLUID_REASONING: 8, EXECUTIVE_CONTROL: 8, COGNITIVE_FLEXIBILITY: 7,
+        METACOGNITIVE_CALIBRATION: 12, LEARNING_VELOCITY: 7,
+        SYSTEMS_DIAGNOSTICS: 10, PATTERN_RECOGNITION: 10, QUANTITATIVE_REASONING: 15,
+        SPATIAL_VISUALIZATION: 5, MECHANICAL_REASONING: 5,
+        PROCEDURAL_RELIABILITY: 18, ETHICAL_JUDGMENT: 5,
+      },
+      cutline: { tech: 65, behav: 78, lv: 50 },
+    },
+    {
+      name: "Integration Technician",
+      slug: "integration-technician",
+      description: "Performs hands-on integration of spacecraft hardware. Follows detailed work instructions and performs functional checkouts.",
+      complexityLevel: 3,
+      weights: {
+        FLUID_REASONING: 6, EXECUTIVE_CONTROL: 8, COGNITIVE_FLEXIBILITY: 5,
+        METACOGNITIVE_CALIBRATION: 7, LEARNING_VELOCITY: 15,
+        SYSTEMS_DIAGNOSTICS: 8, PATTERN_RECOGNITION: 7, QUANTITATIVE_REASONING: 8,
+        SPATIAL_VISUALIZATION: 18, MECHANICAL_REASONING: 15,
+        PROCEDURAL_RELIABILITY: 12, ETHICAL_JUDGMENT: 5,
+      },
+      cutline: { tech: 55, behav: 70, lv: 65 },
+    },
+  ],
+  candidates: [
+    { firstName: "Jordan", lastName: "Nakamura", emailPrefix: "j.nakamura.orbital", primaryRoleSlug: "systems-engineer", archetype: "Star" },
+    { firstName: "Priya", lastName: "Deshpande", emailPrefix: "p.deshpande.orbital", primaryRoleSlug: "propulsion-engineer", archetype: "Star" },
+    { firstName: "Marcus", lastName: "Webb", emailPrefix: "m.webb.orbital", primaryRoleSlug: "test-engineer", archetype: "SteadyHand" },
+    { firstName: "Elena", lastName: "Petrov", emailPrefix: "e.petrov.orbital", primaryRoleSlug: "systems-engineer", archetype: "Specialist" },
+    { firstName: "David", lastName: "Okonkwo", emailPrefix: "d.okonkwo.orbital", primaryRoleSlug: "test-engineer", archetype: "Star" },
+    { firstName: "Amara", lastName: "Osei", emailPrefix: "a.osei.orbital", primaryRoleSlug: "integration-technician", archetype: "DiamondInTheRough" },
+    { firstName: "Sofia", lastName: "Reyes", emailPrefix: "s.reyes.orbital", primaryRoleSlug: "avionics-engineer", archetype: "Borderline" },
+    { firstName: "Kenji", lastName: "Watanabe", emailPrefix: "k.watanabe.orbital", primaryRoleSlug: "propulsion-engineer", archetype: "Borderline" },
+    { firstName: "Thomas", lastName: "Chen", emailPrefix: "t.chen.orbital", primaryRoleSlug: "integration-technician", archetype: "QuickStudy" },
+    { firstName: "Alex", lastName: "Rivera", emailPrefix: "a.rivera.orbital", primaryRoleSlug: "systems-engineer", archetype: "WildCard" },
+    { firstName: "Rachel", lastName: "Kim", emailPrefix: "r.kim.orbital", primaryRoleSlug: "avionics-engineer", archetype: "Concern" },
+    { firstName: "Isabelle", lastName: "Moreau", emailPrefix: "i.moreau.orbital", primaryRoleSlug: "propulsion-engineer", archetype: "Concern" },
+    { firstName: "Craig", lastName: "Hollister", emailPrefix: "c.hollister.orbital", primaryRoleSlug: "systems-engineer", archetype: "Concern", forcedRedFlag: true },
+    { firstName: "Nadia", lastName: "Hassan", emailPrefix: "n.hassan.orbital", primaryRoleSlug: "avionics-engineer", archetype: "Concern" },
+    { firstName: "James", lastName: "Kofi", emailPrefix: "j.kofi.orbital", primaryRoleSlug: "test-engineer", archetype: "VeteranProfile", incomplete: true },
+    { firstName: "Mei", lastName: "Lin", emailPrefix: "m.lin.orbital", primaryRoleSlug: "integration-technician", archetype: "QuickStudy", incomplete: true },
+  ],
+};
+
+// ─── ORG 3: NEXUS ROBOTICS ───────────────────────────────
+const nexusRoboticsSpec: OrgSpec = {
+  name: "Nexus Robotics",
+  slug: "nexus-robotics",
+  domain: "nexusrobotics.com",
+  adminEmail: "morgan.patel@arklight.io",
+  adminName: "Morgan Patel",
+  roles: [
+    {
+      name: "Robotics Engineer",
+      slug: "robotics-engineer",
+      description: "Designs and implements robotic systems including kinematics, perception, and motion planning. Bridges hardware and software.",
+      complexityLevel: 5,
+      weights: {
+        FLUID_REASONING: 14, EXECUTIVE_CONTROL: 8, COGNITIVE_FLEXIBILITY: 8,
+        METACOGNITIVE_CALIBRATION: 7, LEARNING_VELOCITY: 10,
+        SYSTEMS_DIAGNOSTICS: 18, PATTERN_RECOGNITION: 10, QUANTITATIVE_REASONING: 8,
+        SPATIAL_VISUALIZATION: 15, MECHANICAL_REASONING: 10,
+        PROCEDURAL_RELIABILITY: 5, ETHICAL_JUDGMENT: 5,
+      },
+      cutline: { tech: 68, behav: 60, lv: 60 },
+    },
+    {
+      name: "Firmware Engineer",
+      slug: "firmware-engineer",
+      description: "Develops embedded software for robotic hardware platforms. Owns real-time control loops, sensor drivers, and communication protocols.",
+      complexityLevel: 5,
+      weights: {
+        FLUID_REASONING: 8, EXECUTIVE_CONTROL: 12, COGNITIVE_FLEXIBILITY: 8,
+        METACOGNITIVE_CALIBRATION: 8, LEARNING_VELOCITY: 8,
+        SYSTEMS_DIAGNOSTICS: 10, PATTERN_RECOGNITION: 18, QUANTITATIVE_REASONING: 15,
+        SPATIAL_VISUALIZATION: 5, MECHANICAL_REASONING: 5,
+        PROCEDURAL_RELIABILITY: 8, ETHICAL_JUDGMENT: 5,
+      },
+      cutline: { tech: 72, behav: 55, lv: 55 },
+    },
+    {
+      name: "ML Engineer",
+      slug: "ml-engineer",
+      description: "Builds and deploys machine learning models for perception, planning, and control. Works across research and production.",
+      complexityLevel: 5,
+      weights: {
+        FLUID_REASONING: 20, EXECUTIVE_CONTROL: 6, COGNITIVE_FLEXIBILITY: 10,
+        METACOGNITIVE_CALIBRATION: 8, LEARNING_VELOCITY: 12,
+        SYSTEMS_DIAGNOSTICS: 8, PATTERN_RECOGNITION: 10, QUANTITATIVE_REASONING: 18,
+        SPATIAL_VISUALIZATION: 4, MECHANICAL_REASONING: 2,
+        PROCEDURAL_RELIABILITY: 5, ETHICAL_JUDGMENT: 5,
+      },
+      cutline: { tech: 70, behav: 50, lv: 65 },
+    },
+    {
+      name: "Controls Engineer",
+      slug: "controls-engineer",
+      description: "Designs feedback control systems for robotic actuators and motion systems. Background in control theory and dynamics required.",
+      complexityLevel: 5,
+      weights: {
+        FLUID_REASONING: 10, EXECUTIVE_CONTROL: 10, COGNITIVE_FLEXIBILITY: 6,
+        METACOGNITIVE_CALIBRATION: 7, LEARNING_VELOCITY: 7,
+        SYSTEMS_DIAGNOSTICS: 18, PATTERN_RECOGNITION: 10, QUANTITATIVE_REASONING: 16,
+        SPATIAL_VISUALIZATION: 8, MECHANICAL_REASONING: 12,
+        PROCEDURAL_RELIABILITY: 5, ETHICAL_JUDGMENT: 4,
+      },
+      cutline: { tech: 70, behav: 60, lv: 55 },
+    },
+    {
+      name: "Test Engineer",
+      slug: "test-engineer-hw",
+      description: "Plans and executes hardware-in-the-loop and system-level tests for robotic platforms. Generates test reports and tracks defects.",
+      complexityLevel: 4,
+      weights: {
+        FLUID_REASONING: 8, EXECUTIVE_CONTROL: 8, COGNITIVE_FLEXIBILITY: 7,
+        METACOGNITIVE_CALIBRATION: 12, LEARNING_VELOCITY: 8,
+        SYSTEMS_DIAGNOSTICS: 10, PATTERN_RECOGNITION: 15, QUANTITATIVE_REASONING: 10,
+        SPATIAL_VISUALIZATION: 5, MECHANICAL_REASONING: 8,
+        PROCEDURAL_RELIABILITY: 18, ETHICAL_JUDGMENT: 7,
+      },
+      cutline: { tech: 60, behav: 72, lv: 50 },
+    },
+  ],
+  candidates: [
+    { firstName: "Yuki", lastName: "Tanaka", emailPrefix: "y.tanaka.nexus", primaryRoleSlug: "robotics-engineer", archetype: "Star" },
+    { firstName: "Nina", lastName: "Volkov", emailPrefix: "n.volkov.nexus", primaryRoleSlug: "ml-engineer", archetype: "Star" },
+    { firstName: "Devon", lastName: "Wallace", emailPrefix: "d.wallace.nexus", primaryRoleSlug: "test-engineer-hw", archetype: "SteadyHand" },
+    { firstName: "Shreya", lastName: "Iyer", emailPrefix: "s.iyer.nexus", primaryRoleSlug: "firmware-engineer", archetype: "Specialist" },
+    { firstName: "Liam", lastName: "O'Sullivan", emailPrefix: "l.osullivan.nexus", primaryRoleSlug: "controls-engineer", archetype: "Star" },
+    { firstName: "Fatima", lastName: "Al-Rashid", emailPrefix: "f.alrashid.nexus", primaryRoleSlug: "ml-engineer", archetype: "BrightUnpolished" },
+    { firstName: "Andre", lastName: "Baptiste", emailPrefix: "a.baptiste.nexus", primaryRoleSlug: "robotics-engineer", archetype: "QuickStudy" },
+    { firstName: "Chloe", lastName: "Martinez", emailPrefix: "c.martinez.nexus", primaryRoleSlug: "firmware-engineer", archetype: "Borderline" },
+    { firstName: "Omar", lastName: "Hassan", emailPrefix: "o.hassan.nexus", primaryRoleSlug: "controls-engineer", archetype: "Borderline" },
+    { firstName: "Isabella", lastName: "Russo", emailPrefix: "i.russo.nexus", primaryRoleSlug: "ml-engineer", archetype: "WildCard" },
+    { firstName: "Patrick", lastName: "O'Brien", emailPrefix: "p.obrien.nexus", primaryRoleSlug: "test-engineer-hw", archetype: "Concern" },
+    { firstName: "Leila", lastName: "Nazari", emailPrefix: "l.nazari.nexus", primaryRoleSlug: "robotics-engineer", archetype: "Concern" },
+    { firstName: "Victor", lastName: "Santos", emailPrefix: "v.santos.nexus", primaryRoleSlug: "controls-engineer", archetype: "Concern", forcedRedFlag: true },
+    { firstName: "Hannah", lastName: "Berg", emailPrefix: "h.berg.nexus", primaryRoleSlug: "firmware-engineer", archetype: "Concern" },
+    { firstName: "Rafael", lastName: "Diaz", emailPrefix: "r.diaz.nexus", primaryRoleSlug: "ml-engineer", archetype: "DiamondInTheRough" },
+    { firstName: "Akira", lastName: "Yamamoto", emailPrefix: "a.yamamoto.nexus", primaryRoleSlug: "robotics-engineer", archetype: "VeteranProfile", incomplete: true },
+    { firstName: "Sofia", lastName: "Lindgren", emailPrefix: "s.lindgren.nexus", primaryRoleSlug: "controls-engineer", archetype: "QuickStudy", incomplete: true },
+  ],
+};
+
+// ─── ORG 4: VERTEX AI LABS ───────────────────────────────
+const vertexAILabsSpec: OrgSpec = {
+  name: "Vertex AI Labs",
+  slug: "vertex-ai-labs",
+  domain: "vertexailabs.com",
+  adminEmail: "riley.foster@arklight.io",
+  adminName: "Riley Foster",
+  roles: [
+    {
+      name: "ML Engineer",
+      slug: "ml-engineer-ai",
+      description: "Builds, fine-tunes, and deploys large-scale ML models. Works across research and production infrastructure.",
+      complexityLevel: 5,
+      weights: {
+        FLUID_REASONING: 18, EXECUTIVE_CONTROL: 6, COGNITIVE_FLEXIBILITY: 10,
+        METACOGNITIVE_CALIBRATION: 8, LEARNING_VELOCITY: 12,
+        SYSTEMS_DIAGNOSTICS: 8, PATTERN_RECOGNITION: 8, QUANTITATIVE_REASONING: 18,
+        SPATIAL_VISUALIZATION: 4, MECHANICAL_REASONING: 2,
+        PROCEDURAL_RELIABILITY: 5, ETHICAL_JUDGMENT: 5,
+      },
+      cutline: { tech: 72, behav: 50, lv: 65 },
+    },
+    {
+      name: "AI Research Scientist",
+      slug: "ai-researcher",
+      description: "Leads original research on model architectures, training methods, and alignment. Publishes and presents findings.",
+      complexityLevel: 5,
+      weights: {
+        FLUID_REASONING: 22, EXECUTIVE_CONTROL: 5, COGNITIVE_FLEXIBILITY: 10,
+        METACOGNITIVE_CALIBRATION: 12, LEARNING_VELOCITY: 15,
+        SYSTEMS_DIAGNOSTICS: 8, PATTERN_RECOGNITION: 8, QUANTITATIVE_REASONING: 10,
+        SPATIAL_VISUALIZATION: 3, MECHANICAL_REASONING: 2,
+        PROCEDURAL_RELIABILITY: 3, ETHICAL_JUDGMENT: 5,
+      },
+      cutline: { tech: 78, behav: 48, lv: 70 },
+    },
+    {
+      name: "Full-Stack Engineer",
+      slug: "fullstack-engineer",
+      description: "Builds AI-native products end-to-end. Owns features from API design through frontend delivery, integrating ML capabilities throughout.",
+      complexityLevel: 4,
+      weights: {
+        FLUID_REASONING: 12, EXECUTIVE_CONTROL: 12, COGNITIVE_FLEXIBILITY: 14,
+        METACOGNITIVE_CALIBRATION: 8, LEARNING_VELOCITY: 10,
+        SYSTEMS_DIAGNOSTICS: 16, PATTERN_RECOGNITION: 10, QUANTITATIVE_REASONING: 8,
+        SPATIAL_VISUALIZATION: 3, MECHANICAL_REASONING: 2,
+        PROCEDURAL_RELIABILITY: 8, ETHICAL_JUDGMENT: 5,
+      },
+      cutline: { tech: 65, behav: 55, lv: 55 },
+    },
+    {
+      name: "Data Engineer",
+      slug: "data-engineer",
+      description: "Designs and maintains data pipelines for training, evaluation, and production serving. Owns data quality and lineage.",
+      complexityLevel: 4,
+      weights: {
+        FLUID_REASONING: 10, EXECUTIVE_CONTROL: 10, COGNITIVE_FLEXIBILITY: 7,
+        METACOGNITIVE_CALIBRATION: 7, LEARNING_VELOCITY: 8,
+        SYSTEMS_DIAGNOSTICS: 16, PATTERN_RECOGNITION: 12, QUANTITATIVE_REASONING: 18,
+        SPATIAL_VISUALIZATION: 3, MECHANICAL_REASONING: 2,
+        PROCEDURAL_RELIABILITY: 10, ETHICAL_JUDGMENT: 5,
+      },
+      cutline: { tech: 70, behav: 60, lv: 55 },
+    },
+    {
+      name: "Platform Engineer",
+      slug: "platform-engineer",
+      description: "Builds and maintains ML infrastructure including training clusters, model serving, and experiment tracking systems.",
+      complexityLevel: 4,
+      weights: {
+        FLUID_REASONING: 12, EXECUTIVE_CONTROL: 14, COGNITIVE_FLEXIBILITY: 8,
+        METACOGNITIVE_CALIBRATION: 7, LEARNING_VELOCITY: 8,
+        SYSTEMS_DIAGNOSTICS: 18, PATTERN_RECOGNITION: 8, QUANTITATIVE_REASONING: 10,
+        SPATIAL_VISUALIZATION: 3, MECHANICAL_REASONING: 2,
+        PROCEDURAL_RELIABILITY: 10, ETHICAL_JUDGMENT: 5,
+      },
+      cutline: { tech: 68, behav: 62, lv: 55 },
+    },
+  ],
+  candidates: [
+    { firstName: "Alex", lastName: "Park", emailPrefix: "a.park.vertex", primaryRoleSlug: "ai-researcher", archetype: "Star" },
+    { firstName: "Zara", lastName: "Ahmed", emailPrefix: "z.ahmed.vertex", primaryRoleSlug: "ml-engineer-ai", archetype: "Star" },
+    { firstName: "Marcus", lastName: "Liu", emailPrefix: "m.liu.vertex", primaryRoleSlug: "platform-engineer", archetype: "SteadyHand" },
+    { firstName: "Priya", lastName: "Kapoor", emailPrefix: "p.kapoor.vertex", primaryRoleSlug: "data-engineer", archetype: "Specialist" },
+    { firstName: "Dylan", lastName: "Torres", emailPrefix: "d.torres.vertex", primaryRoleSlug: "fullstack-engineer", archetype: "Star" },
+    { firstName: "Mei", lastName: "Zhang", emailPrefix: "m.zhang.vertex", primaryRoleSlug: "ai-researcher", archetype: "BrightUnpolished" },
+    { firstName: "Eli", lastName: "Goldberg", emailPrefix: "e.goldberg.vertex", primaryRoleSlug: "ml-engineer-ai", archetype: "QuickStudy" },
+    { firstName: "Sana", lastName: "Mirza", emailPrefix: "s.mirza.vertex", primaryRoleSlug: "data-engineer", archetype: "Borderline" },
+    { firstName: "Tariq", lastName: "Johnson", emailPrefix: "t.johnson.vertex", primaryRoleSlug: "platform-engineer", archetype: "Borderline" },
+    { firstName: "Ava", lastName: "Chen", emailPrefix: "a.chen.vertex", primaryRoleSlug: "fullstack-engineer", archetype: "WildCard" },
+    { firstName: "Noah", lastName: "Okafor", emailPrefix: "n.okafor.vertex", primaryRoleSlug: "fullstack-engineer", archetype: "Concern" },
+    { firstName: "Layla", lastName: "Hassan", emailPrefix: "l.hassan.vertex", primaryRoleSlug: "ml-engineer-ai", archetype: "Concern" },
+    { firstName: "Ryan", lastName: "Nakamura", emailPrefix: "r.nakamura.vertex", primaryRoleSlug: "data-engineer", archetype: "Concern", forcedRedFlag: true },
+    { firstName: "Aisha", lastName: "Williams", emailPrefix: "a.williams.vertex", primaryRoleSlug: "ai-researcher", archetype: "Concern" },
+    { firstName: "Lucas", lastName: "Ferreira", emailPrefix: "l.ferreira.vertex", primaryRoleSlug: "platform-engineer", archetype: "DiamondInTheRough" },
+    { firstName: "Sophie", lastName: "Dupont", emailPrefix: "s.dupont.vertex", primaryRoleSlug: "data-engineer", archetype: "VeteranProfile" },
+    { firstName: "Omar", lastName: "Sheikh", emailPrefix: "o.sheikh.vertex", primaryRoleSlug: "ml-engineer-ai", archetype: "BrightUnpolished", incomplete: true },
+    { firstName: "Ingrid", lastName: "Svensson", emailPrefix: "i.svensson.vertex", primaryRoleSlug: "platform-engineer", archetype: "QuickStudy", incomplete: true },
+  ],
+};
+
+// ─── MAIN ─────────────────────────────────────────────────
+async function main() {
+  console.log("🌱 Seeding ACI database (4 demo organizations)...");
+
+  // Clean all existing data
+  await prisma.activityLog.deleteMany();
+  await prisma.note.deleteMany();
+  await prisma.aIInteraction.deleteMany();
+  await prisma.redFlag.deleteMany();
+  await prisma.prediction.deleteMany();
+  await prisma.compositeScore.deleteMany();
+  await prisma.subtestResult.deleteMany();
+  await prisma.assessment.deleteMany();
+  await prisma.candidate.deleteMany();
+  await prisma.compositeWeight.deleteMany();
+  await prisma.cutline.deleteMany();
+  await prisma.role.deleteMany();
+  await prisma.user.deleteMany();
+  await prisma.organization.deleteMany();
+
+  console.log("  Cleaned existing data.");
+
+  await seedDemoOrg(atlasDefenseSpec);
+  await seedDemoOrg(orbitalDynamicsSpec);
+  await seedDemoOrg(nexusRoboticsSpec);
+  await seedDemoOrg(vertexAILabsSpec);
 
   // Summary
   const counts = await Promise.all([
+    prisma.organization.count(),
+    prisma.role.count(),
     prisma.candidate.count(),
     prisma.subtestResult.count(),
     prisma.compositeScore.count(),
@@ -688,13 +1045,15 @@ async function main() {
   ]);
 
   console.log("\n✅ Seed complete!");
-  console.log(`  Candidates: ${counts[0]}`);
-  console.log(`  Subtest Results: ${counts[1]}`);
-  console.log(`  Composite Scores: ${counts[2]}`);
-  console.log(`  Predictions: ${counts[3]}`);
-  console.log(`  Red Flags: ${counts[4]}`);
-  console.log(`  AI Interactions: ${counts[5]}`);
-  console.log(`  Notes: ${counts[6]}`);
+  console.log(`  Organizations: ${counts[0]}`);
+  console.log(`  Roles: ${counts[1]}`);
+  console.log(`  Candidates: ${counts[2]}`);
+  console.log(`  Subtest Results: ${counts[3]}`);
+  console.log(`  Composite Scores: ${counts[4]}`);
+  console.log(`  Predictions: ${counts[5]}`);
+  console.log(`  Red Flags: ${counts[6]}`);
+  console.log(`  AI Interactions: ${counts[7]}`);
+  console.log(`  Notes: ${counts[8]}`);
 }
 
 main()

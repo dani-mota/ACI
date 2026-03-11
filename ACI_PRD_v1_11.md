@@ -980,6 +980,31 @@ Creates: Organization (with `domain`), first user (TA_LEADER role), cloned role 
 | Open redirect prevention | Auth callback validates `next` parameter |
 | EC API guards | 6 routes return 403 for EC role |
 
+## 10.6 OAuth Provider Registration
+
+### Microsoft (Azure AD)
+
+| Field | Value |
+|-------|-------|
+| Display name | ACI |
+| Application (client) ID | `026cf2f6-d31f-428a-b713-3527b66c4edd` |
+| Object ID | `b3072e3c-340a-4b14-b942-7f46a107a162` |
+| Directory (tenant) ID | `becdde81-70ce-4054-a8fb-dd952f985d6f` |
+| Supported account types | Any Entra ID Tenant + Personal Microsoft accounts |
+| Redirect URI | `https://mliknahmztvwsrliloqg.supabase.co/auth/v1/callback` (Web) |
+| State | Activated |
+| Supabase provider key | `"azure"` |
+
+> **Required:** Go to Azure → **Certificates & secrets** → create a Client Secret and add it to Supabase Authentication → Providers → Azure → Client Secret field. The secret value is only shown once at creation time.
+
+### Google
+
+| Field | Value |
+|-------|-------|
+| Redirect URI | `https://mliknahmztvwsrliloqg.supabase.co/auth/v1/callback` |
+| Supabase provider key | `"google"` |
+| Console | Google Cloud Console → APIs & Services → Credentials |
+
 ---
 
 # 11. API Specification ✅

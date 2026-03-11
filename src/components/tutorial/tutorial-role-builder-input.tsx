@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { FileText, Copy, PenLine, Loader2, ChevronRight, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { generateMockRoleAnalysis } from "@/lib/tutorial/mock-role-analysis";
 
 interface TemplateRole {
   id: string;
@@ -12,7 +13,7 @@ interface TemplateRole {
   description?: string | null;
 }
 
-interface RoleBuilderInputClientProps {
+interface TutorialRoleBuilderInputProps {
   templates: TemplateRole[];
 }
 
@@ -26,18 +27,13 @@ const STAGE_LABELS = [
   "Building hiring intelligence…",
 ];
 
-export function RoleBuilderInputClient({ templates }: RoleBuilderInputClientProps) {
+export function TutorialRoleBuilderInput({ templates }: TutorialRoleBuilderInputProps) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("jd");
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
 
-  // JD upload state
   const [jdText, setJdText] = useState("");
-
-  // Clone state
   const [selectedTemplate, setSelectedTemplate] = useState<string>("");
-
-  // Manual form state
   const [form, setForm] = useState({
     title: "",
     description: "",
@@ -52,31 +48,22 @@ export function RoleBuilderInputClient({ templates }: RoleBuilderInputClientProp
   const [error, setError] = useState<string | null>(null);
   const [stage, setStage] = useState<number>(-1);
 
-  const simulateStages = async (fn: () => Promise<Response>) => {
+  const analyzeWithMock = async (title: string, sourceType: "JD_UPLOAD" | "TEMPLATE_CLONE" | "MANUAL_ENTRY") => {
     setError(null);
     setStage(0);
     const interval = setInterval(() => {
       setStage((s) => (s < STAGE_LABELS.length - 1 ? s + 1 : s));
-    }, 1800);
+    }, 700);
 
     try {
-      const res = await fn();
+      const result = await generateMockRoleAnalysis(title, sourceType);
       clearInterval(interval);
       setStage(STAGE_LABELS.length - 1);
-
-      if (!res.ok) {
-        const data = await res.json();
-        setError(data.error ?? "Analysis failed. Please try again.");
-        setStage(-1);
-        return;
-      }
-
-      const result = await res.json();
       sessionStorage.setItem("roleBuilderResult", JSON.stringify(result));
-      startTransition(() => router.push("/roles/builder"));
+      startTransition(() => router.push("/tutorial/roles/builder"));
     } catch {
       clearInterval(interval);
-      setError("Network error. Please try again.");
+      setError("Analysis failed. Please try again.");
       setStage(-1);
     }
   };
@@ -87,37 +74,22 @@ export function RoleBuilderInputClient({ templates }: RoleBuilderInputClientProp
         setError("Please paste at least 50 characters of job description text.");
         return;
       }
-      simulateStages(() =>
-        fetch("/api/roles/analyze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sourceType: "JD_UPLOAD", text: jdText }),
-        })
-      );
+      // Extract a title from the first line of the JD
+      const firstLine = jdText.trim().split("\n")[0].slice(0, 80);
+      analyzeWithMock(firstLine || "Custom Role", "JD_UPLOAD");
     } else if (tab === "clone") {
       if (!selectedTemplate) {
         setError("Please select a template role to clone.");
         return;
       }
-      simulateStages(() =>
-        fetch("/api/roles/analyze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sourceType: "TEMPLATE_CLONE", templateSlug: selectedTemplate }),
-        })
-      );
+      const tpl = templates.find((t) => t.slug === selectedTemplate);
+      analyzeWithMock(tpl?.name ?? "Custom Role", "TEMPLATE_CLONE");
     } else {
       if (!form.title.trim()) {
         setError("Role title is required.");
         return;
       }
-      simulateStages(() =>
-        fetch("/api/roles/analyze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sourceType: "MANUAL_ENTRY", formData: form }),
-        })
-      );
+      analyzeWithMock(form.title.trim(), "MANUAL_ENTRY");
     }
   };
 
@@ -126,7 +98,6 @@ export function RoleBuilderInputClient({ templates }: RoleBuilderInputClientProp
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-2xl mx-auto">
-        {/* Header */}
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-foreground" style={{ fontFamily: "var(--font-dm-sans)" }}>
             Create New Role Profile
@@ -175,9 +146,6 @@ export function RoleBuilderInputClient({ templates }: RoleBuilderInputClientProp
                 onChange={(e) => setJdText(e.target.value)}
                 disabled={analyzing}
               />
-              <p className="text-[10px] text-muted-foreground">
-                PDF/DOCX upload coming soon. Text-only for now.
-              </p>
             </div>
           )}
 
@@ -324,18 +292,9 @@ export function RoleBuilderInputClient({ templates }: RoleBuilderInputClientProp
           </div>
         )}
 
-        {/* Stage progress — gamified */}
+        {/* Stage progress */}
         {analyzing && (
           <div className="mt-4 relative overflow-hidden rounded-sm">
-            {/* Subtle animated gradient background */}
-            <div
-              className="absolute inset-0 opacity-30"
-              style={{
-                background: "linear-gradient(135deg, rgba(37, 99, 235, 0.05), rgba(201, 168, 76, 0.05), rgba(5, 150, 105, 0.05))",
-                backgroundSize: "200% 200%",
-                animation: "gradientShift 6s ease infinite",
-              }}
-            />
             <style>{`
               @keyframes gradientShift {
                 0% { background-position: 0% 50%; }
@@ -361,17 +320,12 @@ export function RoleBuilderInputClient({ templates }: RoleBuilderInputClientProp
                 const isComplete = i < stage;
                 const isCurrent = i === stage;
                 const isPending = i > stage;
-
                 return (
                   <div
                     key={i}
                     className="flex items-center gap-3 transition-all duration-300"
-                    style={{
-                      opacity: isPending ? 0.3 : 1,
-                      transform: isPending ? "translateX(0)" : "translateX(0)",
-                    }}
+                    style={{ opacity: isPending ? 0.3 : 1 }}
                   >
-                    {/* Step indicator */}
                     {isComplete ? (
                       <div
                         className="w-5 h-5 rounded-full bg-aci-green/20 flex items-center justify-center flex-shrink-0"
@@ -390,8 +344,6 @@ export function RoleBuilderInputClient({ templates }: RoleBuilderInputClientProp
                     ) : (
                       <div className="w-5 h-5 rounded-full border border-border flex-shrink-0" />
                     )}
-
-                    {/* Label */}
                     <span
                       className={`text-xs transition-colors duration-300 ${
                         isComplete ? "text-foreground" : isCurrent ? "text-foreground font-medium" : "text-muted-foreground/40"
@@ -402,15 +354,13 @@ export function RoleBuilderInputClient({ templates }: RoleBuilderInputClientProp
                   </div>
                 );
               })}
-
               <p className="text-[10px] text-muted-foreground/50 pt-2 border-t border-border/50 mt-3">
-                Usually takes 1-2 minutes
+                Generating research-backed analysis…
               </p>
             </div>
           </div>
         )}
 
-        {/* Submit */}
         <div className="mt-4 flex items-center justify-between">
           <Button variant="ghost" size="sm" onClick={() => router.back()} disabled={analyzing}>
             Cancel

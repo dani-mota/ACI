@@ -454,10 +454,20 @@ export function AssessmentStage({
     // Phase 2: Switch to split layout (orb is already in the right position)
     const s = getStore();
     s.setOrchestratorPhase("ACT_1");
-    s.setOrbMode("processing");
+    s.setOrbMode("speaking");
     s.setOrbTargetSize(getOrbSize("FULL"));
     setOrbGliding(false);
 
+    // Phase 3: Warm-up introduction before first scenario
+    try {
+      const { ACT1_WARMUP_LINES } = await import("@/lib/assessment/transitions");
+      await playSentenceSequence(ACT1_WARMUP_LINES);
+    } catch {
+      // If TTS warm-up fails, continue to assessment
+    }
+
+    // Phase 4: Begin assessment
+    s.setOrbMode("processing");
     try {
       await s.sendMessage("[BEGIN_ASSESSMENT]");
     } catch {
@@ -473,7 +483,7 @@ export function AssessmentStage({
         st.setSubtitleRevealedWords(100);
       }
     }
-  }, []);
+  }, [playSentenceSequence]);
 
   const handleTransition1to2 = useCallback(async () => {
     if (transitionInProgress.current) return;

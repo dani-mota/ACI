@@ -75,6 +75,8 @@ export function ScenarioReferenceCard({ reference, revealCount }: ScenarioRefere
           border: "1px solid rgba(255, 255, 255, 0.06)",
           borderRadius: "14px",
           padding: "20px 24px",
+          maxHeight: "40vh",
+          overflowY: "auto",
         }}
       >
         {/* Role badge */}
@@ -190,64 +192,87 @@ export function ScenarioReferenceCard({ reference, revealCount }: ScenarioRefere
         })}
 
         {/* New Information — accumulated across follow-up beats (always shown) */}
-        {displayRef.newInformation && displayRef.newInformation.length > 0 && (
-          <div
-            style={{
-              marginBottom: "14px",
-              opacity: 1,
-              transition: "opacity 400ms ease",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
-              <span
-                style={{
-                  width: "4px",
-                  height: "4px",
-                  borderRadius: "50%",
-                  background: "rgba(37, 99, 235, 0.7)",
-                  flexShrink: 0,
-                }}
-              />
-              <span
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: "9px",
-                  fontWeight: 500,
-                  color: "rgba(96, 165, 250, 0.6)",
-                  textTransform: "uppercase",
-                  letterSpacing: "1.5px",
-                }}
-              >
-                New Information
-              </span>
-            </div>
-            <ul
+        {displayRef.newInformation && displayRef.newInformation.length > 0 && (() => {
+          const MAX_VISIBLE = 4;
+          const COLLAPSE_THRESHOLD = 6;
+          const items = displayRef.newInformation;
+          const shouldCollapse = items.length > COLLAPSE_THRESHOLD;
+          const visibleItems = shouldCollapse ? items.slice(-MAX_VISIBLE) : items;
+          const hiddenCount = shouldCollapse ? items.length - MAX_VISIBLE : 0;
+
+          return (
+            <div
               style={{
-                listStyle: "none",
-                padding: 0,
-                margin: 0,
-                borderLeft: "2px solid rgba(37, 99, 235, 0.15)",
-                paddingLeft: "14px",
+                marginBottom: "14px",
+                opacity: 1,
+                transition: "opacity 400ms ease",
               }}
             >
-              {displayRef.newInformation.map((item, ii) => (
-                <li
-                  key={ii}
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
+                <span
                   style={{
-                    fontFamily: "var(--font-display)",
-                    fontSize: "13px",
-                    fontWeight: 300,
-                    color: "rgba(96, 165, 250, 0.65)",
-                    lineHeight: 1.65,
-                    marginBottom: ii < displayRef.newInformation.length - 1 ? "2px" : 0,
+                    width: "4px",
+                    height: "4px",
+                    borderRadius: "50%",
+                    background: "rgba(37, 99, 235, 0.7)",
+                    flexShrink: 0,
+                  }}
+                />
+                <span
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: "9px",
+                    fontWeight: 500,
+                    color: "rgba(96, 165, 250, 0.6)",
+                    textTransform: "uppercase",
+                    letterSpacing: "1.5px",
                   }}
                 >
-                  {item}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+                  New Information
+                </span>
+              </div>
+              <ul
+                style={{
+                  listStyle: "none",
+                  padding: 0,
+                  margin: 0,
+                  borderLeft: "2px solid rgba(37, 99, 235, 0.15)",
+                  paddingLeft: "14px",
+                }}
+              >
+                {hiddenCount > 0 && (
+                  <li
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontSize: "10px",
+                      fontWeight: 400,
+                      color: "rgba(96, 165, 250, 0.35)",
+                      lineHeight: 1.65,
+                      marginBottom: "4px",
+                    }}
+                  >
+                    (+{hiddenCount} more)
+                  </li>
+                )}
+                {visibleItems.map((item, ii) => (
+                  <li
+                    key={ii}
+                    style={{
+                      fontFamily: "var(--font-display)",
+                      fontSize: "13px",
+                      fontWeight: 300,
+                      color: "rgba(96, 165, 250, 0.65)",
+                      lineHeight: 1.65,
+                      marginBottom: ii < visibleItems.length - 1 ? "2px" : 0,
+                    }}
+                  >
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })()}
 
         {/* Question callout — pinned at bottom, revealed last */}
         {displayRef.question && (

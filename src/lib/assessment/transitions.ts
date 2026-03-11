@@ -54,6 +54,13 @@ export function estimateSpeechDuration(text: string): number {
   return text.split(/\s+/).length * 150;
 }
 
+/** Warm-up introduction Aria speaks before the first scenario. */
+export const ACT1_WARMUP_LINES = [
+  "I'm going to walk you through some workplace situations now.",
+  "For each one, I'll describe what's happening and ask how you'd handle it.",
+  "There's no single right answer — I'm interested in how you think through these kinds of problems. Let's start with the first one.",
+];
+
 /**
  * Build the Act 1 → Act 2 transition script.
  * Visual callbacks are injected by the orchestrator.
