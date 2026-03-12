@@ -16,6 +16,8 @@ export async function generateAcknowledgment(
   candidateInput: string,
   beatType: string,
   constructs: string[],
+  scenarioName?: string,
+  lastAriaMessage?: string,
 ): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -39,10 +41,23 @@ export async function generateAcknowledgment(
         messages: [
           {
             role: "user",
-            content: `Generate ONE sentence (max 20 words) acknowledging this candidate's response in a conversational assessment. Reference something specific they said. Do NOT evaluate correctness or quality. Do NOT say "great" or "good answer". Just show you heard them.
+            content: `Generate ONE sentence (max 20 words) that naturally bridges from the candidate's response to the next part of the assessment. This sentence should:
+- Reference something specific the candidate said
+- Feel like a natural conversational transition
+- NOT evaluate correctness or quality
+- NOT say "great", "good answer", "excellent", or similar praise
+- NOT ask a question
 
+Context:
+Scenario: ${scenarioName ?? "workplace scenario"}
 Beat type: ${beatType}
+${lastAriaMessage ? `Last thing Aria said: "${lastAriaMessage.slice(0, 300)}"` : ""}
 Candidate said: "${candidateInput.slice(0, 500)}"
+
+Examples of good acknowledgments:
+- "That perspective on the stakeholder dynamics is worth exploring further."
+- "I can see how the timeline pressure shaped your thinking there."
+- "The way you weighed those trade-offs tells me a lot."
 
 Reply with ONLY the acknowledgment sentence, nothing else.`,
           },

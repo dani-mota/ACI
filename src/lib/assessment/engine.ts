@@ -13,8 +13,19 @@ import { ASSESSMENT_STRUCTURE } from "./config";
 import { SCENARIOS } from "./scenarios";
 import { CONSTRUCT_LAYERS } from "./construct-scoring";
 import { getNextItem, initLoopState } from "./adaptive-loop";
+import { getItemsForConstruct } from "./item-bank";
 
 const ACT2_CONSTRUCTS = ASSESSMENT_STRUCTURE.act2Constructs;
+
+const ARIA_PERSONA = `You are Aria, an AI assessment facilitator. Your personality:
+- Warm but professional. Like a skilled interviewer who genuinely cares about understanding the candidate.
+- Conversational, not robotic. Use natural speech patterns. Contractions are fine.
+- Encouraging without being patronizing. Never say "great answer" or evaluate quality.
+- Adaptive — if the candidate seems nervous, be warmer. If they're confident, match their energy.
+- Concise — keep responses focused. Don't ramble or over-explain.
+- You refer to yourself as "I" and the candidate as "you."
+
+`;
 
 /**
  * The assessment engine determines what happens next based on the current state
@@ -181,6 +192,7 @@ function getAct1Action(
 }
 
 function buildAct1SystemPrompt(scenario: typeof SCENARIOS[number], beatIndex: number): string {
+  const persona = ARIA_PERSONA;
   const referenceFormat = beatIndex === 0
     ? `
 
@@ -235,7 +247,7 @@ PART 2 — REFERENCE UPDATE (on its own line, after the spoken text):
 
 If this beat reveals no new factual information (e.g., you're just asking a follow-up question), use an empty newInformation array.`;
 
-  return `You are Aria, an assessment guide conducting a structured workplace scenario investigation. Your tone is warm, curious, and conversational — like a smart colleague walking through a problem together. Present realistic situations, respond to the candidate's choices, and adapt based on their responses.
+  return persona + `You are conducting a structured workplace scenario investigation. Present realistic situations, respond to the candidate's choices, and adapt based on their responses.
 
 SCENARIO: ${scenario.name}
 DESCRIPTION: ${scenario.description}
@@ -311,6 +323,28 @@ function getAct2Action(
 
   // During diagnostic probe phase — conversational, not structured items
   if (phaseLabel === "DIAGNOSTIC_PROBE") {
+    const loopStateForProbe = act2Progress[constructId] as AdaptiveLoopState | undefined;
+    // Count real exchanges only — filter out the { role: "complete" } marker
+    const realProbeCount = (loopStateForProbe?.probeExchanges ?? [])
+      .filter((p) => !("role" in p && (p as any).role === "complete"))
+      .length;
+
+    // Cap at 3 probe exchanges — wrap up and advance construct
+    if (realProbeCount >= 3) {
+      return {
+        type: "AGENT_MESSAGE",
+        systemPrompt: buildAct2DiagnosticPrompt(constructId, loopStateForProbe),
+        userContext: `Briefly summarize what you've learned about the candidate's ${formatConstructName(constructId)} abilities from the diagnostic probes. Keep it to 1-2 sentences as a natural transition.`,
+        act: "ACT_2",
+        metadata: {
+          construct: constructId,
+          phase,
+          phaseLabel: "DIAGNOSTIC_PROBE",
+          constructComplete: true,
+        },
+      } satisfies AgentMessageAction;
+    }
+
     return {
       type: "AGENT_MESSAGE",
       systemPrompt: buildAct2DiagnosticPrompt(constructId, act2Progress[constructId]),
@@ -387,7 +421,7 @@ function getPhaseLabel(phase: number): AdaptivePhase {
 }
 
 function buildAct2SystemPrompt(construct: string): string {
-  return `You are an assessment agent conducting a focused ability measurement. You are now testing ${formatConstructName(construct)}.
+  return ARIA_PERSONA + `You are conducting a focused ability measurement. You are now testing ${formatConstructName(construct)}.
 
 RULES:
 - Present items clearly and concisely
@@ -399,7 +433,7 @@ RULES:
 }
 
 function buildAct2DiagnosticPrompt(construct: string, loopState?: AdaptiveLoopState): string {
-  return `You are a diagnostic assessment engine. The candidate has completed structured items for ${formatConstructName(construct)}.
+  return ARIA_PERSONA + `You are conducting a diagnostic follow-up. The candidate has completed structured items for ${formatConstructName(construct)}.
 
 Your job is to generate follow-up questions that diagnose the NATURE of the candidate's ceiling:
 1. Hard ceiling vs. soft ceiling: Can they solve it with more time or a different approach?
@@ -421,69 +455,131 @@ function getAct3Action(
 ): EngineAction {
   const act3Progress = (state.act3Progress as {
     confidenceItemsComplete: number;
+    confidenceItemPending: boolean;
     parallelScenariosComplete: number;
     selfAssessmentComplete: boolean;
+    selfAssessmentTurn: number;
   } | null) ?? {
     confidenceItemsComplete: 0,
+    confidenceItemPending: false,
     parallelScenariosComplete: 0,
     selfAssessmentComplete: false,
+    selfAssessmentTurn: 0,
   };
 
   // Phase 1: Confidence-tagged items
   if (act3Progress.confidenceItemsComplete < ASSESSMENT_STRUCTURE.act3ConfidenceItems) {
-    if (!lastCandidateMessage) {
-      // Serve a confidence-tagged item
+    // After MCQ: serve confidence rating
+    if (act3Progress.confidenceItemPending) {
       return {
         type: "INTERACTIVE_ELEMENT",
-        elementType: "MULTIPLE_CHOICE_INLINE",
+        elementType: "CONFIDENCE_RATING",
         elementData: {
-          prompt: `[Confidence-tagged item ${act3Progress.confidenceItemsComplete + 1}]`,
-          itemId: `act3-confidence-${act3Progress.confidenceItemsComplete}`,
+          prompt: "How confident are you in that answer?",
+          options: ["Very confident", "Somewhat confident", "Not sure"],
         },
         act: "ACT_3",
-        followUpPrompt: undefined, // Confidence question comes next
+        metadata: { confidenceRating: true },
       } satisfies InteractiveElementAction;
     }
 
-    // Ask confidence rating after item response
+    // Serve next MCQ from item bank
+    const targetConstructs = SCENARIOS[state.currentScenario]?.primaryConstructs ?? [];
+    const construct = targetConstructs[act3Progress.confidenceItemsComplete % targetConstructs.length] as string;
+    const items = getItemsForConstruct(construct);
+    const item = items[act3Progress.confidenceItemsComplete % items.length];
+
+    if (item) {
+      return {
+        type: "INTERACTIVE_ELEMENT",
+        elementType: item.elementType as InteractionElementType,
+        elementData: {
+          prompt: item.prompt,
+          options: item.options,
+          correctAnswer: item.correctAnswer,
+          construct: construct as any,
+          itemId: item.id ?? `act3-confidence-${act3Progress.confidenceItemsComplete}`,
+        },
+        act: "ACT_3",
+        metadata: { confidenceItem: true },
+      } satisfies InteractiveElementAction;
+    }
+
+    // Fallback if no items available
     return {
       type: "INTERACTIVE_ELEMENT",
-      elementType: "CONFIDENCE_RATING",
+      elementType: "MULTIPLE_CHOICE_INLINE",
       elementData: {
-        prompt: "How confident are you in that answer?",
-        options: ["Very confident", "Somewhat confident", "Not sure"],
+        prompt: `[Confidence-tagged item ${act3Progress.confidenceItemsComplete + 1}]`,
+        itemId: `act3-confidence-${act3Progress.confidenceItemsComplete}`,
       },
       act: "ACT_3",
+      metadata: { confidenceItem: true },
     } satisfies InteractiveElementAction;
   }
 
   // Phase 2: Parallel scenario re-presentation
   if (act3Progress.parallelScenariosComplete < ASSESSMENT_STRUCTURE.act3ParallelScenarios) {
+    const sourceScenarioIndex = act3Progress.parallelScenariosComplete % SCENARIOS.length;
+    const sourceScenario = SCENARIOS[sourceScenarioIndex];
+
     return {
       type: "AGENT_MESSAGE",
-      systemPrompt: `You are presenting a brief scenario structurally identical to one from the earlier scenario section, but with completely different surface details. This tests consistency.
+      systemPrompt: ARIA_PERSONA + `You are presenting a brief parallel scenario to test behavioral consistency. The candidate previously worked through a scenario with this structure:
+
+SOURCE SCENARIO: "${sourceScenario.name}"
+DESCRIPTION: ${sourceScenario.description}
+PRIMARY CONSTRUCTS TESTED: ${sourceScenario.primaryConstructs.join(", ")}
+
+Your task: Create a NEW scenario that tests the SAME constructs and presents the SAME structural dilemma, but with COMPLETELY DIFFERENT surface details (different industry, characters, setting, specifics).
 
 RULES:
-- Keep the scenario brief (1-2 paragraphs)
-- Present the same type of dilemma with different characters and setting
-- Ask the candidate how they would handle the situation
-- Do not reference the earlier scenario`,
-      userContext: `Generate parallel scenario ${act3Progress.parallelScenariosComplete + 1}. This should be structurally similar to Act 1 Scenario ${act3Progress.parallelScenariosComplete + 1} but with entirely different surface content.`,
+- Keep the scenario to 1-2 paragraphs
+- Match the structural tension of the source (same type of competing pressures)
+- Use entirely different domain/characters/setting
+- End by asking the candidate how they would handle the situation
+- Do NOT reference or remind them of the earlier scenario
+- Do NOT say this is a "parallel" or "consistency" test`,
+      userContext: `Present parallel scenario ${act3Progress.parallelScenariosComplete + 1} of ${ASSESSMENT_STRUCTURE.act3ParallelScenarios}. This parallels the Act 1 scenario "${sourceScenario.name}" but must feel like a fresh, independent situation.`,
       act: "ACT_3",
       metadata: {
         parallelScenarioIndex: act3Progress.parallelScenariosComplete,
+        sourceScenarioIndex,
       },
     } satisfies AgentMessageAction;
   }
 
-  // Phase 3: Reflective self-assessment
+  // Phase 3: Reflective self-assessment (3 turns)
   if (!act3Progress.selfAssessmentComplete) {
+    const SELF_ASSESSMENT_QUESTIONS = [
+      {
+        prompt: "Across everything we've done today, which parts felt easiest for you? Which felt hardest?",
+        context: "This is the first of three brief reflection questions. Ask warmly and conversationally.",
+      },
+      {
+        prompt: "Were there moments where you felt uncertain but went with your first instinct? What was that like?",
+        context: "This is the second reflection question. Build on what they shared in the previous answer. Be warm and curious.",
+      },
+      {
+        prompt: "If you could go back and approach one of today's challenges differently, which would it be and what would you change?",
+        context: "This is the final reflection question. Acknowledge what they've shared so far. This is the last question of the entire assessment — end on a warm, encouraging note.",
+      },
+    ];
+
+    const turn = act3Progress.selfAssessmentTurn ?? 0;
+    const question = SELF_ASSESSMENT_QUESTIONS[turn] ?? SELF_ASSESSMENT_QUESTIONS[0];
+    const isFinal = turn >= SELF_ASSESSMENT_QUESTIONS.length - 1;
+
     return {
       type: "AGENT_MESSAGE",
-      systemPrompt: `You are conducting the final reflective self-assessment. Ask the candidate to reflect on the entire assessment experience.`,
-      userContext: `Ask: "Across everything we have done today, which parts felt easiest for you? Which felt hardest? Were there moments where you felt uncertain but went with your first instinct?" This is a warm, open-ended closing question.`,
+      systemPrompt: ARIA_PERSONA + `You are conducting the final reflective self-assessment. ${question.context}`,
+      userContext: `Ask: "${question.prompt}"`,
       act: "ACT_3",
-      metadata: { selfAssessment: true },
+      metadata: {
+        selfAssessment: true,
+        selfAssessmentTurn: turn,
+        selfAssessmentFinal: isFinal,
+      },
     } satisfies AgentMessageAction;
   }
 
@@ -631,26 +727,46 @@ export function computeStateUpdate(
   if (currentState.currentAct === "ACT_3") {
     const act3Progress = (currentState.act3Progress as {
       confidenceItemsComplete: number;
+      confidenceItemPending: boolean;
       parallelScenariosComplete: number;
       selfAssessmentComplete: boolean;
+      selfAssessmentTurn: number;
     } | null) ?? {
       confidenceItemsComplete: 0,
+      confidenceItemPending: false,
       parallelScenariosComplete: 0,
       selfAssessmentComplete: false,
+      selfAssessmentTurn: 0,
     };
 
     const metadata = (action.type === "AGENT_MESSAGE" || action.type === "INTERACTIVE_ELEMENT")
       ? (action as { metadata?: Record<string, unknown> }).metadata
       : undefined;
 
-    // After confidence rating element response, advance confidence counter
-    if (action.type === "INTERACTIVE_ELEMENT" && (action as InteractiveElementAction).elementType === "CONFIDENCE_RATING") {
-      return {
-        act3Progress: {
-          ...act3Progress,
-          confidenceItemsComplete: act3Progress.confidenceItemsComplete + 1,
-        } as unknown as AssessmentState["act3Progress"],
-      };
+    // Confidence item state machine
+    if (action.type === "INTERACTIVE_ELEMENT") {
+      const elementAction = action as InteractiveElementAction;
+
+      // MCQ dispatched → mark pending
+      if (metadata?.confidenceItem) {
+        return {
+          act3Progress: {
+            ...act3Progress,
+            confidenceItemPending: true,
+          } as unknown as AssessmentState["act3Progress"],
+        };
+      }
+
+      // CONFIDENCE_RATING dispatched → clear pending, increment counter
+      if (elementAction.elementType === "CONFIDENCE_RATING") {
+        return {
+          act3Progress: {
+            ...act3Progress,
+            confidenceItemPending: false,
+            confidenceItemsComplete: act3Progress.confidenceItemsComplete + 1,
+          } as unknown as AssessmentState["act3Progress"],
+        };
+      }
     }
 
     // After parallel scenario response
@@ -665,10 +781,13 @@ export function computeStateUpdate(
 
     // After self-assessment
     if (metadata?.selfAssessment) {
+      const nextTurn = (act3Progress.selfAssessmentTurn ?? 0) + 1;
+      const isComplete = metadata.selfAssessmentFinal === true;
       return {
         act3Progress: {
           ...act3Progress,
-          selfAssessmentComplete: true,
+          selfAssessmentTurn: nextTurn,
+          selfAssessmentComplete: isComplete,
         } as unknown as AssessmentState["act3Progress"],
       };
     }
@@ -677,6 +796,43 @@ export function computeStateUpdate(
   }
 
   return {};
+}
+
+/**
+ * Computes per-act progress (0.0–1.0) from the current assessment state.
+ * Used to drive the client-side progress bar.
+ */
+export function computeProgress(state: AssessmentState): { act1: number; act2: number; act3: number } {
+  // Act 1: (scenario * beatsPerScenario + beat) / total steps
+  const totalAct1 = ASSESSMENT_STRUCTURE.act1ScenarioCount * ASSESSMENT_STRUCTURE.beatsPerScenario;
+  const act1 = totalAct1 > 0
+    ? (state.currentScenario * ASSESSMENT_STRUCTURE.beatsPerScenario + state.currentBeat) / totalAct1
+    : 0;
+
+  // Act 2: completed constructs / total constructs
+  const a2 = (state.act2Progress as Record<string, AdaptiveLoopState> | null) ?? {};
+  const completedConstructs = Object.values(a2).filter(
+    (loop) => Array.isArray(loop.probeExchanges) && loop.probeExchanges.some((e: unknown) => (e as { role?: string }).role === "complete"),
+  ).length;
+  const act2 = completedConstructs / ASSESSMENT_STRUCTURE.act2Constructs.length;
+
+  // Act 3: weighted across confidence items (40%), parallel scenarios (35%), self-assessment (25%)
+  const a3 = (state.act3Progress as {
+    confidenceItemsComplete?: number;
+    parallelScenariosComplete?: number;
+    selfAssessmentTurn?: number;
+    selfAssessmentComplete?: boolean;
+  } | null) ?? {};
+  const act3 =
+    ((a3.confidenceItemsComplete ?? 0) / ASSESSMENT_STRUCTURE.act3ConfidenceItems) * 0.4 +
+    ((a3.parallelScenariosComplete ?? 0) / ASSESSMENT_STRUCTURE.act3ParallelScenarios) * 0.35 +
+    (a3.selfAssessmentComplete ? 1 : (a3.selfAssessmentTurn ?? 0) / 3) * 0.25;
+
+  return {
+    act1: Math.min(1, Math.max(0, act1)),
+    act2: Math.min(1, Math.max(0, act2)),
+    act3: Math.min(1, Math.max(0, act3)),
+  };
 }
 
 /** Helper to find next Act 2 construct from progress map */
@@ -708,7 +864,7 @@ function formatConstructName(construct: string): string {
  * Build the initial greeting message for the assessment.
  */
 export function buildGreetingPrompt(candidateName: string, companyName: string): string {
-  return `You are beginning a conversational assessment. Greet the candidate warmly and explain the format.
+  return ARIA_PERSONA + `You are beginning a conversational assessment. Greet the candidate warmly and explain the format.
 
 Candidate name: ${candidateName}
 Company: ${companyName}

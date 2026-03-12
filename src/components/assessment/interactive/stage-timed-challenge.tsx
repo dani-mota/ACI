@@ -12,6 +12,12 @@ interface StageTimedChallengeProps {
   disabled?: boolean;
 }
 
+function formatTime(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
 export function StageTimedChallenge({
   prompt,
   options,
@@ -50,46 +56,76 @@ export function StageTimedChallenge({
   );
 
   const progress = remaining / timeLimit;
-  const barColor =
+  const timerColor =
     progress > 0.5
-      ? "#2563EB"
+      ? "var(--s-gold, #C9A84C)"
       : progress > 0.2
-        ? "#D97706"
-        : "#DC2626";
+        ? "var(--s-amber, #D97706)"
+        : "var(--s-red, #DC2626)";
+
+  const isCritical = remaining <= 10;
 
   return (
-    <div className="flex flex-col gap-3 w-full max-w-lg">
-      {/* Timer bar */}
-      <div className="flex items-center gap-3">
-        <div
-          className="flex-1 h-[2px] rounded-full"
-          style={{ background: "rgba(255, 255, 255, 0.05)" }}
-        >
-          <div
-            className="h-full rounded-full stage-animate"
-            style={{
-              width: `${progress * 100}%`,
-              background: barColor,
-              boxShadow: `0 0 8px ${barColor}66`,
-              transition: "width 1s linear, background 0.5s ease",
-            }}
-          />
-        </div>
+    <div className="flex flex-col gap-4 w-full max-w-lg">
+      {/* Timer display */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "0 4px",
+        }}
+      >
         <span
           style={{
             fontFamily: "var(--font-mono)",
-            fontSize: "10px",
-            color:
-              remaining <= 10
-                ? "#DC2626"
-                : "rgba(255, 255, 255, 0.5)",
-            fontWeight: remaining <= 10 ? 600 : 400,
-            minWidth: "28px",
-            textAlign: "right",
+            fontSize: "9px",
+            fontWeight: 600,
+            color: "var(--s-t3, #3d5068)",
+            textTransform: "uppercase",
+            letterSpacing: "2px",
           }}
         >
-          {remaining}s
+          Time Remaining
         </span>
+        <span
+          role="timer"
+          aria-live="assertive"
+          aria-label={`${remaining} seconds remaining`}
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: "24px",
+            fontWeight: 300,
+            color: timerColor,
+            fontVariantNumeric: "tabular-nums",
+            transition: "color 500ms ease",
+            animation: isCritical ? "dotPulse 1s ease-in-out infinite" : "none",
+          }}
+        >
+          {formatTime(remaining)}
+        </span>
+      </div>
+
+      {/* Timer track */}
+      <div
+        style={{
+          height: "3px",
+          borderRadius: "2px",
+          background: "rgba(255,255,255,0.05)",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          className="stage-animate"
+          style={{
+            height: "100%",
+            width: `${progress * 100}%`,
+            borderRadius: "2px",
+            background: `linear-gradient(90deg, ${timerColor}, ${timerColor}cc)`,
+            boxShadow: `0 0 10px ${timerColor}44`,
+            transition: "width 1s linear, background 500ms ease",
+          }}
+        />
       </div>
 
       {/* Choices */}

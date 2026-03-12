@@ -47,8 +47,11 @@ export function cleanText(raw: string): string {
     .replace(/^(?:INITIAL[_\s]SITUATION|SITUATION|COMPLICATION|SOCIAL[_\s]PRESSURE|CONSEQUENCE[_\s]REVEAL|REFLECTIVE[_\s]SYNTHESIS)\s*$/gm, "")
     // "SITUATION ---" pattern (label followed by dashes)
     .replace(/^[A-Z][A-Z_\s]+\s*---.*$/gm, "")
+    // LLM structural labels: "SPOKEN TEXT:", "PART 1 — SPOKEN TEXT:", "PART 2 — REFERENCE CARD", etc.
+    .replace(/^(?:PART\s+\d+\s*[-—–:]+\s*)?SPOKEN\s+TEXT\s*[:—–-]*\s*/gim, "")
+    .replace(/^(?:PART\s+\d+\s*[-—–:]+\s*)?REFERENCE\s*(?:CARD|UPDATE)?\s*[:—–-]*\s*/gim, "")
     // Bracket tags anywhere: [spoken text], [SPOKEN], [Reference Card], [REFERENCE], etc.
-    .replace(/\[(?:spoken\s*text|SPOKEN|spoken|REFERENCE|REFERENCE_UPDATE|Reference\s*Card|pause|silence|beat|Beat\s*\d*)[^\]]*\]/gi, "")
+    .replace(/\[(?:spoken\s*text|SPOKEN|spoken|REFERENCE|REFERENCE_UPDATE|Reference\s*Card|pause|silence|BEAT\s*:?|beat|Beat\s*\d*)[^\]]*\]/gi, "")
     // Delimiter lines: ---REFERENCE---, ---REFERENCE_UPDATE---, --- (horizontal rules)
     .replace(/-{3,}\s*(?:REFERENCE[_\s]*UPDATE?|REFERENCE)?\s*-{0,}/g, "")
     // Standalone triple dashes (horizontal rules)

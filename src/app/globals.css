@@ -200,11 +200,83 @@
   animation: pulseAmberText 600ms ease-in-out 2;
 }
 
+/* ── Stage Design System Tokens ── */
+.stage-root {
+  --s-bg: #080e1a;
+  --s-bg2: #0f1729;
+  --s-bg3: #131c2e;
+  --s-blue: #2563EB;
+  --s-blue-g: #4a8af5;
+  --s-green: #059669;
+  --s-green-b: #22d68a;
+  --s-amber: #D97706;
+  --s-gold: #C9A84C;
+  --s-red: #DC2626;
+  --s-t1: #c9d6e8;
+  --s-t2: #7b8fa8;
+  --s-t3: #3d5068;
+  --s-t4: #b8c4d6;
+  --s-border: rgba(37,99,235,0.12);
+  --s-glass: rgba(9,15,30,0.88);
+  --s-glass-border: rgba(37,99,235,0.18);
+  --s-glass-light: rgba(255,255,255,0.025);
+}
+
+/* ── Stage Block Animations ── */
+@keyframes blockBreathe {
+  0%, 100% { border-color: var(--breathe-color, var(--s-blue)); opacity: 1; }
+  50% { border-color: color-mix(in srgb, var(--breathe-color, var(--s-blue)) 60%, transparent); opacity: 0.85; }
+}
+@keyframes wordReveal {
+  0% { opacity: 0; filter: blur(2px); }
+  100% { opacity: 1; filter: blur(0); }
+}
+@keyframes dotPulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1); }
+}
+@keyframes cardIn {
+  0% { opacity: 0; transform: translateY(7px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+/* ── Stage: layout crossfade ── */
+@keyframes layoutFadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+.stage-layout-enter {
+  animation: layoutFadeIn 180ms ease both;
+}
+
+/* ── Stage: focus-visible for keyboard navigation ── */
+.stage-root button:focus-visible,
+.stage-root input:focus-visible,
+.stage-root textarea:focus-visible,
+.stage-root [role="radio"]:focus-visible {
+  outline: 2px solid var(--s-blue, #2563EB);
+  outline-offset: 2px;
+}
+
+/* ── Stage: interactive state coverage ── */
+.stage-root button:disabled,
+.stage-root input:disabled,
+.stage-root textarea:disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
+}
+.stage-root button:not(:disabled):active {
+  transform: scale(0.98);
+}
+
 /* ── Stage: reduced motion ── */
 @media (prefers-reduced-motion: reduce) {
-  .stage-animate {
-    animation: none !important;
-    transition: none !important;
+  .stage-root *,
+  .stage-root *::before,
+  .stage-root *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 

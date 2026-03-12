@@ -73,7 +73,7 @@ export function Phase0BreakScreen({
           fontFamily: "var(--font-display)",
           fontSize: "15px",
           fontWeight: 300,
-          color: "rgba(184, 196, 214, 0.55)",
+          color: "color-mix(in srgb, var(--s-t4, #b8c4d6) 55%, transparent)",
           letterSpacing: "0.3px",
           marginBottom: "24px",
           opacity: entered ? 1 : 0,
@@ -86,12 +86,15 @@ export function Phase0BreakScreen({
 
       {/* Countdown number */}
       <div
+        role="timer"
+        aria-live="polite"
+        aria-label={`${remaining} seconds until assessment begins`}
         style={{
           fontFamily: "var(--font-mono)",
           fontSize: "40px",
           fontWeight: 200,
           fontVariantNumeric: "tabular-nums",
-          color: "rgba(184, 196, 214, 0.5)",
+          color: "color-mix(in srgb, var(--s-t4, #b8c4d6) 50%, transparent)",
           marginBottom: "28px",
           opacity: entered ? 1 : 0,
           transform: entered ? "translateY(0)" : "translateY(12px)",
@@ -109,7 +112,7 @@ export function Phase0BreakScreen({
           fontFamily: "var(--font-display)",
           fontSize: "13px",
           fontWeight: 400,
-          color: "rgba(184, 196, 214, 0.5)",
+          color: "color-mix(in srgb, var(--s-t4, #b8c4d6) 50%, transparent)",
           background: "rgba(255, 255, 255, 0.03)",
           border: "1px solid rgba(255, 255, 255, 0.07)",
           borderRadius: "8px",
@@ -121,12 +124,12 @@ export function Phase0BreakScreen({
           transform: entered ? "translateY(0)" : "translateY(12px)",
         }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.color = "rgba(184, 196, 214, 0.8)";
+          e.currentTarget.style.color = "color-mix(in srgb, var(--s-t4, #b8c4d6) 80%, transparent)";
           e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.15)";
           e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)";
         }}
         onMouseLeave={(e) => {
-          e.currentTarget.style.color = "rgba(184, 196, 214, 0.5)";
+          e.currentTarget.style.color = "color-mix(in srgb, var(--s-t4, #b8c4d6) 50%, transparent)";
           e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.07)";
           e.currentTarget.style.background = "rgba(255, 255, 255, 0.03)";
         }}

@@ -3,7 +3,7 @@ import { streamText } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import prisma from "@/lib/prisma";
 import { getRoleContext } from "@/lib/assessment/role-context";
-import { getNextAction, computeStateUpdate, buildGreetingPrompt } from "@/lib/assessment/engine";
+import { getNextAction, computeStateUpdate, computeProgress, buildGreetingPrompt } from "@/lib/assessment/engine";
 import { AI_CONFIG, FEATURE_FLAGS } from "@/lib/assessment/config";
 import type { ResponseClassification, AdaptiveLoopState } from "@/lib/assessment/types";
 import { classifyResponse } from "@/lib/assessment/classification";
@@ -317,6 +317,8 @@ export async function POST(
           roleContext,
         );
 
+        console.log(`[DIAG] Classification: act=${state.currentAct} beat=${state.currentBeat} result=${classification.classification} rubricScore=${classification.rubricScore}`);
+
         // Update state with classification
         const stateUpdate = computeStateUpdate(state, { type: "AGENT_MESSAGE" } as any, classification.classification);
         await prisma.assessmentState.update({
@@ -328,12 +330,20 @@ export async function POST(
         state = (await prisma.assessmentState.findUnique({
           where: { assessmentId: assessment.id },
         }))!;
+        console.log(`[DIAG] State after classification: act=${state.currentAct} beat=${state.currentBeat} scenario=${state.currentScenario} construct=${state.currentConstruct} phase=${state.currentPhase}`);
       }
     }
   }
 
   // Determine the next action from the engine
   const action = getNextAction(state, assessment.messages, lastUserMessage);
+  console.log(`[DIAG] Action: type=${action.type} act=${"act" in action ? (action as any).act : "N/A"} metadata=${JSON.stringify((action as any).metadata ?? {})}`);
+
+  // Helper: re-fetch state and compute progress for client
+  async function getProgress(): Promise<{ act1: number; act2: number; act3: number }> {
+    const latest = await prisma.assessmentState.findUnique({ where: { assessmentId: assessment!.id } });
+    return latest ? computeProgress(latest) : { act1: 0, act2: 0, act3: 0 };
+  }
 
   // Handle non-streaming actions
   if (action.type === "COMPLETE") {
@@ -357,6 +367,7 @@ export async function POST(
       JSON.stringify({
         type: "complete",
         message: action.closingMessage,
+        progress: { act1: 1, act2: 1, act3: 1 },
       }),
       { headers: { "Content-Type": "application/json" } },
     );
@@ -379,6 +390,7 @@ export async function POST(
 
     // S2 fix: Update assessment state for interactive element actions (e.g., Act 3 progress)
     const elStateUpdate = computeStateUpdate(state, action);
+    console.log(`[DIAG] StateUpdate (INTERACTIVE_ELEMENT dispatch): ${JSON.stringify(elStateUpdate)}`);
     if (Object.keys(elStateUpdate).length > 0) {
       await prisma.assessmentState.update({
         where: { assessmentId: assessment.id },
@@ -388,6 +400,7 @@ export async function POST(
 
     // Strip correctAnswer from client-facing element data
     const { correctAnswer: _answer, ...safeElementData } = action.elementData as Record<string, unknown>;
+    const progress = await getProgress();
 
     return new Response(
       JSON.stringify({
@@ -395,6 +408,7 @@ export async function POST(
         elementType: action.elementType,
         elementData: safeElementData,
         followUpPrompt: action.followUpPrompt,
+        progress,
       }),
       { headers: { "Content-Type": "application/json" } },
     );
@@ -415,16 +429,19 @@ export async function POST(
     });
 
     const stateUpdate = computeStateUpdate(state, action);
+    console.log(`[DIAG] StateUpdate (TRANSITION): ${JSON.stringify(stateUpdate)}`);
     await prisma.assessmentState.update({
       where: { assessmentId: assessment.id },
       data: stateUpdate as any,
     });
 
+    const transitionProgress = await getProgress();
     return new Response(
       JSON.stringify({
         type: "transition",
         message: action.transitionMessage,
         to: action.to,
+        progress: transitionProgress,
       }),
       { headers: { "Content-Type": "application/json" } },
     );
@@ -432,6 +449,68 @@ export async function POST(
 
   // AGENT_MESSAGE: Stream the AI response (or serve pre-generated content)
   if (action.type === "AGENT_MESSAGE") {
+    // ── Beat 0 content library path ──
+    // [BEGIN_ASSESSMENT] is a sentinel so usePreGenerated won't activate,
+    // but Beat 0 is unbranched and doesn't need classification.
+    if (
+      FEATURE_FLAGS.CONTENT_LIBRARY_ENABLED
+      && state.contentLibraryId
+      && state.currentAct === "ACT_1"
+      && isSentinel
+      && state.currentBeat === 0
+    ) {
+      try {
+        const library = await loadContentLibrary(state.contentLibraryId!);
+        const variantSelections = (state.variantSelections as Record<string, number>) ?? {};
+        const scenarioIndex = (action.metadata as Record<string, unknown>)?.scenarioIndex as number ?? state.currentScenario;
+
+        // lookupBeatContent ignores classification for Beat 0
+        const content = lookupBeatContent(library, scenarioIndex, 0, "ADEQUATE", variantSelections);
+
+        if (content.spokenText) {
+          const seq = await nextSequenceOrder();
+          await prisma.conversationMessage.create({
+            data: {
+              assessmentId: assessment.id,
+              role: "AGENT",
+              content: content.spokenText,
+              act: action.act,
+              sequenceOrder: seq,
+              metadata: {
+                ...((action.metadata as Record<string, unknown>) ?? {}),
+                preGenerated: true,
+                beat0: true,
+              } as any,
+            },
+          });
+
+          if (action.metadata) {
+            const stateUpdate = computeStateUpdate(state, action);
+            console.log(`[DIAG] StateUpdate (Beat 0 library): ${JSON.stringify(stateUpdate)}`);
+            if (Object.keys(stateUpdate).length > 0) {
+              await prisma.assessmentState.update({
+                where: { assessmentId: assessment.id },
+                data: stateUpdate as any,
+              });
+            }
+          }
+
+          const beat0Progress = await getProgress();
+          return new Response(
+            JSON.stringify({
+              type: "agent_message",
+              message: content.spokenText,
+              referenceCard: content.referenceCard || null,
+              progress: beat0Progress,
+            }),
+            { headers: { "Content-Type": "application/json" } },
+          );
+        }
+      } catch (err) {
+        console.error("[V2] Beat 0 content library failed, falling back to streaming:", err);
+      }
+    }
+
     // ── Pre-generated content path ──
     // When content library is available and we're in Act 1 with a real candidate response,
     // serve pre-generated content with a personalized acknowledgment instead of streaming.
@@ -457,10 +536,16 @@ export async function POST(
 
         // Generate acknowledgment in parallel (single Haiku call, ~200ms)
         const beat = SCENARIOS[scenarioIndex]?.beats[beatIndex];
+        const scenario = SCENARIOS[scenarioIndex];
+        const lastAriaMsg = assessment.messages
+          .filter((m) => m.role === "AGENT")
+          .pop()?.content;
         const acknowledgment = await generateAcknowledgment(
           lastUserMessage,
           beat?.type ?? "INITIAL_RESPONSE",
           (beat?.primaryConstructs as string[]) ?? [],
+          scenario?.name,
+          lastAriaMsg,
         );
 
         // Look up pre-generated content
@@ -491,6 +576,7 @@ export async function POST(
         // Update state
         if (action.metadata) {
           const stateUpdate = computeStateUpdate(state, action);
+          console.log(`[DIAG] StateUpdate (pre-generated content): ${JSON.stringify(stateUpdate)}`);
           if (Object.keys(stateUpdate).length > 0) {
             await prisma.assessmentState.update({
               where: { assessmentId: assessment.id },
@@ -499,12 +585,14 @@ export async function POST(
           }
         }
 
+        const pregenProgress = await getProgress();
         return new Response(
           JSON.stringify({
             type: "agent_message",
             message: fullText,
             referenceCard: content.referenceCard || null,
             referenceUpdate: content.referenceUpdate || null,
+            progress: pregenProgress,
           }),
           { headers: { "Content-Type": "application/json" } },
         );
@@ -522,6 +610,11 @@ export async function POST(
     let systemPrompt = action.systemPrompt;
     if (roleContext) {
       systemPrompt += `\n\nROLE CONTEXT: The candidate is being assessed for the role of ${roleContext.roleName}. Domain: ${roleContext.environment}. Key tasks: ${roleContext.keyTasks.slice(0, 4).join(", ")}. Technical skills: ${roleContext.technicalSkills.slice(0, 4).join(", ")}.`;
+    }
+
+    // Add acknowledgment instruction for Act 1 streaming (when content library isn't used)
+    if (state.currentAct === "ACT_1" && lastUserMessage && !isSentinel) {
+      systemPrompt += `\n\nIMPORTANT: Begin your response with a single brief sentence (max 15 words) that acknowledges something specific the candidate said. Do NOT evaluate quality or say "great answer". Then continue with the scenario content.`;
     }
 
     const result = streamText({
@@ -552,6 +645,7 @@ export async function POST(
           // Update assessment state based on action metadata
           if (action.metadata) {
             const stateUpdate = computeStateUpdate(state!, action);
+            console.log(`[DIAG] StateUpdate (streaming onFinish): ${JSON.stringify(stateUpdate)}`);
             if (Object.keys(stateUpdate).length > 0) {
               await prisma.assessmentState.update({
                 where: { assessmentId: assessment.id },
@@ -565,7 +659,12 @@ export async function POST(
       },
     });
 
-    return result.toTextStreamResponse();
+    // Attach progress as header (computed from current state, before onFinish updates)
+    const streamProgress = computeProgress(state);
+    const streamResponse = result.toTextStreamResponse();
+    const streamHeaders = new Headers(streamResponse.headers);
+    streamHeaders.set("X-ACI-Progress", JSON.stringify(streamProgress));
+    return new Response(streamResponse.body, { status: 200, headers: streamHeaders });
   }
 
   // Fallback
@@ -616,11 +715,16 @@ export async function GET(
     });
   }
 
-  // Strip internal scoring state from client-facing response
+  // Strip internal scoring state but include progress-relevant fields
   const safeState = assessment.assessmentState ? {
     currentAct: assessment.assessmentState.currentAct,
     isComplete: assessment.assessmentState.isComplete,
     phase0Complete: assessment.assessmentState.phase0Complete,
+    currentScenario: assessment.assessmentState.currentScenario,
+    currentBeat: assessment.assessmentState.currentBeat,
+    currentConstruct: assessment.assessmentState.currentConstruct,
+    currentPhase: assessment.assessmentState.currentPhase,
+    progress: computeProgress(assessment.assessmentState),
   } : null;
 
   return new Response(
@@ -670,6 +774,6 @@ function buildConversationHistory(
     });
   }
 
-  // Cap context to last 20 messages to manage token usage
-  return history.slice(-20);
+  // Cap context to last 40 messages to manage token usage
+  return history.slice(-40);
 }

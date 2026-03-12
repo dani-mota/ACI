@@ -16,7 +16,7 @@ export interface ChatMessage {
   createdAt?: string;
 }
 
-interface InteractiveElement {
+export interface InteractiveElement {
   elementType: string;
   elementData: Record<string, unknown>;
   followUpPrompt?: string;
@@ -81,7 +81,12 @@ interface ChatAssessmentState {
 
   // Actions
   init: (token: string, assessmentId: string) => void;
-  loadHistory: (messages: ChatMessage[], state?: { currentAct: string; isComplete: boolean }) => void;
+  loadHistory: (messages: ChatMessage[], state?: {
+    currentAct: string;
+    isComplete: boolean;
+    phase0Complete?: boolean;
+    progress?: { act1: number; act2: number; act3: number };
+  }) => void;
   sendMessage: (content: string) => Promise<void>;
   sendElementResponse: (response: { elementType: string; value: string; itemId?: string; construct?: string; responseTimeMs?: number }) => Promise<void>;
   displayMessage: (content: string, act: string, isHistory: boolean) => void;
@@ -114,6 +119,17 @@ interface ChatAssessmentState {
   startTimer: (seconds: number) => void;
   stopTimer: () => void;
   reset: () => void;
+}
+
+// ── Helpers ──
+
+/** Apply progress data from server response to the store */
+function applyProgress(progress: { act1?: number; act2?: number; act3?: number } | undefined) {
+  if (!progress) return;
+  const store = useChatAssessmentStore.getState();
+  if (progress.act1 !== undefined) store.setActProgress("act1", progress.act1);
+  if (progress.act2 !== undefined) store.setActProgress("act2", progress.act2);
+  if (progress.act3 !== undefined) store.setActProgress("act3", progress.act3);
 }
 
 // ── Store ──
@@ -179,6 +195,7 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
       currentAct: state?.currentAct ?? "ACT_1",
       isComplete: state?.isComplete ?? false,
       activeElement,
+      actProgress: state?.progress ?? { act1: 0, act2: 0, act3: 0 },
     });
   },
 
@@ -209,9 +226,11 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
       };
 
       // Determine reveal mode: Beat 0 explicit reference starts hidden (0), everything else shows all (-1)
-      const computeRevealCount = (prev: ScenarioReference | null): number => {
+      const computeRevealCount = (prev: ScenarioReference | null, currentRevealCount: number): number => {
         if (isHistory) return -1; // History: show everything
         if (parsed.referenceIsExplicit && !prev) return 0; // New scenario Beat 0: progressive reveal
+        // Preserve existing reveal count of 0 (progressive reveal still in progress)
+        if (currentRevealCount === 0) return 0;
         return -1; // Follow-up beats or updates: show all existing content
       };
 
@@ -235,14 +254,31 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
           sentenceList: parsed.sentences,
           currentSentenceIndex: 0,
           referenceCard: computeRefCard(s.referenceCard),
-          referenceRevealCount: computeRevealCount(s.referenceCard),
+          referenceRevealCount: computeRevealCount(s.referenceCard, s.referenceRevealCount),
           orbMode: "speaking",
           displayEvent: s.displayEvent + 1,
           displayIsHistory: false,
         }));
       }
     } else {
-      const cleaned = cleanText(content);
+      let cleaned = cleanText(content);
+      // Strip any remaining JSON blocks (e.g., Act 2 structured data leaking into subtitles)
+      cleaned = cleaned.replace(/\{[\s\S]*?"(?:newInformation|question|role|context|sections)"[\s\S]*?\}/g, "").trim();
+      // Guard: if cleanText strips everything, fall back to original content
+      if (!cleaned.trim()) {
+        console.warn("[displayMessage] cleanText returned empty, using raw content");
+        const fallbackSentences = splitSentences(content);
+        set((s) => ({
+          subtitleText: fallbackSentences[0] || content,
+          subtitleRevealedWords: isHistory ? content.split(/\s+/).length : 0,
+          sentenceList: isHistory ? [] : fallbackSentences,
+          currentSentenceIndex: 0,
+          orbMode: isHistory ? "idle" : "speaking",
+          displayEvent: s.displayEvent + 1,
+          displayIsHistory: isHistory,
+        }));
+        return;
+      }
       const sentences = splitSentences(cleaned);
       if (isHistory) {
         set((s) => ({
@@ -340,6 +376,7 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
               responded: false,
             },
           });
+          applyProgress(data.progress);
           return;
         }
 
@@ -355,6 +392,7 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
             currentAct: data.to?.act ?? get().currentAct,
             isComplete: data.type === "complete",
           });
+          applyProgress(data.progress);
           if (data.message) {
             get().displayMessage(data.message, get().currentAct, false);
           }
@@ -384,28 +422,49 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
               referenceRevealCount: 0, // Progressive reveal for Beat 0
             });
           }
-          if (data.referenceUpdate && get().referenceCard) {
-            const card = get().referenceCard!;
-            set({
-              referenceCard: {
-                ...card,
-                newInformation: [...card.newInformation, ...(data.referenceUpdate.newInformation || [])],
-                question: data.referenceUpdate.question || card.question,
-              },
-              referenceRevealCount: -1,
-            });
+          if (data.referenceUpdate) {
+            const card = get().referenceCard;
+            if (card) {
+              // Merge into existing card
+              set({
+                referenceCard: {
+                  ...card,
+                  newInformation: [...card.newInformation, ...(data.referenceUpdate.newInformation || [])],
+                  question: data.referenceUpdate.question || card.question,
+                },
+                referenceRevealCount: -1,
+              });
+            } else {
+              // No card exists yet — create a minimal one from update data
+              set({
+                referenceCard: {
+                  context: "Situation Update",
+                  sections: [],
+                  newInformation: data.referenceUpdate.newInformation || [],
+                  question: data.referenceUpdate.question || "",
+                },
+                referenceRevealCount: -1,
+              });
+            }
           }
 
           // Display message for TTS (sentences will be extracted by displayMessage)
           // If we already set reference data above, displayMessage's parseScenarioResponse
           // won't find delimiters and will just split spoken text into sentences — which is correct
           get().displayMessage(data.message, get().currentAct, false);
+          applyProgress(data.progress);
           return;
         }
       }
 
       // Handle streaming response
       if (response.body) {
+        // Read progress from header (available before stream body)
+        const progressHeader = response.headers.get("x-aci-progress");
+        if (progressHeader) {
+          try { applyProgress(JSON.parse(progressHeader)); } catch { /* ignore */ }
+        }
+
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let accumulated = "";
@@ -453,6 +512,10 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
   sendElementResponse: async (response) => {
     const { token, messages } = get();
     if (!token) return;
+    if (get().isLoading) {
+      console.warn("[sendElementResponse] Blocked by isLoading guard");
+      return;
+    }
 
     set({ isLoading: true, error: null, orbMode: "processing" });
 
@@ -465,16 +528,42 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
     set((s) => ({ messages: [...s.messages, userMsg] }));
 
     try {
-      const res = await fetch(`/api/assess/${token}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: [...messages, userMsg].map((m) => ({ role: m.role, content: m.content })),
-          elementResponse: response,
-        }),
-      });
+      let res: Response | null = null;
+      let lastError: Error | null = null;
+      const MAX_RETRIES = 3;
 
-      if (!res.ok) throw new Error(`Element response failed: ${res.status}`);
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          res = await fetch(`/api/assess/${token}/chat`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              messages: [...messages, userMsg].map((m) => ({ role: m.role, content: m.content })),
+              elementResponse: response,
+            }),
+          });
+
+          if (!res.ok) {
+            throw new Error(`Element response failed: ${res.status}`);
+          }
+          break; // Success — exit retry loop
+        } catch (err) {
+          lastError = err instanceof Error ? err : new Error(String(err));
+          console.warn(`[sendElementResponse] Attempt ${attempt}/${MAX_RETRIES} failed:`, lastError.message);
+          if (attempt < MAX_RETRIES) {
+            await new Promise((r) => setTimeout(r, 1000 * attempt)); // Backoff: 1s, 2s
+          }
+        }
+      }
+
+      if (!res || !res.ok) {
+        throw lastError ?? new Error("Element response failed after retries");
+      }
+
+      // Mark element as responded on success
+      set((s) => ({
+        activeElement: s.activeElement ? { ...s.activeElement, responded: true } : null,
+      }));
 
       const contentType = res.headers.get("content-type") || "";
 
@@ -493,6 +582,7 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
               responded: false,
             },
           });
+          applyProgress(data.progress);
           return;
         }
 
@@ -509,6 +599,7 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
             currentAct: data.to?.act ?? get().currentAct,
             isComplete: data.type === "complete",
           });
+          applyProgress(data.progress);
           if (data.message) {
             get().displayMessage(data.message, get().currentAct, false);
           }
@@ -523,6 +614,7 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
           };
           set({ messages: [...currentMessages, msg], isLoading: false, activeElement: null });
           get().displayMessage(data.message, get().currentAct, false);
+          applyProgress(data.progress);
           return;
         }
 
@@ -532,6 +624,12 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
 
       // Handle streaming response
       if (res.body) {
+        // Read progress from header
+        const elProgressHeader = res.headers.get("x-aci-progress");
+        if (elProgressHeader) {
+          try { applyProgress(JSON.parse(elProgressHeader)); } catch { /* ignore */ }
+        }
+
         const assistantMsg: ChatMessage = {
           id: `assistant-${Date.now()}`,
           role: "assistant",
@@ -575,7 +673,12 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Something went wrong";
-      set({ isLoading: false, error: errorMessage, orbMode: "idle" });
+      set((s) => ({
+        isLoading: false,
+        error: errorMessage,
+        orbMode: "idle",
+        activeElement: s.activeElement ? { ...s.activeElement, responded: false } : null,
+      }));
     }
   },
 

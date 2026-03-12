@@ -40,7 +40,7 @@ export function ActLabel({ currentAct, visible }: ActLabelProps) {
         fontSize: "9px",
         letterSpacing: "2.5px",
         textTransform: "uppercase",
-        color: "rgba(201, 168, 76, 0.6)",
+        color: "color-mix(in srgb, var(--s-gold, #C9A84C) 60%, transparent)",
         opacity: visible ? (crossfading ? 0 : 1) : 0,
         transition: "opacity 300ms ease",
         minHeight: "16px",

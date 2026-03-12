@@ -86,7 +86,7 @@ export function SubtitleDisplay({ text, revealedWords, isRevealing }: SubtitleDi
           fontSize: "17px",
           fontWeight: 300,
           lineHeight: 1.75,
-          color: "#b8c4d6",
+          color: "var(--s-t4, #b8c4d6)",
         }}
         className="max-sm:text-[15px]"
       >
@@ -99,7 +99,7 @@ export function SubtitleDisplay({ text, revealedWords, isRevealing }: SubtitleDi
               className="stage-animate"
               style={{
                 opacity: revealed ? 1 : 0,
-                color: isCursor ? "#ffffff" : "#b8c4d6",
+                color: isCursor ? "#ffffff" : "var(--s-t4, #b8c4d6)",
                 transition: "opacity 150ms ease, color 400ms ease",
                 display: "inline",
               }}

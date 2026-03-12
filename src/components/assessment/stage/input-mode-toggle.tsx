@@ -22,12 +22,12 @@ export function InputModeToggle({ mode, onToggle }: InputModeToggleProps) {
           textTransform: "uppercase",
           border:
             mode === "voice"
-              ? "1px solid #2563EB"
+              ? "1px solid var(--s-blue, #2563EB)"
               : "1px solid rgba(255, 255, 255, 0.06)",
           color:
             mode === "voice"
-              ? "#2563EB"
-              : "rgba(184, 196, 214, 0.5)",
+              ? "var(--s-blue, #2563EB)"
+              : "color-mix(in srgb, var(--s-t4, #b8c4d6) 50%, transparent)",
           background:
             mode === "voice"
               ? "rgba(37, 99, 235, 0.06)"
@@ -50,12 +50,12 @@ export function InputModeToggle({ mode, onToggle }: InputModeToggleProps) {
           textTransform: "uppercase",
           border:
             mode === "text"
-              ? "1px solid #2563EB"
+              ? "1px solid var(--s-blue, #2563EB)"
               : "1px solid rgba(255, 255, 255, 0.06)",
           color:
             mode === "text"
-              ? "#2563EB"
-              : "rgba(184, 196, 214, 0.5)",
+              ? "var(--s-blue, #2563EB)"
+              : "color-mix(in srgb, var(--s-t4, #b8c4d6) 50%, transparent)",
           background:
             mode === "text"
               ? "rgba(37, 99, 235, 0.06)"

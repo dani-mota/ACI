@@ -9,13 +9,19 @@ import { ActLabel } from "./act-label";
 import { SubtitleDisplay } from "./subtitle-display";
 import { CandidateTranscript } from "./candidate-transcript";
 import { InputModeToggle } from "./input-mode-toggle";
-import { StageChoiceCards } from "@/components/assessment/interactive/stage-choice-cards";
-import { StageTimedChallenge } from "@/components/assessment/interactive/stage-timed-challenge";
-import { StageConfidenceRating } from "@/components/assessment/interactive/stage-confidence-rating";
-import { StageNumericInput } from "@/components/assessment/interactive/stage-numeric-input";
+import { InteractiveRenderer } from "@/components/assessment/interactive/interactive-renderer";
+import { usePhase0 } from "./hooks/use-phase0";
 import { MicButton } from "@/components/assessment/voice/mic-button";
 import { Phase0BreakScreen } from "./phase0-break-screen";
 import { ScenarioReferenceCard } from "./scenario-reference-card";
+import { AriaSidebar } from "./aria-sidebar";
+import { TransitionScreen } from "./transition-screen";
+import { CompletionScreen } from "./completion-screen";
+import { CenteredLayout } from "@/components/assessment/layouts/centered-layout";
+import { ReferenceSplitLayout } from "@/components/assessment/layouts/reference-split-layout";
+import { InteractiveSplitLayout } from "@/components/assessment/layouts/interactive-split-layout";
+import { ConfidenceLayout } from "@/components/assessment/layouts/confidence-layout";
+import { resolveFormat, type AssessmentFormat } from "@/lib/assessment/format-resolver";
 import { TTSEngine } from "@/components/assessment/voice/tts-engine";
 import { PHASE_0_SEGMENTS, MIC_NUDGE_15S, MIC_NUDGE_30S } from "@/lib/assessment/phase-0";
 import { NudgeManager, NUDGE_FIRST, NUDGE_SECOND, NUDGE_FINAL, type NudgeContext } from "@/lib/assessment/nudge-system";
@@ -87,6 +93,7 @@ export function AssessmentStage({
   const [phase0MicCheck, setPhase0MicCheck] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [orbGliding, setOrbGliding] = useState(false);
+  const [showCompletionScreen, setShowCompletionScreen] = useState(false);
 
   // ── Refs ──
   const ttsRef = useRef<TTSEngine | null>(null);
@@ -94,11 +101,11 @@ export function AssessmentStage({
   const prevActRef = useRef<string>("ACT_1");
   const wordRevealTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const transcriptTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const phase0Ref = useRef<"idle" | "playing" | "mic_check" | "completing" | "done">("idle");
-  const micNudgeTimers = useRef<{ t15?: ReturnType<typeof setTimeout>; t30?: ReturnType<typeof setTimeout> }>({});
+  // phase0Ref and micNudgeTimers are owned by usePhase0 hook
   const nudgeRef = useRef(new NudgeManager());
   const transitionInProgress = useRef(false);
   const sequenceIdRef = useRef(0);
+  const justTransitionedRef = useRef(false);
 
   // ── Session timer ──
   useEffect(() => {
@@ -353,7 +360,8 @@ export function AssessmentStage({
     };
     const ctx = ctxMap[act];
     if (!ctx) return;
-    if (getStore().activeElement) return;
+    const el = getStore().activeElement;
+    if (el && el.responded) return;
 
     nudgeRef.current.start(ctx, {
       onNudge: (level) => {
@@ -379,68 +387,14 @@ export function AssessmentStage({
   // Phase 0
   // ══════════════════════════════════════════════
 
-  const persistPhase0Msg = useCallback(
-    async (content: string, role: "AGENT" | "CANDIDATE") => {
-      await fetch(`/api/assess/${token}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ trigger: "phase_0_message", content, role }),
-      });
-    },
-    [token],
-  );
-
-  const clearMicNudgeTimers = useCallback(() => {
-    if (micNudgeTimers.current.t15) clearTimeout(micNudgeTimers.current.t15);
-    if (micNudgeTimers.current.t30) clearTimeout(micNudgeTimers.current.t30);
-    micNudgeTimers.current = {};
-  }, []);
-
-  const handlePhase0Complete = useCallback(async () => {
-    phase0Ref.current = "done";
-
-    // Fire-and-forget: tell server Phase 0 is done
-    fetch(`/api/assess/${token}/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ trigger: "phase_0_complete" }),
-    }).catch(() => {
-      console.warn("[Phase0] phase_0_complete trigger failed");
-    });
-
-    // Show break screen
-    const s = getStore();
-    s.setOrchestratorPhase("TRANSITION_0_1");
-    s.loadHistory([], { currentAct: "ACT_1", isComplete: false });
-    s.setOrbMode("idle");
-    s.setOrbTargetSize(getOrbSize("FULL"));
-    s.setSubtitleText("");
-  }, [token]);
-
-  const handlePhase0Response = useCallback(
-    async (text: string) => {
-      if (phase0Ref.current !== "mic_check") return;
-      phase0Ref.current = "completing";
-      setPhase0MicCheck(false);
-      clearMicNudgeTimers();
-
-      try {
-        persistPhase0Msg(text, "CANDIDATE").catch(() => {});
-
-        const confirmation = PHASE_0_SEGMENTS[3];
-        await playSegmentTTS(confirmation.text);
-        persistPhase0Msg(confirmation.text, "AGENT").catch(() => {});
-
-        await handlePhase0Complete();
-      } catch (err) {
-        console.error("[Phase0] Transition chain failed:", err);
-        if ((phase0Ref.current as string) !== "done") {
-          try { await handlePhase0Complete(); } catch { /* give up */ }
-        }
-      }
-    },
-    [clearMicNudgeTimers, persistPhase0Msg, playSegmentTTS, handlePhase0Complete],
-  );
+  const {
+    persistPhase0Msg,
+    clearMicNudgeTimers,
+    handlePhase0Complete,
+    handlePhase0Response,
+    phase0Ref,
+    micNudgeTimers,
+  } = usePhase0({ token, playSegmentTTS, getOrbSize, setPhase0MicCheck });
 
   // ══════════════════════════════════════════════
   // Act Transitions
@@ -501,8 +455,27 @@ export function AssessmentStage({
       onActLabelCrossfade: () => {},
       onTransitionComplete: () => {
         const st = getStore();
+        justTransitionedRef.current = true;
         st.setOrchestratorPhase("ACT_2");
         st.setTransitioning(false);
+        nudgeRef.current.start("act_2", {
+          onNudge: (level) => {
+            const s = getStore();
+            if (s.isLoading || s.isTTSPlaying) return;
+            if (transitionInProgress.current) return;
+            if (level === "first") {
+              playSegmentTTS(NUDGE_FIRST["act_2"]);
+            } else if (level === "second") {
+              s.setInputMode("text");
+              playSegmentTTS(NUDGE_SECOND["act_2"]);
+            } else {
+              playSegmentTTS(NUDGE_FINAL["act_2"]).then(() => {
+                getStore().setOrbMode("processing");
+                getStore().sendMessage("[NO_RESPONSE]");
+              });
+            }
+          },
+        });
       },
     });
 
@@ -529,8 +502,27 @@ export function AssessmentStage({
       onActLabelCrossfade: () => {},
       onTransitionComplete: () => {
         const st = getStore();
+        justTransitionedRef.current = true;
         st.setOrchestratorPhase("ACT_3");
         st.setTransitioning(false);
+        nudgeRef.current.start("act_3", {
+          onNudge: (level) => {
+            const s = getStore();
+            if (s.isLoading || s.isTTSPlaying) return;
+            if (transitionInProgress.current) return;
+            if (level === "first") {
+              playSegmentTTS(NUDGE_FIRST["act_3"]);
+            } else if (level === "second") {
+              s.setInputMode("text");
+              playSegmentTTS(NUDGE_SECOND["act_3"]);
+            } else {
+              playSegmentTTS(NUDGE_FINAL["act_3"]).then(() => {
+                getStore().setOrbMode("processing");
+                getStore().sendMessage("[NO_RESPONSE]");
+              });
+            }
+          },
+        });
       },
     });
 
@@ -551,12 +543,13 @@ export function AssessmentStage({
       },
       onSubtitlesFadeOut: () => {
         getStore().setSubtitleText("");
+        setShowCompletionScreen(true);
       },
       onComplete: () => {
         fetch(`/api/assess/${token}/complete`, { method: "POST" }).catch(() => {});
         setTimeout(() => {
           window.location.href = `/assess/${token}/survey`;
-        }, 2000);
+        }, 4000);
       },
     });
 
@@ -610,6 +603,7 @@ export function AssessmentStage({
           st.loadHistory(data.messages, {
             currentAct: serverAct,
             isComplete: data.state?.isComplete ?? false,
+            progress: data.state?.progress,
           });
 
           phase0Ref.current = "done";
@@ -754,22 +748,29 @@ export function AssessmentStage({
     handleCompletion();
   }, [isComplete, handleCompletion]);
 
-  // ── Interactive element appearance ──
+  // ── Interactive element appearance + nudge management ──
   useEffect(() => {
     if (activeElement && !activeElement.responded) {
       const timer = setTimeout(() => setShowElements(true), 300);
+      // Start nudge for unanswered element
+      startNudgeForCurrentAct();
       return () => clearTimeout(timer);
     } else {
       setShowElements(false);
+      // Stop nudge when element is answered or cleared
+      if (!activeElement) {
+        nudgeRef.current.stop();
+      }
     }
-  }, [activeElement]);
+  }, [activeElement, startNudgeForCurrentAct]);
 
   // ── Orb size in Act 2 ──
   useEffect(() => {
     if (orchestratorPhase !== "ACT_2") return;
     if (activeElement && !activeElement.responded) {
+      justTransitionedRef.current = false;
       getStore().setOrbTargetSize(getOrbSize("COMPACT"));
-    } else if (!activeElement) {
+    } else if (!activeElement && !justTransitionedRef.current) {
       getStore().setOrbTargetSize(getOrbSize("VOICE_PROBE"));
     }
   }, [orchestratorPhase, activeElement]);
@@ -852,8 +853,13 @@ export function AssessmentStage({
       return;
     }
 
-    s.setOrbMode("processing");
-    s.sendMessage(text);
+    const el = s.activeElement;
+    if (el && !el.responded) {
+      s.sendElementResponse({ elementType: el.elementType, value: text });
+    } else {
+      s.setOrbMode("processing");
+      s.sendMessage(text);
+    }
   }, [textInput, handlePhase0Response]);
 
   const handleListeningChange = useCallback((listening: boolean) => {
@@ -871,56 +877,15 @@ export function AssessmentStage({
   // Render Helpers
   // ══════════════════════════════════════════════
 
-  const renderInteractiveElement = () => {
-    if (!activeElement || activeElement.responded) return null;
-
-    const { elementType, elementData } = activeElement;
-    const prompt = (elementData.prompt as string) ?? "";
-    const options = (elementData.options as string[]) ?? [];
-    const timeLimit = (elementData.timeLimit as number) ?? 60;
-
-    switch (elementType) {
-      case "MULTIPLE_CHOICE_INLINE":
-      case "TRADEOFF_SELECTION":
-        return (
-          <StageChoiceCards
-            prompt={prompt}
-            options={options}
-            onSelect={handleElementResponse}
-            disabled={isLoading}
-          />
-        );
-      case "NUMERIC_INPUT":
-        return (
-          <StageNumericInput
-            prompt={prompt}
-            onSubmit={handleElementResponse}
-            disabled={isLoading}
-          />
-        );
-      case "CONFIDENCE_RATING":
-        return (
-          <StageConfidenceRating
-            prompt={prompt}
-            onSelect={handleElementResponse}
-            disabled={isLoading}
-          />
-        );
-      case "TIMED_CHALLENGE":
-        return (
-          <StageTimedChallenge
-            prompt={prompt}
-            options={options}
-            timeLimit={timeLimit}
-            onSelect={handleElementResponse}
-            onTimeout={() => handleElementResponse("TIMEOUT")}
-            disabled={isLoading}
-          />
-        );
-      default:
-        return null;
-    }
-  };
+  const interactiveElement = (
+    <InteractiveRenderer
+      activeElement={activeElement}
+      error={error}
+      isLoading={isLoading}
+      onElementResponse={handleElementResponse}
+      onTimeout={() => handleElementResponse("TIMEOUT")}
+    />
+  );
 
   // ── Visibility logic ──
   const isPhase0 = orchestratorPhase === "PHASE_0";
@@ -938,10 +903,19 @@ export function AssessmentStage({
   const showInputToggle = (currentAct === "ACT_2" && !activeElement) || phase0MicCheck;
   const showInput = !isComplete && !isTransition && !activeElement && (!isPhase0 || phase0MicCheck);
 
-  const isStructuredMode = orchestratorPhase === "ACT_2" && activeElement && !activeElement.responded;
+  // Format resolver — single source of truth for layout selection
+  const format: AssessmentFormat = resolveFormat(
+    orchestratorPhase,
+    activeElement,
+    referenceRevealCount,
+    isComplete,
+  );
 
-  // Act 1 split layout: reference card left, Aria right
-  const isScenarioMode = orchestratorPhase === "ACT_1" && !isTransition;
+  // Layout key for crossfade animation on layout shell changes
+  const layoutKey = format === 2 || format === 3 ? "split-ref"
+    : format >= 4 && format <= 6 ? "split-interactive"
+    : format === 7 ? "confidence"
+    : "centered";
 
   // ── Input area ──
   const renderInputArea = () => {
@@ -1006,7 +980,7 @@ export function AssessmentStage({
                   ? "rgba(37, 99, 235, 0.15)"
                   : "rgba(255, 255, 255, 0.03)",
                 color: textInput.trim()
-                  ? "#60a5fa"
+                  ? "var(--s-blue-g, #4a8af5)"
                   : "rgba(255, 255, 255, 0.2)",
                 cursor: textInput.trim() ? "pointer" : "default",
                 display: "flex",
@@ -1032,8 +1006,8 @@ export function AssessmentStage({
 
   return (
     <div
-      className="fixed inset-0 z-50 overflow-hidden"
-      style={{ background: "#080e1a" }}
+      className="stage-root fixed inset-0 z-50 overflow-hidden"
+      style={{ background: "var(--s-bg, #080e1a)" }}
     >
       {/* Audio unlock gate */}
       {!audioUnlocked && (
@@ -1121,64 +1095,97 @@ export function AssessmentStage({
           />
         </div>
 
-        {/* Main content — three layout modes */}
-        {isScenarioMode ? (
-          /* ── Act 1 Scenario Mode: Reference card left, Aria right ── */
-          <div className="flex-1 flex">
-            {/* LEFT: Reference Card */}
-            <div
-              className="overflow-y-auto"
-              style={{
-                flex: "0 0 42%",
-                padding: "24px 20px 24px 32px",
-                scrollbarWidth: "none",
-              }}
-            >
+        {/* Main content — format-based layout selection (keyed for crossfade) */}
+        <div key={layoutKey} className="stage-layout-enter absolute inset-0 z-10">
+        {(format === 2 || format === 3) ? (
+          /* ── Formats 2-3: Reference card + AriaSidebar ── */
+          <ReferenceSplitLayout
+            referenceCard={
               <ScenarioReferenceCard reference={referenceCard} revealCount={referenceRevealCount} />
-            </div>
-
-            {/* Subtle divider */}
-            <div
-              style={{
-                width: "1px",
-                background: "rgba(255, 255, 255, 0.03)",
-                margin: "24px 0",
-              }}
-            />
-
-            {/* RIGHT: Aria (orb + subtitle + input) */}
-            <div className="flex-1 relative">
-              {/* Act label */}
-              <div
-                className="absolute left-0 right-0 flex justify-center z-10"
-                style={{ top: "calc(35% - 120px)" }}
-              >
-                <ActLabel currentAct={currentAct} visible={showActLabel} />
-              </div>
-
-              {/* Orb — centered in right panel */}
-              <div
-                className="absolute left-1/2"
-                style={{ top: "35%", transform: "translate(-50%, -50%)", zIndex: 1 }}
-              >
-                <AssessmentOrb
-                  mode={orbMode}
-                  amplitude={audioAmplitude}
-                  targetSize={orbTargetSize}
-                />
-              </div>
-
-              {/* Subtitles — below orb */}
-              <div
-                className="absolute left-0 right-0 flex flex-col items-center gap-2 px-6 overflow-y-auto"
-                style={{
-                  top: "calc(35% + 140px)",
-                  zIndex: 2,
-                  bottom: showInput ? "100px" : "48px",
-                  maskImage: "linear-gradient(to bottom, black 80%, transparent)",
-                  WebkitMaskImage: "linear-gradient(to bottom, black 80%, transparent)",
+            }
+            sidebar={
+              <AriaSidebar
+                orbMode={orbMode}
+                audioAmplitude={audioAmplitude}
+                orbTargetSize={88}
+                subtitleText={subtitleText}
+                subtitleRevealedWords={subtitleRevealedWords}
+                isTTSPlaying={isTTSPlaying}
+                candidateTranscript={candidateTranscript}
+                showTranscript={showTranscript}
+                showInput={showInput}
+                inputMode={inputMode}
+                showInputToggle={showInputToggle}
+                isLoading={isLoading}
+                onVoiceTranscript={handleVoiceTranscript}
+                onListeningChange={handleListeningChange}
+                onTextSend={(text) => {
+                  ttsRef.current?.stop();
+                  nudgeRef.current.stop();
+                  sequenceIdRef.current++;
+                  const s = getStore();
+                  s.setOrbMode("processing");
+                  s.sendMessage(text);
                 }}
-              >
+                onInputModeToggle={(mode) => getStore().setInputMode(mode)}
+                micButtonRef={micButtonRef}
+              />
+            }
+          />
+
+        ) : (format >= 4 && format <= 6) ? (
+          /* ── Formats 4-6: Interactive element + AriaSidebar ── */
+          <InteractiveSplitLayout
+            showElements={showElements}
+            interactiveElement={interactiveElement}
+            sidebar={
+              <AriaSidebar
+                orbMode={orbMode}
+                audioAmplitude={audioAmplitude}
+                orbTargetSize={72}
+                subtitleText={subtitleText}
+                subtitleRevealedWords={subtitleRevealedWords}
+                isTTSPlaying={isTTSPlaying}
+                candidateTranscript={candidateTranscript}
+                showTranscript={showTranscript}
+                showInput={showInput}
+                inputMode={inputMode}
+                showInputToggle={showInputToggle}
+                isLoading={isLoading}
+                onVoiceTranscript={handleVoiceTranscript}
+                onListeningChange={handleListeningChange}
+                onTextSend={(text) => {
+                  ttsRef.current?.stop();
+                  nudgeRef.current.stop();
+                  sequenceIdRef.current++;
+                  const s = getStore();
+                  const el = s.activeElement;
+                  if (el && !el.responded) {
+                    s.sendElementResponse({ elementType: el.elementType, value: text });
+                  } else {
+                    s.setOrbMode("processing");
+                    s.sendMessage(text);
+                  }
+                }}
+                onInputModeToggle={(mode) => getStore().setInputMode(mode)}
+                micButtonRef={micButtonRef}
+              />
+            }
+          />
+
+        ) : format === 7 ? (
+          /* ── Format 7: Confidence rating (centered with element) ── */
+          <ConfidenceLayout
+            actLabel={<ActLabel currentAct={currentAct} visible={showActLabel} />}
+            orb={
+              <AssessmentOrb
+                mode={orbMode}
+                amplitude={audioAmplitude}
+                targetSize={orbTargetSize}
+              />
+            }
+            subtitle={
+              <>
                 <SubtitleDisplay
                   text={subtitleText}
                   revealedWords={subtitleRevealedWords}
@@ -1188,143 +1195,78 @@ export function AssessmentStage({
                   text={candidateTranscript}
                   visible={showTranscript}
                 />
-              </div>
-
-              {/* Input — pinned to bottom of right panel */}
-              {showInput && (
-                <div
-                  className="absolute left-0 right-0 bottom-0 flex flex-col items-center gap-3 pb-4 px-4"
-                  style={{ transition: "opacity 300ms ease" }}
-                >
-                  {renderInputArea()}
-                </div>
-              )}
-            </div>
-          </div>
-
-        ) : isStructuredMode ? (
-          /* ── Act 2 Structured Mode: interactive element left, orb right ── */
-          <div
-            className="flex-1 flex items-center px-6 gap-8"
-            style={{ transition: "all 800ms cubic-bezier(0.25, 0.1, 0.25, 1)" }}
-          >
-            {/* Left: Question panel */}
-            <div
-              className="flex-1 flex flex-col justify-center max-w-xl"
-              style={{
-                opacity: showElements ? 1 : 0,
-                transform: showElements ? "translateY(0)" : "translateY(24px)",
-                transition: "opacity 700ms cubic-bezier(0.25, 0.1, 0.25, 1), transform 700ms cubic-bezier(0.25, 0.1, 0.25, 1)",
-              }}
-            >
-              {renderInteractiveElement()}
-            </div>
-
-            {/* Right: Compact orb + subtitle + input */}
-            <div className="flex flex-col items-center gap-4 min-w-[280px]">
-              <AssessmentOrb
-                mode={orbMode}
-                amplitude={audioAmplitude}
-                targetSize={orbTargetSize}
-              />
-              <SubtitleDisplay
-                text={subtitleText}
-                revealedWords={subtitleRevealedWords}
-                isRevealing={isTTSPlaying}
-              />
-              <CandidateTranscript
-                text={candidateTranscript}
-                visible={showTranscript}
-              />
-              {renderInputArea()}
-            </div>
-          </div>
+              </>
+            }
+            interactiveElement={interactiveElement}
+            showElements={showElements}
+            showInput={showInput}
+            input={renderInputArea()}
+          />
 
         ) : (
-          /* ── Centered conversational mode: Phase 0, Act 3, transitions ── */
-          <div className="relative flex-1">
-            {/* Act label — above orb center */}
-            <div
-              className="absolute left-0 right-0 flex justify-center z-10"
-              style={{ top: "calc(38% - 130px)" }}
-            >
-              <ActLabel currentAct={currentAct} visible={showActLabel} />
-            </div>
-
-            {/* Orb — center anchor, glides to right side when transitioning to Act 1 */}
-            <div
-              className="absolute"
-              style={{
-                top: orbGliding ? "35%" : "38%",
-                left: orbGliding ? "71%" : "50%",
-                transform: "translate(-50%, -50%)",
-                zIndex: 1,
-                transition: "top 1000ms cubic-bezier(0.25, 0.1, 0.25, 1), left 1000ms cubic-bezier(0.25, 0.1, 0.25, 1)",
-              }}
-            >
+          /* ── Formats 1, 8, 9: Centered conversational / transition / completion ── */
+          <CenteredLayout
+            orbTop={orbGliding ? "35%" : "38%"}
+            orbLeft={orbGliding ? "71%" : "50%"}
+            actLabel={<ActLabel currentAct={currentAct} visible={showActLabel} />}
+            orb={
               <AssessmentOrb
                 mode={orbMode}
                 amplitude={audioAmplitude}
                 targetSize={orbTargetSize}
               />
-            </div>
-
-            {/* Break screen — below orb, replaces subtitles during TRANSITION_0_1 */}
-            {isBreak && !orbGliding && (
-              <Phase0BreakScreen
-                duration={20}
-                onContinue={handleBeginAct1}
-                visible={true}
-              />
-            )}
-
-            {/* Subtitles — below orb, absolutely positioned, scrollable */}
-            {!isBreak && (
-              <div
-                className="absolute left-0 right-0 flex flex-col items-center gap-2 px-4 overflow-y-auto"
-                style={{
-                  top: "calc(38% + 140px)",
-                  zIndex: 2,
-                  bottom: showInput ? "100px" : "48px",
-                  maskImage: "linear-gradient(to bottom, black 80%, transparent)",
-                  WebkitMaskImage: "linear-gradient(to bottom, black 80%, transparent)",
-                }}
-              >
-                <SubtitleDisplay
-                  text={subtitleText}
-                  revealedWords={subtitleRevealedWords}
-                  isRevealing={isTTSPlaying}
-                />
-                <CandidateTranscript
-                  text={candidateTranscript}
-                  visible={showTranscript}
-                />
-                {activeElement && !activeElement.responded && (
-                  <div
-                    className="w-full flex justify-center"
-                    style={{
-                      opacity: showElements ? 1 : 0,
-                      transform: showElements ? "translateY(0)" : "translateY(24px)",
-                      transition: "opacity 700ms cubic-bezier(0.25, 0.1, 0.25, 1), transform 700ms cubic-bezier(0.25, 0.1, 0.25, 1)",
-                    }}
-                  >
-                    {renderInteractiveElement()}
-                  </div>
+            }
+            content={
+              <>
+                {isBreak && !orbGliding ? (
+                  <Phase0BreakScreen
+                    duration={20}
+                    onContinue={handleBeginAct1}
+                    visible={true}
+                  />
+                ) : format === 9 && showCompletionScreen ? (
+                  <CompletionScreen
+                    elapsedMinutes={Math.round(elapsedSeconds / 60)}
+                    visible={true}
+                  />
+                ) : (
+                  <>
+                    {format === 8 && (
+                      <TransitionScreen
+                        heading=""
+                        visible={true}
+                      />
+                    )}
+                    <SubtitleDisplay
+                      text={subtitleText}
+                      revealedWords={subtitleRevealedWords}
+                      isRevealing={isTTSPlaying}
+                    />
+                    <CandidateTranscript
+                      text={candidateTranscript}
+                      visible={showTranscript}
+                    />
+                    {activeElement && !activeElement.responded && (
+                      <div
+                        className="w-full flex justify-center"
+                        style={{
+                          opacity: showElements ? 1 : 0,
+                          transform: showElements ? "translateY(0)" : "translateY(24px)",
+                          transition: "opacity 700ms cubic-bezier(0.25,0.1,0.25,1), transform 700ms cubic-bezier(0.25,0.1,0.25,1)",
+                        }}
+                      >
+                        {interactiveElement}
+                      </div>
+                    )}
+                  </>
                 )}
-              </div>
-            )}
-
-            {/* Input — pinned to bottom, never pushes anything */}
-            {showInput && (
-              <div
-                className="absolute left-0 right-0 bottom-0 flex flex-col items-center gap-3 pb-4 px-4"
-                style={{ transition: "opacity 300ms ease" }}
-              >
-                {renderInputArea()}
-              </div>
-            )}
-          </div>
+              </>
+            }
+            showInput={showInput}
+            input={renderInputArea()}
+          />
         )}
+        </div>
       </div>
 
       {/* Bottom bar */}
@@ -1362,8 +1304,8 @@ export function AssessmentStage({
           role="alert"
           className="fixed bottom-12 left-1/2 -translate-x-1/2 z-30 px-4 py-2 rounded-lg flex items-center gap-3"
           style={{
-            background: "rgba(220, 38, 38, 0.15)",
-            border: "1px solid rgba(220, 38, 38, 0.3)",
+            background: "color-mix(in srgb, var(--s-red, #DC2626) 15%, transparent)",
+            border: "1px solid color-mix(in srgb, var(--s-red, #DC2626) 30%, transparent)",
             color: "#fca5a5",
             fontSize: "12px",
             fontFamily: "var(--font-display)",
@@ -1371,7 +1313,7 @@ export function AssessmentStage({
         >
           <span>Something went wrong. Please try again.</span>
           <button
-            onClick={() => getStore().setSubtitleText("")}
+            onClick={() => { const s = getStore(); s.setSubtitleText(""); useChatAssessmentStore.setState({ error: null }); }}
             aria-label="Dismiss error"
             style={{
               color: "rgba(252, 165, 165, 0.6)",

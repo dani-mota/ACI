@@ -136,7 +136,7 @@ export const MicButton = forwardRef<HTMLButtonElement, MicButtonProps>(
           height: "52px",
           borderRadius: "50%",
           border: listening
-            ? "1px solid #22d68a"
+            ? "1px solid var(--s-green-b, #22d68a)"
             : "1px solid rgba(255, 255, 255, 0.1)",
           background: listening
             ? "rgba(5, 150, 105, 0.08)"
@@ -168,7 +168,7 @@ export const MicButton = forwardRef<HTMLButtonElement, MicButtonProps>(
           height="20"
           viewBox="0 0 24 24"
           fill="none"
-          stroke={listening ? "#22d68a" : "rgba(255, 255, 255, 0.5)"}
+          stroke={listening ? "var(--s-green-b, #22d68a)" : "rgba(255, 255, 255, 0.5)"}
           strokeWidth={2}
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -189,7 +189,7 @@ export const MicButton = forwardRef<HTMLButtonElement, MicButtonProps>(
           letterSpacing: "1.2px",
           textTransform: "uppercase",
           color: listening
-            ? "#22d68a"
+            ? "var(--s-green-b, #22d68a)"
             : "rgba(255, 255, 255, 0.25)",
           transition: "color 300ms ease",
           maxWidth: "200px",

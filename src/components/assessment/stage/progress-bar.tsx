@@ -86,7 +86,7 @@ export function StageProgressBar({
                 <div
                   className="h-full rounded-full stage-animate"
                   style={{
-                    background: isPast || isActive ? "#2563EB" : "transparent",
+                    background: isPast || isActive ? "var(--s-blue, #2563EB)" : "transparent",
                     boxShadow:
                       isPast || isActive
                         ? "0 0 10px rgba(37, 99, 235, 0.5)"
@@ -105,7 +105,7 @@ export function StageProgressBar({
                 style={{
                   background:
                     isPast
-                      ? "#2563EB"
+                      ? "var(--s-blue, #2563EB)"
                       : "rgba(255, 255, 255, 0.1)",
                   boxShadow: isPast
                     ? "0 0 6px rgba(37, 99, 235, 0.4)"

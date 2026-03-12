@@ -33,7 +33,7 @@ export function CandidateTranscript({ text, visible }: CandidateTranscriptProps)
         fontSize: "13px",
         fontWeight: 300,
         fontStyle: "italic",
-        color: "rgba(184, 196, 214, 0.5)",
+        color: "color-mix(in srgb, var(--s-t4, #b8c4d6) 50%, transparent)",
         opacity,
         transition: "opacity 600ms ease",
       }}
