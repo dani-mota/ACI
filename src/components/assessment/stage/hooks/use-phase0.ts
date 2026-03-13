@@ -1,6 +1,5 @@
 import { useCallback, useRef } from "react";
 import { useChatAssessmentStore } from "@/stores/chat-assessment-store";
-import { PHASE_0_SEGMENTS } from "@/lib/assessment/phase-0";
 
 const getStore = () => useChatAssessmentStore.getState();
 
@@ -9,9 +8,10 @@ interface UsePhase0Options {
   playSegmentTTS: (text: string) => Promise<void>;
   getOrbSize: (key: "FULL" | "COMPACT" | "VOICE_PROBE") => number;
   setPhase0MicCheck: (v: boolean) => void;
+  confirmationText: string;
 }
 
-export function usePhase0({ token, playSegmentTTS, getOrbSize, setPhase0MicCheck }: UsePhase0Options) {
+export function usePhase0({ token, playSegmentTTS, getOrbSize, setPhase0MicCheck, confirmationText }: UsePhase0Options) {
   const phase0Ref = useRef<"idle" | "playing" | "mic_check" | "completing" | "done">("idle");
   const micNudgeTimers = useRef<{ t15?: ReturnType<typeof setTimeout>; t30?: ReturnType<typeof setTimeout> }>({});
 
@@ -63,9 +63,8 @@ export function usePhase0({ token, playSegmentTTS, getOrbSize, setPhase0MicCheck
       try {
         persistPhase0Msg(text, "CANDIDATE").catch(() => {});
 
-        const confirmation = PHASE_0_SEGMENTS[3];
-        await playSegmentTTS(confirmation.text);
-        persistPhase0Msg(confirmation.text, "AGENT").catch(() => {});
+        await playSegmentTTS(confirmationText);
+        persistPhase0Msg(confirmationText, "AGENT").catch(() => {});
 
         await handlePhase0Complete();
       } catch (err) {
@@ -75,7 +74,7 @@ export function usePhase0({ token, playSegmentTTS, getOrbSize, setPhase0MicCheck
         }
       }
     },
-    [clearMicNudgeTimers, persistPhase0Msg, playSegmentTTS, handlePhase0Complete, setPhase0MicCheck],
+    [clearMicNudgeTimers, persistPhase0Msg, playSegmentTTS, handlePhase0Complete, setPhase0MicCheck, confirmationText],
   );
 
   return {

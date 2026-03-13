@@ -68,12 +68,16 @@ export function cleanText(raw: string): string {
     .trim();
 }
 
-/** Split text into sentences, preserving abbreviations and decimals. */
+/** Split text into sentences, preserving abbreviations, decimals, and unit suffixes. */
 export function splitSentences(text: string): string[] {
-  const raw = text.split(/(?<=[.!?])\s+/);
+  // Split on sentence-ending punctuation followed by whitespace + capital letter or quote,
+  // but NOT after: decimals (1.2), single uppercase letters (Dr.), or common abbreviations
+  const raw = text.split(
+    /(?<![0-9])(?<!\b[A-Z])(?<!\b(?:e\.g|i\.e|vs|etc|approx|Dr|Mr|Ms|Mrs|Jr|Sr|St))(?<=[.!?])\s+(?=[A-Z"])/
+  );
   return raw
     .map((s) => s.trim())
-    .filter((s) => s.length > 0);
+    .filter((s) => s.length > 0 && s.split(/\s+/).length >= 2);
 }
 
 /**

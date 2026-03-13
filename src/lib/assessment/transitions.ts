@@ -121,10 +121,10 @@ export function buildCompletionScript(callbacks: {
   onOrbSettle: () => void;
   onSubtitlesFadeOut: () => void;
   onComplete: () => void;
-}): TransitionLine[] {
+}, candidateName: string): TransitionLine[] {
   return [
     {
-      text: "That's everything. Thank you for your time and your thoughtful responses today.",
+      text: `That's everything, ${candidateName}. Thank you for your time and your thoughtful responses today.`,
       onStart: callbacks.onOrbSettle,
     },
     {

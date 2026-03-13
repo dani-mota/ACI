@@ -20,37 +20,39 @@ export interface Phase0Segment {
   triggersTransition?: boolean;
 }
 
-export const PHASE_0_SEGMENTS: Phase0Segment[] = [
-  {
-    id: "introduction",
-    text: "Hey there! I'm Aria — really glad you're here. I'll be your guide through this whole thing, and honestly, I think you're going to find it pretty interesting.",
-    durationEstimateMs: 9000,
-    pauseAfterMs: 1500,
-  },
-  {
-    id: "format_orientation",
-    text: "So here's how this works — we'll spend about 60 to 90 minutes together. I'm going to walk you through some real-world scenarios, and you'll just talk through how you'd handle them. We'll also mix in a few quick questions you can tap on screen. There's no trick questions, and honestly, most of what we'll talk about doesn't have one right answer. I'm just curious to hear how you think.",
-    durationEstimateMs: 18000,
-    pauseAfterMs: 1000,
-  },
-  {
-    id: "mic_check",
-    text: "One quick thing before we dive in — let's make sure your mic is working. Tap that microphone button and just tell me, what role are you here for today?",
-    durationEstimateMs: 9000,
-    showMic: true,
-  },
-  {
-    id: "confirmation",
-    text: "Great, I can hear you perfectly! Alright, let's jump in.",
-    durationEstimateMs: 4000,
-    triggersTransition: true,
-  },
-];
+export function getPhase0Segments(candidateName: string, companyName: string): Phase0Segment[] {
+  return [
+    {
+      id: "introduction",
+      text: `Hello ${candidateName}, I'm Aria. Welcome to your assessment with ${companyName}. I'll be guiding you through the process today, and I think you'll find it an engaging experience.`,
+      durationEstimateMs: 9000,
+      pauseAfterMs: 1500,
+    },
+    {
+      id: "format_orientation",
+      text: "Here's how this will work. We'll spend about 60 to 90 minutes together. I'll walk you through some real-world scenarios, and you'll talk through how you'd approach them. We'll also include a few quick questions you can respond to on screen. There are no trick questions, and most of what we discuss doesn't have a single right answer. I'm interested in understanding how you think.",
+      durationEstimateMs: 18000,
+      pauseAfterMs: 1000,
+    },
+    {
+      id: "mic_check",
+      text: "Before we begin, let's confirm your microphone is working. Tap the microphone button and tell me, what role are you here for today?",
+      durationEstimateMs: 9000,
+      showMic: true,
+    },
+    {
+      id: "confirmation",
+      text: "I can hear you clearly. Let's get started.",
+      durationEstimateMs: 4000,
+      triggersTransition: true,
+    },
+  ];
+}
 
 /** Nudge when candidate hasn't responded to mic check after 15s. */
 export const MIC_NUDGE_15S =
-  "No rush! If the mic's being tricky, you can always type instead — totally fine either way.";
+  "Take your time. If your microphone isn't cooperating, you're welcome to type your response instead.";
 
 /** Nudge when candidate still hasn't responded after 30s — auto-switch to text. */
 export const MIC_NUDGE_30S =
-  "Hey, no worries at all — let's just switch to typing. Works just as well!";
+  "No problem at all — let's switch to typing. It works just as well.";

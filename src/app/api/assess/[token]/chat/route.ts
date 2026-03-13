@@ -3,7 +3,7 @@ import { streamText } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import prisma from "@/lib/prisma";
 import { getRoleContext } from "@/lib/assessment/role-context";
-import { getNextAction, computeStateUpdate, computeProgress, buildGreetingPrompt } from "@/lib/assessment/engine";
+import { getNextAction, computeStateUpdate, computeProgress } from "@/lib/assessment/engine";
 import { AI_CONFIG, FEATURE_FLAGS } from "@/lib/assessment/config";
 import type { ResponseClassification, AdaptiveLoopState } from "@/lib/assessment/types";
 import { classifyResponse } from "@/lib/assessment/classification";
@@ -36,6 +36,9 @@ export async function POST(
   { params }: { params: Promise<{ token: string }> },
 ) {
   const { token } = await params;
+  let stateSnapshot: Record<string, unknown> | null = null;
+
+  try {
 
   // Rate limit by token
   const rl = checkRateLimit(`chat:${token}`, RATE_LIMITS.assessmentChat);
@@ -135,6 +138,18 @@ export async function POST(
       },
     });
   }
+
+  // Capture state snapshot for error diagnostics
+  stateSnapshot = {
+    act: state.currentAct,
+    scenario: state.currentScenario,
+    beat: state.currentBeat,
+    contentLibraryId: state.contentLibraryId ?? "none",
+    hasVariants: !!state.variantSelections,
+    contentLibEnabled: FEATURE_FLAGS.CONTENT_LIBRARY_ENABLED,
+  };
+
+  log.info("Assessment state loaded", { contentLibraryId: state.contentLibraryId ?? "none", hasVariants: !!state.variantSelections });
 
   // Capture state version for optimistic concurrency checks
   const stateVersion = state.updatedAt;
@@ -497,55 +512,57 @@ export async function POST(
       && isSentinel
       && state.currentBeat === 0
     ) {
+      // Content lookup is recoverable (fall back to streaming); DB writes are not
+      let beat0Content: { spokenText: string; referenceCard?: unknown } | null = null;
       try {
         const library = await loadContentLibrary(state.contentLibraryId!);
         const variantSelections = (state.variantSelections as Record<string, number>) ?? {};
         const scenarioIndex = (action.metadata as Record<string, unknown>)?.scenarioIndex as number ?? state.currentScenario;
-
-        // lookupBeatContent ignores classification for Beat 0
-        const content = lookupBeatContent(library, scenarioIndex, 0, "ADEQUATE", variantSelections);
-
-        if (content.spokenText) {
-          const seq = await nextSequenceOrder();
-          await prisma.conversationMessage.create({
-            data: {
-              assessmentId: assessment.id,
-              role: "AGENT",
-              content: content.spokenText,
-              act: action.act,
-              sequenceOrder: seq,
-              metadata: {
-                ...((action.metadata as Record<string, unknown>) ?? {}),
-                preGenerated: true,
-                beat0: true,
-              } as any,
-            },
-          });
-
-          if (action.metadata) {
-            const stateUpdate = computeStateUpdate(state, action);
-            log.info("StateUpdate (Beat 0 library)", { stateUpdate });
-            if (Object.keys(stateUpdate).length > 0) {
-              await prisma.assessmentState.update({
-                where: { assessmentId: assessment.id },
-                data: stateUpdate as any,
-              });
-            }
-          }
-
-          const beat0Progress = await getProgress();
-          return new Response(
-            JSON.stringify({
-              type: "agent_message",
-              message: content.spokenText,
-              referenceCard: content.referenceCard || null,
-              progress: beat0Progress,
-            }),
-            { headers: { "Content-Type": "application/json" } },
-          );
-        }
+        const raw = lookupBeatContent(library, scenarioIndex, 0, "ADEQUATE", variantSelections);
+        if (raw.spokenText) beat0Content = raw;
       } catch (err) {
-        log.error("Beat 0 content library failed, falling back to streaming", { error: String(err) });
+        log.error("Beat 0 content library lookup failed, falling back to streaming", { error: String(err) });
+      }
+
+      if (beat0Content) {
+        // DB writes outside try/catch — failures propagate to outer handler
+        const seq = await nextSequenceOrder();
+        await prisma.conversationMessage.create({
+          data: {
+            assessmentId: assessment.id,
+            role: "AGENT",
+            content: beat0Content.spokenText,
+            act: action.act,
+            sequenceOrder: seq,
+            metadata: {
+              ...((action.metadata as Record<string, unknown>) ?? {}),
+              preGenerated: true,
+              beat0: true,
+            } as any,
+          },
+        });
+
+        if (action.metadata) {
+          const stateUpdate = computeStateUpdate(state, action);
+          log.info("StateUpdate (Beat 0 library)", { stateUpdate });
+          if (Object.keys(stateUpdate).length > 0) {
+            await prisma.assessmentState.update({
+              where: { assessmentId: assessment.id },
+              data: stateUpdate as any,
+            });
+          }
+        }
+
+        const beat0Progress = await getProgress();
+        return new Response(
+          JSON.stringify({
+            type: "agent_message",
+            message: beat0Content.spokenText,
+            referenceCard: beat0Content.referenceCard || null,
+            progress: beat0Progress,
+          }),
+          { headers: { "Content-Type": "application/json" } },
+        );
       }
     }
 
@@ -570,14 +587,17 @@ export async function POST(
       const scenarioIndex = (action.metadata as Record<string, unknown>)?.scenarioIndex as number ?? state.currentScenario;
       const beatIndex = (action.metadata as Record<string, unknown>)?.beatIndex as number ?? state.currentBeat;
 
+      // Content lookup is recoverable (fall back to streaming); DB writes are not
+      let preGenContent: { spokenText: string; referenceCard?: unknown; referenceUpdate?: unknown } | null = null;
+      let preGenClassification: ResponseClassification = "ADEQUATE";
+
       try {
         const library = await loadContentLibrary(state.contentLibraryId!);
         const variantSelections = (state.variantSelections as Record<string, number>) ?? {};
 
-        // Classification already ran above (lines 282-316) and updated state.
-        // Get the classification from the updated branch path.
+        // Classification already ran above and updated state.
         const branchPath = (state.branchPath as ResponseClassification[] | null) ?? [];
-        const classification = branchPath[branchPath.length - 1] ?? "ADEQUATE";
+        preGenClassification = branchPath[branchPath.length - 1] ?? "ADEQUATE";
 
         // Acknowledgment was fired in parallel with classification above
         const acknowledgment = acknowledgmentPromise
@@ -585,31 +605,40 @@ export async function POST(
           : "";
 
         // Look up pre-generated content
-        const content = lookupBeatContent(library, scenarioIndex, beatIndex, classification, variantSelections);
+        const content = lookupBeatContent(library, scenarioIndex, beatIndex, preGenClassification, variantSelections);
 
         // Compose full response
         const fullText = beatIndex === 0
           ? content.spokenText
           : `${acknowledgment} ${content.spokenText}`;
 
-        // Persist message
+        preGenContent = {
+          spokenText: fullText,
+          referenceCard: content.referenceCard || null,
+          referenceUpdate: content.referenceUpdate || null,
+        };
+      } catch (err) {
+        log.error("Pre-generated content lookup failed, falling back to streaming", { error: String(err) });
+      }
+
+      if (preGenContent) {
+        // DB writes outside try/catch — failures propagate to outer handler
         const seq = await nextSequenceOrder();
         await prisma.conversationMessage.create({
           data: {
             assessmentId: assessment.id,
             role: "AGENT",
-            content: fullText,
+            content: preGenContent.spokenText,
             act: action.act,
             sequenceOrder: seq,
             metadata: {
               ...((action.metadata as Record<string, unknown>) ?? {}),
               preGenerated: true,
-              classification,
+              classification: preGenClassification,
             } as any,
           },
         });
 
-        // Update state
         if (action.metadata) {
           const stateUpdate = computeStateUpdate(state, action);
           log.info("StateUpdate (pre-generated content)", { stateUpdate });
@@ -625,20 +654,18 @@ export async function POST(
         return new Response(
           JSON.stringify({
             type: "agent_message",
-            message: fullText,
-            referenceCard: content.referenceCard || null,
-            referenceUpdate: content.referenceUpdate || null,
+            message: preGenContent.spokenText,
+            referenceCard: preGenContent.referenceCard,
+            referenceUpdate: preGenContent.referenceUpdate,
             progress: pregenProgress,
           }),
           { headers: { "Content-Type": "application/json" } },
         );
-      } catch (err) {
-        // Fall through to streaming path on any content library error
-        log.error("Pre-generated content failed, falling back to streaming", { error: String(err) });
       }
     }
 
     // ── Streaming path (default / fallback) ──
+    log.info("Entering streaming path", { act: state.currentAct, beat: String(state.currentBeat), hasContentLibrary: !!state.contentLibraryId });
     // Build conversation history for context
     const conversationHistory = buildConversationHistory(assessment.messages, clientMessages);
 
@@ -646,6 +673,12 @@ export async function POST(
     let systemPrompt = action.systemPrompt;
     if (roleContext) {
       systemPrompt += `\n\nROLE CONTEXT: The candidate is being assessed for the role of ${roleContext.roleName}. Domain: ${roleContext.environment}. Key tasks: ${roleContext.keyTasks.slice(0, 4).join(", ")}. Technical skills: ${roleContext.technicalSkills.slice(0, 4).join(", ")}.`;
+    }
+
+    // Add candidate identity context so AI can address them by name
+    const candidateName = invitation.candidate.firstName;
+    if (candidateName) {
+      systemPrompt += `\nCandidate name: ${candidateName}. You may address them by name once, in your first response of a new section. Do not repeat it in every response.`;
     }
 
     // Add beat-aware personalization instructions for Act 1 streaming
@@ -663,75 +696,88 @@ export async function POST(
       }
     }
 
-    const result = streamText({
-      model: anthropic(AI_CONFIG.realtimeModel),
-      system: systemPrompt,
-      messages: [
-        ...conversationHistory,
-        { role: "user" as const, content: action.userContext },
-      ],
-      maxOutputTokens: 500,
-      temperature: 0.7,
-      abortSignal: AbortSignal.timeout(AI_CONFIG.realtimeTimeoutMs),
-      async onFinish({ text }) {
-        try {
-          // Strip construct_check validation tags from parallel scenarios
-          let cleanText = text;
-          const constructCheckMatch = text.match(/<construct_check>(.*?)<\/construct_check>/);
-          if (constructCheckMatch) {
-            cleanText = text.replace(/<construct_check>.*?<\/construct_check>/g, "").trim();
-            const expectedConstructs = constructCheckMatch[1].split(",");
-            const actionMeta = action.metadata as Record<string, unknown> | undefined;
-            if (actionMeta?.sourceScenarioIndex !== undefined) {
-              const srcScenario = SCENARIOS[actionMeta.sourceScenarioIndex as number];
-              const matched = srcScenario?.primaryConstructs.every(
-                (c: string) => expectedConstructs.includes(c)
-              );
-              if (!matched) {
-                log.warn("Parallel scenario construct mismatch", { expected: srcScenario?.primaryConstructs.join(","), got: constructCheckMatch[1] });
+    try {
+      const result = streamText({
+        model: anthropic(AI_CONFIG.realtimeModel),
+        system: systemPrompt,
+        messages: [
+          ...conversationHistory,
+          { role: "user" as const, content: action.userContext },
+        ],
+        maxOutputTokens: 500,
+        temperature: 0.7,
+        abortSignal: AbortSignal.timeout(AI_CONFIG.realtimeTimeoutMs),
+        async onFinish({ text }) {
+          try {
+            // Strip construct_check validation tags from parallel scenarios
+            let cleanText = text;
+            const constructCheckMatch = text.match(/<construct_check>(.*?)<\/construct_check>/);
+            if (constructCheckMatch) {
+              cleanText = text.replace(/<construct_check>.*?<\/construct_check>/g, "").trim();
+              const expectedConstructs = constructCheckMatch[1].split(",");
+              const actionMeta = action.metadata as Record<string, unknown> | undefined;
+              if (actionMeta?.sourceScenarioIndex !== undefined) {
+                const srcScenario = SCENARIOS[actionMeta.sourceScenarioIndex as number];
+                const matched = srcScenario?.primaryConstructs.every(
+                  (c: string) => expectedConstructs.includes(c)
+                );
+                if (!matched) {
+                  log.warn("Parallel scenario construct mismatch", { expected: srcScenario?.primaryConstructs.join(","), got: constructCheckMatch[1] });
+                }
               }
             }
-          }
 
-          // Persist the agent's message after streaming completes
-          const seq = await nextSequenceOrder();
-          await prisma.conversationMessage.create({
-            data: {
-              assessmentId: assessment.id,
-              role: "AGENT",
-              content: cleanText,
-              act: action.act,
-              sequenceOrder: seq,
-              metadata: {
-                ...((action.metadata as Record<string, unknown>) ?? {}),
-                ...(constructCheckMatch ? { constructValidation: constructCheckMatch[1] } : {}),
-              } as any,
-            },
-          });
+            // Persist the agent's message after streaming completes
+            const seq = await nextSequenceOrder();
+            await prisma.conversationMessage.create({
+              data: {
+                assessmentId: assessment.id,
+                role: "AGENT",
+                content: cleanText,
+                act: action.act,
+                sequenceOrder: seq,
+                metadata: {
+                  ...((action.metadata as Record<string, unknown>) ?? {}),
+                  ...(constructCheckMatch ? { constructValidation: constructCheckMatch[1] } : {}),
+                } as any,
+              },
+            });
 
-          // Update assessment state based on action metadata
-          if (action.metadata) {
-            const stateUpdate = computeStateUpdate(state!, action);
-            log.info("StateUpdate (streaming onFinish)", { stateUpdate });
-            if (Object.keys(stateUpdate).length > 0) {
-              await prisma.assessmentState.update({
-                where: { assessmentId: assessment.id },
-                data: stateUpdate as any,
-              });
+            // Update assessment state based on action metadata
+            if (action.metadata) {
+              const stateUpdate = computeStateUpdate(state!, action);
+              log.info("StateUpdate (streaming onFinish)", { stateUpdate });
+              if (Object.keys(stateUpdate).length > 0) {
+                await prisma.assessmentState.update({
+                  where: { assessmentId: assessment.id },
+                  data: stateUpdate as any,
+                });
+              }
             }
+          } catch (err) {
+            log.error("onFinish failed", { assessmentId: assessment.id, error: String(err) });
           }
-        } catch (err) {
-          log.error("onFinish failed", { assessmentId: assessment.id, error: String(err) });
-        }
-      },
-    });
+        },
+      });
 
-    // Attach progress as header (computed from current state, before onFinish updates)
-    const streamProgress = computeProgress(state);
-    const streamResponse = result.toTextStreamResponse();
-    const streamHeaders = new Headers(streamResponse.headers);
-    streamHeaders.set("X-ACI-Progress", JSON.stringify(streamProgress));
-    return new Response(streamResponse.body, { status: 200, headers: streamHeaders });
+      // Attach progress as header (computed from current state, before onFinish updates)
+      const streamProgress = computeProgress(state);
+      const streamResponse = result.toTextStreamResponse();
+      const streamHeaders = new Headers(streamResponse.headers);
+      streamHeaders.set("X-ACI-Progress", JSON.stringify(streamProgress));
+      return new Response(streamResponse.body, { status: 200, headers: streamHeaders });
+    } catch (streamErr) {
+      log.error("Streaming failed", {
+        error: streamErr instanceof Error ? streamErr.message : String(streamErr),
+        act: state.currentAct,
+        beat: String(state.currentBeat),
+        model: AI_CONFIG.realtimeModel,
+      });
+      return new Response(
+        JSON.stringify({ error: "AI response generation failed" }),
+        { status: 502, headers: { "Content-Type": "application/json" } },
+      );
+    }
   }
 
   // Fallback
@@ -739,6 +785,22 @@ export async function POST(
     status: 500,
     headers: { "Content-Type": "application/json" },
   });
+
+  } catch (err) {
+    log.error("Unhandled error in chat route", {
+      token: token?.slice(0, 8) + "...",
+      state: stateSnapshot,
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
+    return new Response(
+      JSON.stringify({
+        error: "Internal server error",
+        ...(process.env.NODE_ENV === "development" ? { detail: err instanceof Error ? err.message : String(err) } : {}),
+      }),
+      { status: 500, headers: { "Content-Type": "application/json" } },
+    );
+  }
 }
 
 /**

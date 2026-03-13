@@ -520,13 +520,25 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
       }
     } catch (err) {
       const isTimeout = err instanceof DOMException && err.name === "TimeoutError";
-      const errorMessage = isTimeout
-        ? "The response timed out. Please try again."
-        : err instanceof Error ? err.message : "Something went wrong";
+      const raw = err instanceof Error ? err.message : "Something went wrong";
+      let errorMessage: string;
+      if (isTimeout) {
+        errorMessage = "The response timed out. Please try again.";
+      } else if (raw.includes("500")) {
+        errorMessage = "Something went wrong on our end. Please try again in a moment.";
+      } else if (raw.includes("502")) {
+        errorMessage = "The AI service is temporarily unavailable. Please try again.";
+      } else if (raw.includes("429")) {
+        errorMessage = "Too many requests. Please wait a moment and try again.";
+      } else if (raw === "SEND_BLOCKED_LOADING") {
+        errorMessage = "";
+      } else {
+        errorMessage = "Something went wrong. Please try again.";
+      }
       set((s) => ({
         messages: s.messages.filter((m) => m.id !== assistantMessage.id),
         isLoading: false,
-        error: errorMessage,
+        error: errorMessage || null,
         orbMode: "idle",
       }));
       throw err;

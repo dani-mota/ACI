@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useChatAssessmentStore } from "@/stores/chat-assessment-store";
 import { LivingBackground } from "@/components/assessment/background/living-background";
 import { OfflineOverlay } from "@/components/assessment/offline-overlay";
@@ -24,7 +24,7 @@ import { InteractiveSplitLayout } from "@/components/assessment/layouts/interact
 import { ConfidenceLayout } from "@/components/assessment/layouts/confidence-layout";
 import { resolveFormat, type AssessmentFormat } from "@/lib/assessment/format-resolver";
 import { TTSEngine } from "@/components/assessment/voice/tts-engine";
-import { PHASE_0_SEGMENTS, MIC_NUDGE_15S, MIC_NUDGE_30S } from "@/lib/assessment/phase-0";
+import { getPhase0Segments, MIC_NUDGE_15S, MIC_NUDGE_30S } from "@/lib/assessment/phase-0";
 import { NudgeManager, NUDGE_FIRST, NUDGE_SECOND, NUDGE_FINAL, type NudgeContext } from "@/lib/assessment/nudge-system";
 import {
   ORB_SIZES,
@@ -60,6 +60,7 @@ interface AssessmentStageProps {
 export function AssessmentStage({
   token,
   assessmentId,
+  candidateName,
   companyName,
 }: AssessmentStageProps) {
   // ── Subscribe to display state slices (NOT messages) ──
@@ -106,6 +107,7 @@ export function AssessmentStage({
   // phase0Ref and micNudgeTimers are owned by usePhase0 hook
   const nudgeRef = useRef(new NudgeManager());
   const transitionInProgress = useRef(false);
+  const ttsSequenceActiveRef = useRef(false);
   const sequenceIdRef = useRef(0);
   const justTransitionedRef = useRef(false);
   const lastFailedMessageRef = useRef<string | null>(null);
@@ -222,6 +224,7 @@ export function AssessmentStage({
       getStore().setSubtitleRevealedWords(words.length);
       getStore().setOrbMode("idle");
       getStore().setAudioAmplitude(0);
+      getStore().setTTSPlaying(false);
     },
     [token],
   );
@@ -257,6 +260,7 @@ export function AssessmentStage({
           if (wordRevealTimer.current) clearInterval(wordRevealTimer.current);
           getStore().setOrbMode("idle");
           getStore().setAudioAmplitude(0);
+          getStore().setTTSPlaying(false);
         };
         try {
           await Promise.race([
@@ -278,6 +282,7 @@ export function AssessmentStage({
         getStore().setSubtitleRevealedWords(totalWords);
         getStore().setOrbMode("idle");
         getStore().setAudioAmplitude(0);
+        getStore().setTTSPlaying(false);
       }
 
       // Safety net: if a reference card was set for progressive reveal but this
@@ -292,16 +297,27 @@ export function AssessmentStage({
   // Sentence-by-sentence sequencer for Act 1 scenarios.
   const playSentenceSequence = useCallback(
     async (sentences: string[]) => {
+      // Filter out fragments that would produce bad TTS (e.g. lone numbers/units)
+      const validSentences = sentences.filter((s) => {
+        const words = s.trim().split(/\s+/);
+        return words.length >= 2 && !/^\d+[°%]?$/.test(s.trim());
+      });
+      if (validSentences.length === 0) {
+        console.warn("[TTS] No valid sentences after filtering", { original: sentences });
+        return;
+      }
+
       const myId = ++sequenceIdRef.current;
+      ttsSequenceActiveRef.current = true;
       const s = getStore();
-      s.setSentenceList(sentences);
+      s.setSentenceList(validSentences);
       s.setOrbMode("speaking");
 
-      for (let i = 0; i < sentences.length; i++) {
+      for (let i = 0; i < validSentences.length; i++) {
         if (sequenceIdRef.current !== myId) break;
 
         const sentenceStart = Date.now();
-        const sentence = sentences[i];
+        const sentence = validSentences[i];
         s.setCurrentSentenceIndex(i);
         s.setSubtitleText(sentence);
 
@@ -327,14 +343,14 @@ export function AssessmentStage({
 
         if (ttsRef.current) {
           // Pre-fetch next sentence while current one plays (N+1 lookahead)
-          if (i + 1 < sentences.length) {
-            ttsRef.current.prefetch(sentences[i + 1], token);
+          if (i + 1 < validSentences.length) {
+            ttsRef.current.prefetch(validSentences[i + 1], token);
           }
 
           const ttsTimeout = Math.max(30000, totalWords * 800);
           try {
             await Promise.race([
-              ttsRef.current.speak(sentence, token, startReveal),
+              ttsRef.current.speak(sentence, token, startReveal, true),
               new Promise<void>((resolve) => setTimeout(() => {
                 ttsRef.current?.stop();
                 resolve();
@@ -354,12 +370,12 @@ export function AssessmentStage({
         // even when TTS fails or resolves instantly
         const MIN_SENTENCE_MS = 1000;
         const elapsed = Date.now() - sentenceStart;
-        if (elapsed < MIN_SENTENCE_MS && i < sentences.length - 1) {
+        if (elapsed < MIN_SENTENCE_MS && i < validSentences.length - 1) {
           await new Promise((r) => setTimeout(r, MIN_SENTENCE_MS - elapsed));
         }
 
         // Brief pause between sentences
-        if (i < sentences.length - 1 && sequenceIdRef.current === myId) {
+        if (i < validSentences.length - 1 && sequenceIdRef.current === myId) {
           await new Promise((r) => setTimeout(r, 150));
         }
       }
@@ -368,11 +384,13 @@ export function AssessmentStage({
       if (sequenceIdRef.current === myId) {
         getStore().setOrbMode("idle");
         getStore().setAudioAmplitude(0);
+        getStore().setTTSPlaying(false);
         // After all sentences played, reveal everything on the card
         if (getStore().referenceRevealCount >= 0) {
           getStore().setReferenceRevealCount(-1);
         }
       }
+      ttsSequenceActiveRef.current = false;
     },
     [token],
   );
@@ -381,6 +399,7 @@ export function AssessmentStage({
   const playTransitionScript = useCallback(
     async (lines: TransitionLine[]) => {
       transitionInProgress.current = true;
+      ttsSequenceActiveRef.current = true;
       nudgeRef.current.pause();
 
       for (const line of lines) {
@@ -390,6 +409,7 @@ export function AssessmentStage({
       }
 
       transitionInProgress.current = false;
+      ttsSequenceActiveRef.current = false;
     },
     [playSegmentTTS],
   );
@@ -436,6 +456,11 @@ export function AssessmentStage({
   // Phase 0
   // ══════════════════════════════════════════════
 
+  const phase0Segments = useMemo(
+    () => getPhase0Segments(candidateName, companyName),
+    [candidateName, companyName],
+  );
+
   const {
     persistPhase0Msg,
     clearMicNudgeTimers,
@@ -443,7 +468,7 @@ export function AssessmentStage({
     handlePhase0Response,
     phase0Ref,
     micNudgeTimers,
-  } = usePhase0({ token, playSegmentTTS, getOrbSize, setPhase0MicCheck });
+  } = usePhase0({ token, playSegmentTTS, getOrbSize, setPhase0MicCheck, confirmationText: phase0Segments[3].text });
 
   // ══════════════════════════════════════════════
   // Act Transitions
@@ -611,7 +636,7 @@ export function AssessmentStage({
           window.location.href = `/assess/${token}/survey`;
         }, 4000);
       },
-    });
+    }, candidateName);
 
     await playTransitionScript(lines);
   }, [token, playTransitionScript]);
@@ -712,8 +737,9 @@ export function AssessmentStage({
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
     (async () => {
+      ttsSequenceActiveRef.current = true;
       try {
-        for (const segment of PHASE_0_SEGMENTS.slice(0, 2)) {
+        for (const segment of phase0Segments.slice(0, 2)) {
           if (cancelled) return;
           await playSegmentTTS(segment.text);
           if (cancelled) return;
@@ -723,7 +749,7 @@ export function AssessmentStage({
 
         if (cancelled) return;
 
-        const micSegment = PHASE_0_SEGMENTS[2];
+        const micSegment = phase0Segments[2];
         await playSegmentTTS(micSegment.text);
         if (cancelled) return;
         persistPhase0Msg(micSegment.text, "AGENT").catch(() => {});
@@ -746,6 +772,8 @@ export function AssessmentStage({
         if (!cancelled && phase0Ref.current !== "done") {
           handlePhase0Complete();
         }
+      } finally {
+        ttsSequenceActiveRef.current = false;
       }
     })();
 
@@ -754,7 +782,7 @@ export function AssessmentStage({
       clearMicNudgeTimers();
       ttsRef.current?.stop();
     };
-  }, [phase0Ready, orchestratorPhase, playSegmentTTS, persistPhase0Msg, clearMicNudgeTimers, handlePhase0Complete]);
+  }, [phase0Ready, orchestratorPhase, playSegmentTTS, persistPhase0Msg, clearMicNudgeTimers, handlePhase0Complete, phase0Segments]);
 
   // ══════════════════════════════════════════════
   // TTS Trigger — watches displayEvent (not messages)
@@ -765,7 +793,15 @@ export function AssessmentStage({
     if (displayIsHistory) return;
     if (transitionInProgress.current) return;
 
-    // Cancel any in-progress TTS before starting new sequence
+    // During Phase 0, orchestration owns TTS — ignore displayEvent entirely
+    if (orchestratorPhase === "PHASE_0" || orchestratorPhase === "TRANSITION_0_1") return;
+
+    // If a sentence sequence is actively driving TTS, don't start a competing one.
+    // A second playSentenceSequence would increment sequenceIdRef, causing the first
+    // to break out mid-sentence — the root cause of "skippy" audio.
+    if (ttsSequenceActiveRef.current) {
+      return;
+    }
     ttsRef.current?.stop();
 
     if (sentenceList.length >= 1) {

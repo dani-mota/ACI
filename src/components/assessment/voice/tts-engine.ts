@@ -99,7 +99,7 @@ export class TTSEngine {
    *   receives the total audio duration in seconds. Use this to synchronize
    *   word reveal timing with actual audio length.
    */
-  async speak(text: string, token: string, onPlaybackStart?: (totalDurationSec: number) => void): Promise<void> {
+  async speak(text: string, token: string, onPlaybackStart?: (totalDurationSec: number) => void, preSplit = false): Promise<void> {
     this.stop();
 
     if (this.fallbackActive) {
@@ -112,7 +112,9 @@ export class TTSEngine {
       return this.playCachedBuffers(cached, onPlaybackStart);
     }
 
-    const chunks = chunkText(text);
+    // When preSplit is true, the caller already split text into individual sentences —
+    // don't re-split internally (avoids breaking on decimals, units, abbreviations)
+    const chunks = preSplit ? [text] : chunkText(text);
     if (chunks.length === 0) return;
 
     this.abortController = new AbortController();
