@@ -300,11 +300,12 @@ export async function POST(
   }
 
   // Fire acknowledgment early so it runs in parallel with classification (~200-400ms saved)
+  // Skip for beats 1-2: they use streaming which handles acknowledgment natively via system prompt
   let acknowledgmentPromise: Promise<string> | null = null;
   if (
     state.currentAct === "ACT_1" && lastUserMessage && !isSentinel
     && FEATURE_FLAGS.CONTENT_LIBRARY_ENABLED && state.contentLibraryId
-    && state.currentBeat > 0 // beat 0 doesn't use acknowledgment
+    && state.currentBeat > 2 // beats 0-2 don't use separate acknowledgment (0=intro, 1-2=streamed)
   ) {
     const preScenario = SCENARIOS[state.currentScenario];
     const preBeat = preScenario?.beats[state.currentBeat];
@@ -558,7 +559,14 @@ export async function POST(
       && !isSentinel
       && !(action.metadata as Record<string, unknown>)?.transition;
 
-    if (usePreGenerated) {
+    // Force streaming for beats 1–2 where personalization is critical.
+    // These are the highest-signal exchanges — the candidate reveals their reasoning
+    // and Aria must respond to their specific approach, not serve static templates.
+    // Classification still runs for scoring; only content delivery changes.
+    const preBeatIndex = (action.metadata as Record<string, unknown>)?.beatIndex as number ?? state.currentBeat;
+    const forceStreaming = preBeatIndex >= 1 && preBeatIndex <= 2;
+
+    if (usePreGenerated && !forceStreaming) {
       const scenarioIndex = (action.metadata as Record<string, unknown>)?.scenarioIndex as number ?? state.currentScenario;
       const beatIndex = (action.metadata as Record<string, unknown>)?.beatIndex as number ?? state.currentBeat;
 
@@ -640,9 +648,19 @@ export async function POST(
       systemPrompt += `\n\nROLE CONTEXT: The candidate is being assessed for the role of ${roleContext.roleName}. Domain: ${roleContext.environment}. Key tasks: ${roleContext.keyTasks.slice(0, 4).join(", ")}. Technical skills: ${roleContext.technicalSkills.slice(0, 4).join(", ")}.`;
     }
 
-    // Add acknowledgment instruction for Act 1 streaming (when content library isn't used)
+    // Add beat-aware personalization instructions for Act 1 streaming
     if (state.currentAct === "ACT_1" && lastUserMessage && !isSentinel) {
-      systemPrompt += `\n\nIMPORTANT: Begin your response with a single brief sentence (max 15 words) that acknowledges something specific the candidate said. Do NOT evaluate quality or say "great answer". Then continue with the scenario content.`;
+      const currentBeat = state.currentBeat;
+      if (currentBeat === 2) {
+        // COMPLICATION beat: must directly challenge the candidate's specific stated approach
+        systemPrompt += `\n\nIMPORTANT PERSONALIZATION:
+- Begin with ONE sentence (max 15 words) referencing something specific the candidate said — a term, priority, or trade-off they identified. Do NOT evaluate quality.
+- The complication you introduce MUST directly challenge the specific approach the candidate described. Do not use a generic complication that ignores what they said.
+- If the candidate said they would "isolate the subsystem," your complication should make isolation difficult — not introduce an unrelated problem.
+- If the candidate gave an off-topic or joke response, briefly note it doesn't address the situation and redirect to the scenario.`;
+      } else if (currentBeat > 2) {
+        systemPrompt += `\n\nIMPORTANT: Begin your response with a single brief sentence (max 15 words) that acknowledges something specific the candidate said. Do NOT evaluate quality or say "great answer". Then continue with the scenario content.`;
+      }
     }
 
     const result = streamText({

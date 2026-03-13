@@ -273,10 +273,15 @@ function buildBeatPrompt(
   const branchKey = lastClassification ?? "ADEQUATE";
   const branchScript = beat.branchScripts[branchKey];
 
+  let personalizationNote = "";
+  if (beat.type === "COMPLICATION") {
+    personalizationNote = `\nCRITICAL: The candidate's actual response is in the conversation history. Read it carefully. Your complication must directly challenge their specific stated approach — reference their reasoning, then introduce a twist that undermines or complicates their chosen strategy. Do not produce a generic complication.\n`;
+  }
+
   return `[BEAT: ${beat.type}]
 Template: ${beat.agentPromptTemplate}
 Branch script (${branchKey}): ${branchScript}
-
+${personalizationNote}
 Generate the scenario content following the template and branch script. IMPORTANT: Keep spoken text to 4-5 short sentences max for initial situations, 1-2 sentences for follow-ups. All specifications, numbers, and process details go in the reference card JSON, not in spoken text. The candidate sees the card on screen — you do not need to say everything out loud.`;
 }
 

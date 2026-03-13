@@ -425,7 +425,8 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
 
           // If the response includes structured reference data, apply it directly
           // instead of relying on parseScenarioResponse to extract from text delimiters
-          if (data.referenceCard) {
+          const hasReferenceCard = !!data.referenceCard;
+          if (hasReferenceCard) {
             set({
               referenceCard: {
                 role: data.referenceCard.role || "",
@@ -434,7 +435,6 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
                 question: data.referenceCard.question || "",
                 newInformation: [],
               },
-              referenceRevealCount: 0, // Progressive reveal for Beat 0
             });
           }
           if (data.referenceUpdate) {
@@ -467,6 +467,12 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
           // If we already set reference data above, displayMessage's parseScenarioResponse
           // won't find delimiters and will just split spoken text into sentences — which is correct
           get().displayMessage(data.message, get().currentAct, false);
+
+          // Override reveal count AFTER displayMessage to guarantee progressive reveal
+          // (displayMessage's computeRevealCount may set -1; we need 0 for Beat 0)
+          if (hasReferenceCard) {
+            set({ referenceRevealCount: 0 });
+          }
           applyProgress(data.progress);
           return;
         }

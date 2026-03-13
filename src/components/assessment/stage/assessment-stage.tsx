@@ -279,6 +279,12 @@ export function AssessmentStage({
         getStore().setOrbMode("idle");
         getStore().setAudioAmplitude(0);
       }
+
+      // Safety net: if a reference card was set for progressive reveal but this
+      // fallback path ran instead of playSentenceSequence, show all sections now
+      if (getStore().referenceRevealCount >= 0) {
+        getStore().setReferenceRevealCount(-1);
+      }
     },
     [token],
   );
@@ -294,6 +300,7 @@ export function AssessmentStage({
       for (let i = 0; i < sentences.length; i++) {
         if (sequenceIdRef.current !== myId) break;
 
+        const sentenceStart = Date.now();
         const sentence = sentences[i];
         s.setCurrentSentenceIndex(i);
         s.setSubtitleText(sentence);
@@ -342,6 +349,14 @@ export function AssessmentStage({
 
         if (revealInterval) clearInterval(revealInterval);
         getStore().setSubtitleRevealedWords(totalWords);
+
+        // Enforce minimum time per sentence so card reveal feels progressive
+        // even when TTS fails or resolves instantly
+        const MIN_SENTENCE_MS = 1000;
+        const elapsed = Date.now() - sentenceStart;
+        if (elapsed < MIN_SENTENCE_MS && i < sentences.length - 1) {
+          await new Promise((r) => setTimeout(r, MIN_SENTENCE_MS - elapsed));
+        }
 
         // Brief pause between sentences
         if (i < sentences.length - 1 && sequenceIdRef.current === myId) {
@@ -443,27 +458,27 @@ export function AssessmentStage({
     setOrbGliding(true);
     await new Promise((r) => setTimeout(r, 1200));
 
-    // Phase 2: Play warm-up narration while orb is at sidebar position (still CenteredLayout)
-    try {
-      const { ACT1_WARMUP_LINES } = await import("@/lib/assessment/transitions");
-      await playSentenceSequence(ACT1_WARMUP_LINES);
-    } catch {
-      // If TTS warm-up fails, continue to assessment
-    }
-
-    // Phase 3: Fade out the centered layout
+    // Phase 2: Fade out the centered layout
     setLayoutOpacity(0);
     await new Promise((r) => setTimeout(r, 600));
 
-    // Phase 4: Switch layout while invisible (opacity is 0)
+    // Phase 3: Switch to split layout while invisible (opacity is 0)
     s.setOrchestratorPhase("ACT_1");
     setOrbGliding(false);
 
     // Wait two frames so browser paints the new layout at opacity 0
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
 
-    // Phase 5: Fade in the split layout
+    // Phase 4: Fade in the split layout (AriaSidebar now visible)
     setLayoutOpacity(1);
+
+    // Phase 5: Play warm-up narration — subtitles now render in AriaSidebar
+    try {
+      const { ACT1_WARMUP_LINES } = await import("@/lib/assessment/transitions");
+      await playSentenceSequence(ACT1_WARMUP_LINES);
+    } catch {
+      // If TTS warm-up fails, continue to assessment
+    }
 
     // Phase 6: Begin assessment
     s.setOrbMode("processing");
@@ -753,7 +768,7 @@ export function AssessmentStage({
     // Cancel any in-progress TTS before starting new sequence
     ttsRef.current?.stop();
 
-    if (sentenceList.length > 1) {
+    if (sentenceList.length >= 1) {
       playSentenceSequence(sentenceList).then(() => startNudgeForCurrentAct());
     } else if (subtitleText) {
       playSubtitleWithTTS(subtitleText).then(() => startNudgeForCurrentAct());
