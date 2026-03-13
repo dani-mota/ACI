@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { Act2Item } from "./types";
 import type { Construct, InteractionElementType } from "@/generated/prisma/client";
 

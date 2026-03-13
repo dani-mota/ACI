@@ -97,6 +97,7 @@ export function AssessmentStage({
   const [orbGliding, setOrbGliding] = useState(false);
   const [layoutOpacity, setLayoutOpacity] = useState(1);
   const [showCompletionScreen, setShowCompletionScreen] = useState(false);
+  const [speechSupported, setSpeechSupported] = useState(true);
 
   // ── Refs ──
   const ttsRef = useRef<TTSEngine | null>(null);
@@ -111,6 +112,17 @@ export function AssessmentStage({
   const sequenceIdRef = useRef(0);
   const justTransitionedRef = useRef(false);
   const lastFailedMessageRef = useRef<string | null>(null);
+
+  // ── Detect speech recognition support — auto-switch to text if unavailable ──
+  useEffect(() => {
+    const hasSpeech =
+      typeof window !== "undefined" &&
+      ("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
+    setSpeechSupported(hasSpeech);
+    if (!hasSpeech) {
+      getStore().setInputMode("text");
+    }
+  }, []);
 
   // ── Session timer ──
   useEffect(() => {
@@ -347,16 +359,9 @@ export function AssessmentStage({
             ttsRef.current.prefetch(validSentences[i + 1], token);
           }
 
-          const ttsTimeout = Math.max(30000, totalWords * 800);
           try {
-            await Promise.race([
-              ttsRef.current.speak(sentence, token, startReveal, true),
-              new Promise<void>((resolve) => setTimeout(() => {
-                ttsRef.current?.stop();
-                resolve();
-              }, ttsTimeout)),
-            ]);
-          } catch { /* fallback from word reveal */ }
+            await ttsRef.current.speak(sentence, token, startReveal, true);
+          } catch { /* TTS error — word reveal already started, continue to next sentence */ }
         } else {
           const estimatedDuration = totalWords * 0.4;
           startReveal(estimatedDuration);
@@ -368,7 +373,7 @@ export function AssessmentStage({
 
         // Enforce minimum time per sentence so card reveal feels progressive
         // even when TTS fails or resolves instantly
-        const MIN_SENTENCE_MS = 1000;
+        const MIN_SENTENCE_MS = 2500;
         const elapsed = Date.now() - sentenceStart;
         if (elapsed < MIN_SENTENCE_MS && i < validSentences.length - 1) {
           await new Promise((r) => setTimeout(r, MIN_SENTENCE_MS - elapsed));
@@ -1032,6 +1037,7 @@ export function AssessmentStage({
           <InputModeToggle
             mode={inputMode}
             onToggle={(mode) => getStore().setInputMode(mode)}
+            speechSupported={speechSupported}
           />
         )}
 
@@ -1054,6 +1060,7 @@ export function AssessmentStage({
                 }
               }}
               placeholder="Type your response..."
+              aria-label="Type your response"
               disabled={isLoading}
               rows={1}
               className="flex-1 resize-none px-4 py-3 text-sm outline-none"
@@ -1200,6 +1207,7 @@ export function AssessmentStage({
                   s.sendMessage(text);
                 }}
                 onInputModeToggle={(mode) => getStore().setInputMode(mode)}
+                speechSupported={speechSupported}
                 micButtonRef={micButtonRef}
               />
             }
@@ -1240,6 +1248,7 @@ export function AssessmentStage({
                   }
                 }}
                 onInputModeToggle={(mode) => getStore().setInputMode(mode)}
+                speechSupported={speechSupported}
                 micButtonRef={micButtonRef}
               />
             }
@@ -1393,7 +1402,7 @@ export function AssessmentStage({
             fontFamily: "var(--font-display)",
           }}
         >
-          <span>Something went wrong. Please try again.</span>
+          <span>{error}</span>
           {lastFailedMessageRef.current && (
             <button
               onClick={() => {
@@ -1423,7 +1432,7 @@ export function AssessmentStage({
             </button>
           )}
           <button
-            onClick={() => { const s = getStore(); s.setSubtitleText(""); useChatAssessmentStore.setState({ error: null }); }}
+            onClick={() => { useChatAssessmentStore.setState({ error: null }); }}
             aria-label="Dismiss error"
             style={{
               color: "rgba(252, 165, 165, 0.6)",

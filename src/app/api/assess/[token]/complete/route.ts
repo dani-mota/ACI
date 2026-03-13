@@ -1,8 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import prisma from "@/lib/prisma";
 import { runScoringPipeline } from "@/lib/assessment/scoring/pipeline";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { createLogger } from "@/lib/assessment/logger";
+
+export const maxDuration = 300;
 
 const log = createLogger("complete-route");
 
@@ -82,8 +84,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ message: "Already completed" });
   }
 
-  // Run scoring pipeline asynchronously with retry — don't block the candidate's completion response
-  runPipelineWithRetry(assessment.id);
+  // Run scoring pipeline after response is sent — ensures pipeline runs to completion
+  // even after the HTTP response is delivered (Vercel background execution)
+  after(() => runPipelineWithRetry(assessment.id));
 
   return NextResponse.json({ success: true, durationMinutes });
 }
@@ -118,7 +121,7 @@ async function runPipelineWithRetry(
     if (assessment) {
       await prisma.candidate.update({
         where: { id: assessment.candidateId },
-        data: { status: "ERROR" as any },
+        data: { status: "ERROR" },
       });
     }
   } catch {

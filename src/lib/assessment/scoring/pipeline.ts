@@ -1,5 +1,5 @@
 import prisma from "@/lib/prisma";
-import type { Construct } from "@/generated/prisma/client";
+import type { Construct, CandidateStatus } from "@/generated/prisma/client";
 import { calculateComposite, evaluateCutline, determineStatus } from "@/lib/scoring";
 import { generateAllPredictions } from "@/lib/predictions";
 import { getRoleContext } from "../role-context";
@@ -124,7 +124,7 @@ export async function runScoringPipeline(assessmentId: string) {
     for (const c of secondary) constructsWithConvoData.add(c);
   }
 
-  // For each construct, evaluate relevant candidate messages
+  // For each construct, evaluate relevant candidate messages (with idempotency guard)
   const allConstructs = Object.keys(CONSTRUCT_LAYERS);
   for (const construct of allConstructs) {
     // Find candidate messages relevant to this construct (via preceding agent metadata)
@@ -135,6 +135,65 @@ export async function runScoringPipeline(assessmentId: string) {
     });
 
     if (relevantMessages.length === 0) continue;
+
+    // ── Idempotency guard: reuse existing AI evaluation runs on retry ──
+    // Prevents duplicate API calls, cost explosion, and non-deterministic rescoring
+    const existingRuns = await prisma.aIEvaluationRun.findMany({
+      where: { assessmentId, construct: construct as Construct },
+    });
+
+    if (existingRuns.length >= relevantMessages.length * AI_CONFIG.evaluationRunCount) {
+      log.info("Reusing existing Layer B evaluations (idempotent retry)", {
+        construct,
+        existingRunCount: String(existingRuns.length),
+      });
+      // Reconstruct LayerBScores from stored runs
+      const byMessage = new Map<string, typeof existingRuns>();
+      for (const run of existingRuns) {
+        const arr = byMessage.get(run.messageId) ?? [];
+        arr.push(run);
+        byMessage.set(run.messageId, arr);
+      }
+      for (const [messageId, runs] of byMessage) {
+        const msg = relevantMessages.find((m) => m.id === messageId);
+        if (!msg) continue;
+        const sortedRuns = runs.sort((a, b) => a.aggregateScore - b.aggregateScore);
+        const medianIdx = Math.floor((sortedRuns.length - 1) / 2);
+        const scores = sortedRuns.map((r) => r.aggregateScore);
+        const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
+        const stdDev = Math.sqrt(scores.reduce((sum, s) => sum + Math.pow(s - mean, 2), 0) / scores.length);
+        const highVariance = stdDev > AI_CONFIG.highVarianceThreshold;
+
+        allLayerBScores.push({
+          messageId,
+          construct: construct as Construct,
+          indicators: ((sortedRuns[medianIdx].indicatorScores as unknown) as { indicatorId?: string; id?: string; present?: boolean; reasoning?: string }[]).map((ind) => ({
+            indicatorId: ind.indicatorId ?? ind.id ?? "",
+            present: ind.present ?? false,
+            reasoning: ind.reasoning ?? "",
+          })),
+          aggregateScore: sortedRuns[medianIdx].aggregateScore,
+          runs: sortedRuns.map((r) => ({
+            runIndex: r.runIndex,
+            indicators: ((r.indicatorScores as unknown) as { indicatorId?: string; id?: string; present?: boolean; reasoning?: string }[]).map((ind) => ({
+              indicatorId: ind.indicatorId ?? ind.id ?? "",
+              present: ind.present ?? false,
+              reasoning: ind.reasoning ?? "",
+            })),
+            aggregateScore: r.aggregateScore,
+            modelId: r.modelId,
+            latencyMs: r.latencyMs,
+            rawOutput: r.rawOutput,
+          })),
+          medianScore: sortedRuns[medianIdx].aggregateScore,
+          variance: stdDev,
+          highVarianceFlag: highVariance,
+          downweighted: highVariance,
+          act: msg.act,
+        });
+      }
+      continue; // Skip API calls — reuse existing evaluations
+    }
 
     // Build conversation context for each message
     const responses = relevantMessages.map((msg) => {
@@ -245,79 +304,7 @@ export async function runScoringPipeline(assessmentId: string) {
     constructScores.push(score);
   }
 
-  // ── 7. Save SubtestResults ─────────────────────────────────────
-  for (const cs of constructScores) {
-    if (cs.itemCount === 0 && cs.combinedRawScore === 0) continue; // Skip empty constructs
-
-    const ceiling = cs.ceilingCharacterization;
-
-    await prisma.subtestResult.upsert({
-      where: {
-        assessmentId_construct: {
-          assessmentId,
-          construct: cs.construct as any,
-        },
-      },
-      create: {
-        assessmentId,
-        construct: cs.construct as any,
-        layer: cs.layer as any,
-        rawScore: cs.combinedRawScore,
-        percentile: cs.percentile,
-        itemCount: cs.itemCount,
-        responseTimeAvgMs: cs.avgResponseTimeMs,
-        layerARawScore: cs.layerAScore,
-        layerBRawScore: cs.layerBScore,
-        layerAWeight: cs.layerAWeight,
-        layerBWeight: cs.layerBWeight,
-        consistencyLevel: cs.consistencyLevel ?? null,
-        consistencyDownweighted: cs.consistencyDownweightApplied,
-        ceilingType: ceiling?.ceilingType ?? null,
-        ceilingNarrative: ceiling?.narrative ?? null,
-        scoringVersion: 2,
-      },
-      update: {
-        rawScore: cs.combinedRawScore,
-        percentile: cs.percentile,
-        itemCount: cs.itemCount,
-        responseTimeAvgMs: cs.avgResponseTimeMs,
-        layerARawScore: cs.layerAScore,
-        layerBRawScore: cs.layerBScore,
-        layerAWeight: cs.layerAWeight,
-        layerBWeight: cs.layerBWeight,
-        consistencyLevel: cs.consistencyLevel ?? null,
-        consistencyDownweighted: cs.consistencyDownweightApplied,
-        ceilingType: ceiling?.ceilingType ?? null,
-        ceilingNarrative: ceiling?.narrative ?? null,
-        scoringVersion: 2,
-      },
-    });
-  }
-
-  // Store AIEvaluationRun records for audit
-  for (const score of allLayerBScores) {
-    for (const run of score.runs) {
-      try {
-        await prisma.aIEvaluationRun.create({
-          data: {
-            assessmentId,
-            messageId: score.messageId,
-            construct: score.construct as any,
-            runIndex: run.runIndex,
-            indicatorScores: run.indicators as any,
-            aggregateScore: run.aggregateScore,
-            modelId: run.modelId,
-            latencyMs: run.latencyMs,
-            rawOutput: run.rawOutput,
-          },
-        });
-      } catch {
-        // Non-fatal — audit trail is secondary to scoring
-      }
-    }
-  }
-
-  // ── 8. Calculate composites — REUSE existing ───────────────────
+  // ── 7-8. Prepare scoring data (composites, cutlines) before transaction ──
   const subtestResults = constructScores
     .filter((cs) => cs.itemCount > 0 || cs.combinedRawScore > 0)
     .map((cs) => ({
@@ -338,7 +325,7 @@ export async function runScoringPipeline(assessmentId: string) {
     weights.map((w) => ({ constructId: w.constructId, weight: w.weight })),
   );
 
-  // ── 9. Evaluate cutlines — REUSE existing ──────────────────────
+  // ── 9. Evaluate cutlines ───────────────────────────────────────
   const { passed, distance } = cutline
     ? evaluateCutline(subtestResults, {
         technicalAptitude: cutline.technicalAptitude,
@@ -347,35 +334,143 @@ export async function runScoringPipeline(assessmentId: string) {
       })
     : { passed: true, distance: 0 };
 
-  await prisma.compositeScore.upsert({
-    where: {
-      assessmentId_roleSlug: { assessmentId, roleSlug: role.slug },
-    },
-    create: {
-      assessmentId,
-      roleSlug: role.slug,
-      indexName: `${role.name} Index`,
-      score: composite,
-      percentile: Math.round(composite),
-      passed,
-      distanceFromCutline: distance,
-    },
-    update: {
-      score: composite,
-      percentile: Math.round(composite),
-      passed,
-      distanceFromCutline: distance,
-    },
+  // ── 10. Red flags V2 ───────────────────────────────────────────
+  const redFlags = detectRedFlags({
+    constructScores,
+    messages: assessment.messages,
+    consistencyResults,
+    layerBScores: allLayerBScores,
   });
 
-  // Cross-role composites for generic roles
+  // ── 11. Predictions ────────────────────────────────────────────
+  const ceilingCharacterizations = Array.from(ceilingResults.entries()).map(([construct, ceiling]) => ({
+    construct,
+    ceilingType: ceiling.ceilingType,
+    narrative: ceiling.narrative,
+  }));
+  const predictions = generateAllPredictions(subtestResults, roleContext, ceilingCharacterizations);
+
+  // ── 12. Status determination ───────────────────────────────────
+  const status = determineStatus(passed, distance, redFlags);
+
+  // Cross-role rankings (pre-compute before transaction)
+  let crossRoleRankings: { roleSlug: string; roleName: string; compositeScore: number; passed: boolean; distanceFromCutline: number }[] = [];
   if (role.isGeneric) {
-    const rankings = await computeRoleFitRankings(
+    crossRoleRankings = await computeRoleFitRankings(
       assessment.candidate.orgId,
       subtestResults,
     );
-    for (const ranking of rankings) {
-      await prisma.compositeScore.upsert({
+  }
+
+  const costUsd = (tokenUsage.inputTokens * 0.8 + tokenUsage.outputTokens * 4) / 1_000_000;
+
+  // ── 13. Atomic transactional save (steps 7-13) ─────────────────
+  // All scoring data committed or none — prevents partial scoring states
+  await prisma.$transaction(async (tx) => {
+    // Step 7: SubtestResults
+    for (const cs of constructScores) {
+      if (cs.itemCount === 0 && cs.combinedRawScore === 0) continue;
+      const ceiling = cs.ceilingCharacterization;
+
+      await tx.subtestResult.upsert({
+        where: {
+          assessmentId_construct: { assessmentId, construct: cs.construct as any },
+        },
+        create: {
+          assessmentId,
+          construct: cs.construct as any,
+          layer: cs.layer as any,
+          rawScore: cs.combinedRawScore,
+          percentile: cs.percentile,
+          itemCount: cs.itemCount,
+          responseTimeAvgMs: cs.avgResponseTimeMs,
+          layerARawScore: cs.layerAScore,
+          layerBRawScore: cs.layerBScore,
+          layerAWeight: cs.layerAWeight,
+          layerBWeight: cs.layerBWeight,
+          consistencyLevel: cs.consistencyLevel ?? null,
+          consistencyDownweighted: cs.consistencyDownweightApplied,
+          ceilingType: ceiling?.ceilingType ?? null,
+          ceilingNarrative: ceiling?.narrative ?? null,
+          scoringVersion: 2,
+        },
+        update: {
+          rawScore: cs.combinedRawScore,
+          percentile: cs.percentile,
+          itemCount: cs.itemCount,
+          responseTimeAvgMs: cs.avgResponseTimeMs,
+          layerARawScore: cs.layerAScore,
+          layerBRawScore: cs.layerBScore,
+          layerAWeight: cs.layerAWeight,
+          layerBWeight: cs.layerBWeight,
+          consistencyLevel: cs.consistencyLevel ?? null,
+          consistencyDownweighted: cs.consistencyDownweightApplied,
+          ceilingType: ceiling?.ceilingType ?? null,
+          ceilingNarrative: ceiling?.narrative ?? null,
+          scoringVersion: 2,
+        },
+      });
+    }
+
+    // AIEvaluationRun upserts (idempotent via unique constraint)
+    for (const score of allLayerBScores) {
+      for (const run of score.runs) {
+        await tx.aIEvaluationRun.upsert({
+          where: {
+            assessmentId_messageId_construct_runIndex: {
+              assessmentId,
+              messageId: score.messageId,
+              construct: score.construct as any,
+              runIndex: run.runIndex,
+            },
+          },
+          create: {
+            assessmentId,
+            messageId: score.messageId,
+            construct: score.construct as any,
+            runIndex: run.runIndex,
+            indicatorScores: run.indicators as any,
+            aggregateScore: run.aggregateScore,
+            modelId: run.modelId,
+            latencyMs: run.latencyMs,
+            rawOutput: run.rawOutput,
+          },
+          update: {
+            indicatorScores: run.indicators as any,
+            aggregateScore: run.aggregateScore,
+            modelId: run.modelId,
+            latencyMs: run.latencyMs,
+            rawOutput: run.rawOutput,
+          },
+        });
+      }
+    }
+
+    // CompositeScore (primary role)
+    await tx.compositeScore.upsert({
+      where: {
+        assessmentId_roleSlug: { assessmentId, roleSlug: role.slug },
+      },
+      create: {
+        assessmentId,
+        roleSlug: role.slug,
+        indexName: `${role.name} Index`,
+        score: composite,
+        percentile: Math.round(composite),
+        passed,
+        distanceFromCutline: distance,
+      },
+      update: {
+        score: composite,
+        percentile: Math.round(composite),
+        passed,
+        distanceFromCutline: distance,
+      },
+    });
+
+    // Cross-role rankings
+    for (const ranking of crossRoleRankings) {
+      await tx.compositeScore.upsert({
         where: {
           assessmentId_roleSlug: { assessmentId, roleSlug: ranking.roleSlug },
         },
@@ -396,18 +491,8 @@ export async function runScoringPipeline(assessmentId: string) {
         },
       });
     }
-  }
 
-  // ── 10. Red flags V2 ───────────────────────────────────────────
-  const redFlags = detectRedFlags({
-    constructScores,
-    messages: assessment.messages,
-    consistencyResults,
-    layerBScores: allLayerBScores,
-  });
-
-  // Atomic delete+replace to prevent partial red flag loss on failure
-  await prisma.$transaction(async (tx) => {
+    // Red flags (atomic delete + recreate)
     await tx.redFlag.deleteMany({ where: { assessmentId } });
     for (const rf of redFlags) {
       await tx.redFlag.create({
@@ -421,67 +506,54 @@ export async function runScoringPipeline(assessmentId: string) {
         },
       });
     }
-  });
 
-  // ── 11. Predictions — REUSE existing ───────────────────────────
-  // Convert ceiling results to CeilingCharacterization array for predictions
-  const ceilingCharacterizations = Array.from(ceilingResults.entries()).map(([construct, ceiling]) => ({
-    construct,
-    ceilingType: ceiling.ceilingType,
-    narrative: ceiling.narrative,
-  }));
-  const predictions = generateAllPredictions(subtestResults, roleContext, ceilingCharacterizations);
+    // Predictions
+    await tx.prediction.upsert({
+      where: { assessmentId },
+      create: {
+        assessmentId,
+        rampTimeMonths: predictions.rampTime.weeks / 4,
+        rampTimeLabel: predictions.rampTime.label,
+        rampTimeFactors: { description: predictions.rampTime.description },
+        supervisionLoad: mapSupervisionLevel(predictions.supervision.level),
+        supervisionScore: Math.round(predictions.supervision.confidence),
+        supervisionFactors: { description: predictions.supervision.description },
+        performanceCeiling: mapCeilingLevel(predictions.ceiling.level),
+        ceilingFactors: { description: predictions.ceiling.description },
+        ceilingCareerPath: [],
+        attritionRisk: mapRiskLevel(predictions.attrition.risk),
+        attritionFactors: { description: predictions.attrition.description },
+        attritionStrategies: predictions.attrition.factors,
+      },
+      update: {
+        rampTimeMonths: predictions.rampTime.weeks / 4,
+        rampTimeLabel: predictions.rampTime.label,
+        rampTimeFactors: { description: predictions.rampTime.description },
+        supervisionLoad: mapSupervisionLevel(predictions.supervision.level),
+        supervisionScore: Math.round(predictions.supervision.confidence),
+        supervisionFactors: { description: predictions.supervision.description },
+        performanceCeiling: mapCeilingLevel(predictions.ceiling.level),
+        ceilingFactors: { description: predictions.ceiling.description },
+        attritionRisk: mapRiskLevel(predictions.attrition.risk),
+        attritionFactors: { description: predictions.attrition.description },
+        attritionStrategies: predictions.attrition.factors,
+      },
+    });
 
-  await prisma.prediction.upsert({
-    where: { assessmentId },
-    create: {
-      assessmentId,
-      rampTimeMonths: predictions.rampTime.weeks / 4,
-      rampTimeLabel: predictions.rampTime.label,
-      rampTimeFactors: { description: predictions.rampTime.description },
-      supervisionLoad: mapSupervisionLevel(predictions.supervision.level),
-      supervisionScore: Math.round(predictions.supervision.confidence),
-      supervisionFactors: { description: predictions.supervision.description },
-      performanceCeiling: mapCeilingLevel(predictions.ceiling.level),
-      ceilingFactors: { description: predictions.ceiling.description },
-      ceilingCareerPath: [],
-      attritionRisk: mapRiskLevel(predictions.attrition.risk),
-      attritionFactors: { description: predictions.attrition.description },
-      attritionStrategies: predictions.attrition.factors,
-    },
-    update: {
-      rampTimeMonths: predictions.rampTime.weeks / 4,
-      rampTimeLabel: predictions.rampTime.label,
-      rampTimeFactors: { description: predictions.rampTime.description },
-      supervisionLoad: mapSupervisionLevel(predictions.supervision.level),
-      supervisionScore: Math.round(predictions.supervision.confidence),
-      supervisionFactors: { description: predictions.supervision.description },
-      performanceCeiling: mapCeilingLevel(predictions.ceiling.level),
-      ceilingFactors: { description: predictions.ceiling.description },
-      attritionRisk: mapRiskLevel(predictions.attrition.risk),
-      attritionFactors: { description: predictions.attrition.description },
-      attritionStrategies: predictions.attrition.factors,
-    },
-  });
+    // Candidate status + cost tracking (last — atomic commit point)
+    await tx.candidate.update({
+      where: { id: assessment.candidateId },
+      data: { status: status as CandidateStatus },
+    });
 
-  // ── 12. Status determination — REUSE existing ──────────────────
-  const status = determineStatus(passed, distance, redFlags);
-
-  // ── 13. Update candidate status ────────────────────────────────
-  await prisma.candidate.update({
-    where: { id: assessment.candidateId },
-    data: { status: status as any },
-  });
-
-  // Persist scoring cost to assessment record
-  const costUsd = (tokenUsage.inputTokens * 0.8 + tokenUsage.outputTokens * 4) / 1_000_000;
-  await prisma.assessment.update({
-    where: { id: assessmentId },
-    data: {
-      scoringCostUsd: costUsd,
-      scoringTokensIn: tokenUsage.inputTokens,
-      scoringTokensOut: tokenUsage.outputTokens,
-    },
+    await tx.assessment.update({
+      where: { id: assessmentId },
+      data: {
+        scoringCostUsd: costUsd,
+        scoringTokensIn: tokenUsage.inputTokens,
+        scoringTokensOut: tokenUsage.outputTokens,
+      },
+    });
   });
 
   const totalMs = Date.now() - pipelineStart;

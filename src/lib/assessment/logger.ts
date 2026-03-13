@@ -11,6 +11,7 @@ interface LogEntry {
   level: LogLevel;
   module: string;
   message: string;
+  requestId?: string;
   assessmentId?: string;
   construct?: string;
   act?: string;
@@ -42,6 +43,8 @@ function emit(entry: LogEntry) {
     const output = JSON.stringify(line);
     if (entry.level === "error") {
       console.error(output);
+    } else if (entry.level === "warn") {
+      console.warn(output);
     } else {
       console.log(output);
     }
@@ -50,14 +53,18 @@ function emit(entry: LogEntry) {
 
 /**
  * Create a scoped logger for a specific module.
+ *
+ * @param module - Identifies the source (e.g. "chat-route", "pipeline")
+ * @param requestId - Optional correlation ID auto-included in every log entry
  */
-export function createLogger(module: string) {
+export function createLogger(module: string, requestId?: string) {
+  const base: Partial<LogEntry> = requestId ? { requestId } : {};
   return {
     info: (message: string, data?: Partial<LogEntry>) =>
-      emit({ level: "info", module, message, ...data }),
+      emit({ level: "info", module, message, ...base, ...data }),
     warn: (message: string, data?: Partial<LogEntry>) =>
-      emit({ level: "warn", module, message, ...data }),
+      emit({ level: "warn", module, message, ...base, ...data }),
     error: (message: string, data?: Partial<LogEntry>) =>
-      emit({ level: "error", module, message, ...data }),
+      emit({ level: "error", module, message, ...base, ...data }),
   };
 }

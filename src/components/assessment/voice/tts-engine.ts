@@ -54,8 +54,8 @@ export class TTSEngine {
   private bufferReadyResolve: (() => void) | null = null;
   /** Whether all chunks have been fetched (for pipelined playback) */
   private allChunksFetched = false;
-  /** Session-level audio cache keyed by text content */
-  private audioCache = new Map<string, AudioBuffer[]>();
+  /** Session-level audio cache keyed by text content — stores text for SpeechSynthesis fallback */
+  private audioCache = new Map<string, { text: string; buffers: AudioBuffer[] }>();
 
   private onAmplitude: AmplitudeCallback;
   private onStateChange: StateCallback;
@@ -84,8 +84,8 @@ export class TTSEngine {
     if (this.audioContext.state === "suspended") {
       try {
         await this.audioContext.resume();
-      } catch {
-        // Context resume failed — will fall back to SpeechSynthesis
+      } catch (err) {
+        console.warn("[TTS] AudioContext resume failed:", err);
       }
     }
     return this.audioContext;
@@ -108,7 +108,7 @@ export class TTSEngine {
 
     // Check session cache first
     const cached = this.audioCache.get(text);
-    if (cached && cached.length > 0) {
+    if (cached && cached.buffers.length > 0) {
       return this.playCachedBuffers(cached, onPlaybackStart);
     }
 
@@ -171,9 +171,9 @@ export class TTSEngine {
         }
         this.allChunksFetched = true;
         this.bufferReadyResolve?.();
-        // Cache for potential replay
+        // Cache for potential replay (store text for SpeechSynthesis fallback)
         if (allBuffers.length > 0) {
-          this.audioCache.set(text, allBuffers);
+          this.audioCache.set(text, { text, buffers: allBuffers });
         }
       };
 
@@ -238,16 +238,17 @@ export class TTSEngine {
 
   /** Play pre-cached audio buffers directly */
   private async playCachedBuffers(
-    buffers: AudioBuffer[],
+    cached: { text: string; buffers: AudioBuffer[] },
     onPlaybackStart?: (totalDurationSec: number) => void,
   ): Promise<void> {
     const ctx = await this.ensureAudioContext();
     if (ctx.state === "suspended") {
-      return;
+      console.warn("[TTS] AudioContext suspended during cached playback, falling back to SpeechSynthesis");
+      return this.speakFallback(cached.text, onPlaybackStart);
     }
-    const totalDuration = buffers.reduce((sum, b) => sum + b.duration, 0);
+    const totalDuration = cached.buffers.reduce((sum, b) => sum + b.duration, 0);
     onPlaybackStart?.(totalDuration);
-    this.playQueue = [...buffers];
+    this.playQueue = [...cached.buffers];
     this.allChunksFetched = true;
     this.isPlaying = true;
     this.onStateChange(true);
@@ -262,6 +263,7 @@ export class TTSEngine {
   async prefetch(text: string, token: string): Promise<void> {
     if (this.fallbackActive || this.audioCache.has(text)) return;
 
+
     const chunks = chunkText(text);
     if (chunks.length === 0) return;
 
@@ -275,7 +277,7 @@ export class TTSEngine {
         if (buf) buffers.push(buf);
       }
       if (buffers.length > 0) {
-        this.audioCache.set(text, buffers);
+        this.audioCache.set(text, { text, buffers });
       }
     } catch {
       // Pre-fetch is best-effort
@@ -378,7 +380,8 @@ export class TTSEngine {
         resolve();
       };
 
-      utterance.onerror = () => {
+      utterance.onerror = (ev) => {
+        console.warn("[TTS] SpeechSynthesis error:", (ev as SpeechSynthesisErrorEvent).error);
         this.isPlaying = false;
         this.onStateChange(false);
         resolve();

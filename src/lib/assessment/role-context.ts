@@ -22,12 +22,15 @@ const NEUTRAL_CONTEXT: RoleContext = {
 
 /**
  * Sanitize a string for safe inclusion in AI prompts.
- * Strips control characters and known prompt injection patterns,
- * enforces length limit per field.
+ * Strips control characters, XML structural tags, and code fences
+ * that could be used for prompt injection. Enforces length limit per field.
  */
-function sanitizeForPrompt(text: string, maxLength = 200): string {
+export function sanitizeForPrompt(text: string, maxLength = 200): string {
   return text
-    .replace(/[\x00-\x1f\x7f]/g, "") // strip control characters
+    .replace(/[\x00-\x1f\x7f]/g, "")                    // strip control characters
+    .replace(/<\/(system|human|assistant)/gi, "")         // strip XML closing tags used in prompt structure
+    .replace(/<(system|human|assistant)\b[^>]*/gi, "")    // strip XML opening tags
+    .replace(/```/g, "")                                  // strip code fences
     .slice(0, maxLength)
     .trim();
 }

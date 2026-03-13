@@ -33,6 +33,7 @@ interface AriaSidebarProps {
   onListeningChange: (listening: boolean) => void;
   onTextSend: (text: string) => void;
   onInputModeToggle: (mode: InputMode) => void;
+  speechSupported?: boolean;
   // Refs
   micButtonRef?: React.RefObject<HTMLButtonElement | null>;
 }
@@ -55,6 +56,7 @@ export function AriaSidebar({
   onListeningChange,
   onTextSend,
   onInputModeToggle,
+  speechSupported = true,
   micButtonRef,
 }: AriaSidebarProps) {
   const [textInput, setTextInput] = useState("");
@@ -143,6 +145,7 @@ export function AriaSidebar({
             <InputModeToggle
               mode={inputMode}
               onToggle={onInputModeToggle}
+              speechSupported={speechSupported}
             />
           )}
 

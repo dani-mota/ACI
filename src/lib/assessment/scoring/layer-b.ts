@@ -3,6 +3,7 @@ import type { AIEvalIndicator, AIEvalRun, LayerBScore, BehavioralIndicator } fro
 import { AI_CONFIG } from "../config";
 import { getRubric } from "./rubrics";
 import { createLogger } from "../logger";
+import { resilientFetch } from "@/lib/api-client";
 
 const log = createLogger("layer-b");
 
@@ -166,11 +167,9 @@ async function runEvaluation(
   const startTime = Date.now();
   const prompt = buildEvaluationPrompt(response, indicators);
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), AI_CONFIG.realtimeTimeoutMs);
-
-  try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const res = await resilientFetch(
+    "https://api.anthropic.com/v1/messages",
+    {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -183,59 +182,54 @@ async function runEvaluation(
         temperature: 0.3 + runIndex * 0.1, // Slight temperature variation across runs
         messages: [{ role: "user", content: prompt }],
       }),
-      signal: controller.signal,
-    });
+      signal: AbortSignal.timeout(AI_CONFIG.realtimeTimeoutMs),
+    },
+    { maxRetries: 2, baseDelayMs: 1000 },
+  );
 
-    const latencyMs = Date.now() - startTime;
+  const latencyMs = Date.now() - startTime;
 
-    if (!res.ok) {
-      throw new Error(`API returned ${res.status}`);
-    }
+  const data = await res.json();
+  const text = data.content?.[0]?.text || "";
 
-    const data = await res.json();
-    const text = data.content?.[0]?.text || "";
+  // Track token usage
+  const inputTokens = data.usage?.input_tokens ?? 0;
+  const outputTokens = data.usage?.output_tokens ?? 0;
+  _totalInputTokens += inputTokens;
+  _totalOutputTokens += outputTokens;
 
-    // Track token usage
-    const inputTokens = data.usage?.input_tokens ?? 0;
-    const outputTokens = data.usage?.output_tokens ?? 0;
-    _totalInputTokens += inputTokens;
-    _totalOutputTokens += outputTokens;
+  log.info("AI evaluation completed", {
+    construct: response.construct,
+    durationMs: latencyMs,
+    tokenCount: inputTokens + outputTokens,
+    cost: estimateCost(inputTokens, outputTokens),
+  });
 
-    log.info("AI evaluation completed", {
-      construct: response.construct,
-      durationMs: latencyMs,
-      tokenCount: inputTokens + outputTokens,
-      cost: estimateCost(inputTokens, outputTokens),
-    });
-
-    try {
-      const parsed = JSON.parse(text);
-      const evalIndicators: AIEvalIndicator[] = indicators.map((ind) => {
-        const evalResult = parsed.indicators?.find((e: { id: string }) => e.id === ind.id);
-        return {
-          indicatorId: ind.id,
-          present: evalResult?.present ?? false,
-          reasoning: evalResult?.reasoning ?? "",
-        };
-      });
-
-      const presentCount = evalIndicators.filter((i) => i.present).length;
-      const aggregateScore = indicators.length > 0 ? presentCount / indicators.length : 0;
-
+  try {
+    const parsed = JSON.parse(text);
+    const evalIndicators: AIEvalIndicator[] = indicators.map((ind) => {
+      const evalResult = parsed.indicators?.find((e: { id: string }) => e.id === ind.id);
       return {
-        runIndex,
-        indicators: evalIndicators,
-        aggregateScore,
-        modelId: AI_CONFIG.realtimeModel,
-        latencyMs,
-        rawOutput: text,
+        indicatorId: ind.id,
+        present: evalResult?.present ?? false,
+        reasoning: evalResult?.reasoning ?? "",
       };
-    } catch {
-      // JSON parse failed — propagate as rejection so Promise.allSettled excludes it
-      throw new Error(`JSON parse failed for run ${runIndex}`);
-    }
-  } finally {
-    clearTimeout(timeoutId);
+    });
+
+    const presentCount = evalIndicators.filter((i) => i.present).length;
+    const aggregateScore = indicators.length > 0 ? presentCount / indicators.length : 0;
+
+    return {
+      runIndex,
+      indicators: evalIndicators,
+      aggregateScore,
+      modelId: AI_CONFIG.realtimeModel,
+      latencyMs,
+      rawOutput: text,
+    };
+  } catch {
+    // JSON parse failed — propagate as rejection so Promise.allSettled excludes it
+    throw new Error(`JSON parse failed for run ${runIndex}`);
   }
 }
 

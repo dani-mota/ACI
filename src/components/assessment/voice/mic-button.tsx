@@ -121,7 +121,24 @@ export const MicButton = forwardRef<HTMLButtonElement, MicButtonProps>(
     }
   }, [listening, disabled]);
 
-  if (!supported) return null;
+  if (!supported) {
+    return (
+      <div className="flex flex-col items-center gap-2">
+        <span
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: "9px",
+            letterSpacing: "1.2px",
+            textTransform: "uppercase",
+            color: "rgba(255, 255, 255, 0.25)",
+            textAlign: "center",
+          }}
+        >
+          Voice input unavailable in this browser
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center gap-2">

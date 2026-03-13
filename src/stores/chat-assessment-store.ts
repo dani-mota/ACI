@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type { OrchestratorPhase } from "@/lib/assessment/transitions";
 import type { ScenarioReference } from "@/lib/assessment/parse-scenario-response";
 import { parseScenarioResponse, splitSentences, cleanText } from "@/lib/assessment/parse-scenario-response";
+import { mapApiError } from "@/lib/errors";
 
 // ── Types ──
 
@@ -505,7 +506,6 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
 
         // Finalize streaming message
         const finalContent = accumulated;
-        console.log("[sendMessage] Stream complete, finalContent length:", finalContent.length);
         set((s) => ({
           messages: s.messages.map((m) =>
             m.id === assistantMessage.id ? { ...m, content: finalContent } : m,
@@ -519,22 +519,7 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
         }
       }
     } catch (err) {
-      const isTimeout = err instanceof DOMException && err.name === "TimeoutError";
-      const raw = err instanceof Error ? err.message : "Something went wrong";
-      let errorMessage: string;
-      if (isTimeout) {
-        errorMessage = "The response timed out. Please try again.";
-      } else if (raw.includes("500")) {
-        errorMessage = "Something went wrong on our end. Please try again in a moment.";
-      } else if (raw.includes("502")) {
-        errorMessage = "The AI service is temporarily unavailable. Please try again.";
-      } else if (raw.includes("429")) {
-        errorMessage = "Too many requests. Please wait a moment and try again.";
-      } else if (raw === "SEND_BLOCKED_LOADING") {
-        errorMessage = "";
-      } else {
-        errorMessage = "Something went wrong. Please try again.";
-      }
+      const errorMessage = mapApiError(err);
       set((s) => ({
         messages: s.messages.filter((m) => m.id !== assistantMessage.id),
         isLoading: false,
@@ -696,7 +681,6 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
         }
 
         const finalContent = accumulated;
-        console.log("[sendElementResponse] Stream complete, finalContent length:", finalContent.length);
         set((s) => ({
           messages: s.messages.map((m) =>
             m.id === assistantMsg.id ? { ...m, content: finalContent } : m,
@@ -709,10 +693,10 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
         }
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Something went wrong";
+      const errorMessage = mapApiError(err);
       set((s) => ({
         isLoading: false,
-        error: errorMessage,
+        error: errorMessage || null,
         orbMode: "idle",
         activeElement: s.activeElement ? { ...s.activeElement, responded: false } : null,
       }));

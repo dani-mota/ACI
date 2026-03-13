@@ -1,12 +1,22 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { withApiHandler } from "@/lib/api-handler";
 
 /**
  * GET /api/admin/health
- * Lightweight health check: DB connectivity + env var presence.
- * No auth required — used by uptime monitors.
+ * Health check: DB connectivity + env var presence.
+ * Protected by HEALTH_SECRET bearer token — returns 404 if missing/wrong (stealth).
  */
-export async function GET() {
+export const GET = withApiHandler(async (req) => {
+  // Bearer token check — return 404 (not 401) to avoid confirming route exists
+  const healthSecret = process.env.HEALTH_SECRET;
+  if (healthSecret) {
+    const authHeader = req.headers.get("authorization");
+    if (authHeader !== `Bearer ${healthSecret}`) {
+      return new Response(null, { status: 404 });
+    }
+  }
+
   const checks: Record<string, { status: string; latencyMs?: number }> = {};
   let overallStatus = "ok";
 
@@ -20,7 +30,7 @@ export async function GET() {
     overallStatus = "degraded";
   }
 
-  // Environment variables
+  // Environment variables (presence only — never expose values)
   checks.anthropicKey = { status: process.env.ANTHROPIC_API_KEY ? "ok" : "missing" };
   checks.elevenLabsKey = { status: process.env.ELEVENLABS_API_KEY ? "ok" : "missing" };
   checks.sentryDsn = { status: process.env.NEXT_PUBLIC_SENTRY_DSN ? "ok" : "missing" };
@@ -35,4 +45,4 @@ export async function GET() {
     timestamp: new Date().toISOString(),
     checks,
   });
-}
+}, { module: "health" });

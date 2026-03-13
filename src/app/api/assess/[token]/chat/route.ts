@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { streamText } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import prisma from "@/lib/prisma";
@@ -14,8 +15,6 @@ import { recordResult, initLoopState } from "@/lib/assessment/adaptive-loop";
 import { ITEM_BANK } from "@/lib/assessment/item-bank";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { createLogger } from "@/lib/assessment/logger";
-
-const log = createLogger("chat-route");
 
 // Vercel serverless: ensure enough time for streaming + onFinish DB writes
 export const maxDuration = 60;
@@ -36,6 +35,8 @@ export async function POST(
   { params }: { params: Promise<{ token: string }> },
 ) {
   const { token } = await params;
+  const requestId = crypto.randomUUID().slice(0, 8);
+  const log = createLogger("chat-route", requestId);
   let stateSnapshot: Record<string, unknown> | null = null;
 
   try {
@@ -141,6 +142,7 @@ export async function POST(
 
   // Capture state snapshot for error diagnostics
   stateSnapshot = {
+    assessmentId: assessment?.id ?? "unknown",
     act: state.currentAct,
     scenario: state.currentScenario,
     beat: state.currentBeat,
@@ -334,7 +336,10 @@ export async function POST(
         (preBeat.primaryConstructs as string[]) ?? [],
         preScenario.name,
         lastAriaMsg,
-      ).catch(() => "");
+      ).catch((err) => {
+        log.warn("Acknowledgment generation failed", { error: String(err) });
+        return "";
+      });
     }
   }
 
@@ -351,33 +356,42 @@ export async function POST(
           .map((m) => `${m.role}: ${m.content.slice(0, 300)}`)
           .join("\n");
 
-        const classification = await classifyResponse(
-          lastUserMessage,
-          scenario,
-          beat,
-          conversationHistory,
-          roleContext,
-        );
+        try {
+          const classification = await classifyResponse(
+            lastUserMessage,
+            scenario,
+            beat,
+            conversationHistory,
+            roleContext,
+          );
 
-        log.info("Classification complete", { act: state.currentAct, beat: String(state.currentBeat), classification: classification.classification, rubricScore: classification.rubricScore });
+          log.info("Classification complete", { act: state.currentAct, beat: String(state.currentBeat), classification: classification.classification, rubricScore: classification.rubricScore });
 
-        // Update state with classification + accumulate token usage
-        const stateUpdate = computeStateUpdate(state, { type: "AGENT_MESSAGE" } as any, classification.classification);
-        const tokenIncrement = classification.tokenUsage ?? { inputTokens: 0, outputTokens: 0 };
-        await prisma.assessmentState.update({
-          where: { assessmentId: assessment.id },
-          data: {
-            ...(stateUpdate as any),
-            realtimeTokensIn: { increment: tokenIncrement.inputTokens },
-            realtimeTokensOut: { increment: tokenIncrement.outputTokens },
-          },
-        });
+          // Update state with classification + accumulate token usage
+          const stateUpdate = computeStateUpdate(state, { type: "AGENT_MESSAGE" } as any, classification.classification);
+          const tokenIncrement = classification.tokenUsage ?? { inputTokens: 0, outputTokens: 0 };
+          await prisma.assessmentState.update({
+            where: { assessmentId: assessment.id },
+            data: {
+              ...(stateUpdate as any),
+              realtimeTokensIn: { increment: tokenIncrement.inputTokens },
+              realtimeTokensOut: { increment: tokenIncrement.outputTokens },
+            },
+          });
 
-        // Re-fetch state after update
-        state = (await prisma.assessmentState.findUnique({
-          where: { assessmentId: assessment.id },
-        }))!;
-        log.info("State after classification", { act: state.currentAct, beat: String(state.currentBeat), scenario: String(state.currentScenario), construct: state.currentConstruct ?? undefined, phase: String(state.currentPhase ?? 0) });
+          // Re-fetch state after update
+          state = (await prisma.assessmentState.findUnique({
+            where: { assessmentId: assessment.id },
+          }))!;
+          log.info("State after classification", { act: state.currentAct, beat: String(state.currentBeat), scenario: String(state.currentScenario), construct: state.currentConstruct ?? undefined, phase: String(state.currentPhase ?? 0) });
+        } catch (classErr) {
+          log.error("Classification failed, proceeding with ADEQUATE default", {
+            error: classErr instanceof Error ? classErr.message : String(classErr),
+            beat: String(state.currentBeat),
+            scenario: String(state.currentScenario),
+          });
+          // Fall through with current state — streaming will still work with ADEQUATE default
+        }
       }
     }
   }
@@ -755,6 +769,7 @@ export async function POST(
               }
             }
           } catch (err) {
+            Sentry.captureException(err, { extra: { requestId, assessmentId: assessment.id, context: "onFinish" } });
             log.error("onFinish failed", { assessmentId: assessment.id, error: String(err) });
           }
         },
@@ -767,6 +782,7 @@ export async function POST(
       streamHeaders.set("X-ACI-Progress", JSON.stringify(streamProgress));
       return new Response(streamResponse.body, { status: 200, headers: streamHeaders });
     } catch (streamErr) {
+      Sentry.captureException(streamErr, { extra: { requestId, act: state.currentAct, beat: state.currentBeat } });
       log.error("Streaming failed", {
         error: streamErr instanceof Error ? streamErr.message : String(streamErr),
         act: state.currentAct,
@@ -787,6 +803,7 @@ export async function POST(
   });
 
   } catch (err) {
+    Sentry.captureException(err, { extra: { requestId, state: stateSnapshot } });
     log.error("Unhandled error in chat route", {
       token: token?.slice(0, 8) + "...",
       state: stateSnapshot,
@@ -814,82 +831,92 @@ export async function GET(
   { params }: { params: Promise<{ token: string }> },
 ) {
   const { token } = await params;
+  const log = createLogger("chat-route-get");
 
-  // Rate limit GET by token: 20/min
-  const rl = checkRateLimit(`chat-get:${token}`, { maxRequests: 20, windowMs: 60_000 });
-  if (!rl.allowed) {
-    return new Response(JSON.stringify({ error: "Too many requests" }), {
-      status: 429,
-      headers: { "Content-Type": "application/json", "Retry-After": String(Math.ceil(rl.retryAfterMs / 1000)) },
+  try {
+    // Rate limit GET by token: 20/min
+    const rl = checkRateLimit(`chat-get:${token}`, { maxRequests: 20, windowMs: 60_000 });
+    if (!rl.allowed) {
+      return new Response(JSON.stringify({ error: "Too many requests" }), {
+        status: 429,
+        headers: { "Content-Type": "application/json", "Retry-After": String(Math.ceil(rl.retryAfterMs / 1000)) },
+      });
+    }
+
+    const invitation = await prisma.assessmentInvitation.findUnique({
+      where: { linkToken: token },
     });
-  }
 
-  const invitation = await prisma.assessmentInvitation.findUnique({
-    where: { linkToken: token },
-  });
+    if (!invitation || invitation.status === "EXPIRED" || (invitation.expiresAt && new Date() > invitation.expiresAt)) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
 
-  if (!invitation || invitation.status === "EXPIRED" || (invitation.expiresAt && new Date() > invitation.expiresAt)) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  const assessment = await prisma.assessment.findFirst({
-    where: { candidateId: invitation.candidateId },
-    include: {
-      assessmentState: true,
-      messages: {
-        orderBy: { sequenceOrder: "asc" },
-        where: { role: { not: "SYSTEM" } },
+    const assessment = await prisma.assessment.findUnique({
+      where: { candidateId: invitation.candidateId },
+      include: {
+        assessmentState: true,
+        messages: {
+          orderBy: { sequenceOrder: "asc" },
+          where: { role: { not: "SYSTEM" } },
+        },
       },
-    },
-  });
-
-  if (!assessment) {
-    return new Response(JSON.stringify({ error: "Assessment not found" }), {
-      status: 404,
-      headers: { "Content-Type": "application/json" },
     });
-  }
 
-  // Strip internal scoring state but include progress-relevant fields
-  const safeState = assessment.assessmentState ? {
-    currentAct: assessment.assessmentState.currentAct,
-    isComplete: assessment.assessmentState.isComplete,
-    phase0Complete: assessment.assessmentState.phase0Complete,
-    currentScenario: assessment.assessmentState.currentScenario,
-    currentBeat: assessment.assessmentState.currentBeat,
-    currentConstruct: assessment.assessmentState.currentConstruct,
-    currentPhase: assessment.assessmentState.currentPhase,
-    progress: computeProgress(assessment.assessmentState),
-  } : null;
+    if (!assessment) {
+      return new Response(JSON.stringify({ error: "Assessment not found" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
 
-  return new Response(
-    JSON.stringify({
-      assessmentId: assessment.id,
-      state: safeState,
-      messages: assessment.messages.map((m) => {
-        // Strip correctAnswer from element data to prevent answer leakage
-        let safeElementData = m.elementData as Record<string, unknown> | null;
-        if (safeElementData && typeof safeElementData === "object" && !Array.isArray(safeElementData)) {
-          const { correctAnswer: _a, ...rest } = safeElementData;
-          safeElementData = rest;
-        }
-        return {
-          id: m.id,
-          role: m.role === "AGENT" ? "assistant" : "user",
-          content: m.content,
-          act: m.act,
-          elementType: m.elementType,
-          elementData: safeElementData,
-          candidateInput: m.candidateInput,
-          createdAt: m.createdAt,
-        };
+    // Strip internal scoring state but include progress-relevant fields
+    const safeState = assessment.assessmentState ? {
+      currentAct: assessment.assessmentState.currentAct,
+      isComplete: assessment.assessmentState.isComplete,
+      phase0Complete: assessment.assessmentState.phase0Complete,
+      currentScenario: assessment.assessmentState.currentScenario,
+      currentBeat: assessment.assessmentState.currentBeat,
+      currentConstruct: assessment.assessmentState.currentConstruct,
+      currentPhase: assessment.assessmentState.currentPhase,
+      progress: computeProgress(assessment.assessmentState),
+    } : null;
+
+    return new Response(
+      JSON.stringify({
+        assessmentId: assessment.id,
+        state: safeState,
+        messages: assessment.messages.map((m) => {
+          // Strip correctAnswer from element data to prevent answer leakage
+          let safeElementData = m.elementData as Record<string, unknown> | null;
+          if (safeElementData && typeof safeElementData === "object" && !Array.isArray(safeElementData)) {
+            const { correctAnswer: _a, ...rest } = safeElementData;
+            safeElementData = rest;
+          }
+          return {
+            id: m.id,
+            role: m.role === "AGENT" ? "assistant" : "user",
+            content: m.content,
+            act: m.act,
+            elementType: m.elementType,
+            elementData: safeElementData,
+            candidateInput: m.candidateInput,
+            createdAt: m.createdAt,
+          };
+        }),
       }),
-    }),
-    { headers: { "Content-Type": "application/json" } },
-  );
+      { headers: { "Content-Type": "application/json" } },
+    );
+  } catch (err) {
+    Sentry.captureException(err);
+    log.error("GET handler failed", { error: err instanceof Error ? err.message : String(err) });
+    return new Response(
+      JSON.stringify({ error: "Internal server error" }),
+      { status: 500, headers: { "Content-Type": "application/json" } },
+    );
+  }
 }
 
 // ──────────────────────────────────────────────

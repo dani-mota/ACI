@@ -291,3 +291,8 @@
   outline: none !important;
   box-shadow: none !important;
 }
+
+/* ── Assessment Stage shared transition class ── */
+.stage-animate {
+  transition: opacity 300ms ease, transform 300ms ease;
+}

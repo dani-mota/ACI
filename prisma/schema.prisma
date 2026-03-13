@@ -250,6 +250,7 @@ enum CandidateStatus {
   RECOMMENDED
   REVIEW_REQUIRED
   DO_NOT_ADVANCE
+  ERROR
 }
 
 model Assessment {
@@ -476,7 +477,6 @@ model AssessmentInvitation {
   reminderCount Int              @default(0)
   createdAt     DateTime         @default(now())
 
-  @@index([linkToken])
   @@index([candidateId])
 }
 
@@ -634,6 +634,7 @@ model ConversationMessage {
 
   @@index([assessmentId, act])
   @@index([assessmentId, sequenceOrder])
+  @@unique([assessmentId, sequenceOrder])
 }
 
 model AssessmentState {
@@ -677,4 +678,5 @@ model AIEvaluationRun {
 
   @@index([assessmentId, construct])
   @@index([messageId])
+  @@unique([assessmentId, messageId, construct, runIndex])
 }
