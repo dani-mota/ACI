@@ -94,7 +94,7 @@ export function AssessmentStage({
   const [phase0MicCheck, setPhase0MicCheck] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [orbGliding, setOrbGliding] = useState(false);
-  const [layoutExiting, setLayoutExiting] = useState(false);
+  const [layoutOpacity, setLayoutOpacity] = useState(1);
   const [showCompletionScreen, setShowCompletionScreen] = useState(false);
 
   // ── Refs ──
@@ -451,14 +451,21 @@ export function AssessmentStage({
       // If TTS warm-up fails, continue to assessment
     }
 
-    // Phase 3: Crossfade — fade out centered layout, then switch to split layout
-    setLayoutExiting(true);
-    await new Promise((r) => setTimeout(r, 350));
+    // Phase 3: Fade out the centered layout
+    setLayoutOpacity(0);
+    await new Promise((r) => setTimeout(r, 600));
+
+    // Phase 4: Switch layout while invisible (opacity is 0)
     s.setOrchestratorPhase("ACT_1");
     setOrbGliding(false);
-    setLayoutExiting(false);
 
-    // Phase 4: Begin assessment
+    // Wait two frames so browser paints the new layout at opacity 0
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    // Phase 5: Fade in the split layout
+    setLayoutOpacity(1);
+
+    // Phase 6: Begin assessment
     s.setOrbMode("processing");
     try {
       await s.sendMessage("[BEGIN_ASSESSMENT]");
@@ -1105,7 +1112,11 @@ export function AssessmentStage({
         {/* Main content — format-based layout selection (keyed for crossfade) */}
         <div
           key={layoutKey}
-          className={`stage-layout-enter absolute inset-0 z-10${layoutExiting ? " stage-layout-exit" : ""}`}
+          className="absolute inset-0 z-10"
+          style={{
+            opacity: layoutOpacity,
+            transition: "opacity 600ms cubic-bezier(0.25, 0.1, 0.25, 1)",
+          }}
         >
         {(format === 2 || format === 3) ? (
           /* ── Formats 2-3: Reference card + AriaSidebar ── */

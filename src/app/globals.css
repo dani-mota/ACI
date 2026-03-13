@@ -239,19 +239,7 @@
   0% { opacity: 0; transform: translateY(7px); }
   100% { opacity: 1; transform: translateY(0); }
 }
-/* ── Stage: layout crossfade ── */
-@keyframes layoutFadeIn {
-  0% { opacity: 0; }
-  100% { opacity: 1; }
-}
-.stage-layout-enter {
-  animation: layoutFadeIn 300ms ease both;
-}
-.stage-layout-exit {
-  animation: none;
-  opacity: 0;
-  transition: opacity 350ms ease;
-}
+/* ── Stage: layout crossfade (handled by inline React opacity now) ── */
 
 /* ── Stage: focus-visible for keyboard navigation ── */
 .stage-root button:focus-visible,
