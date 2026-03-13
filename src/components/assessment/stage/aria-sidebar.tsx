@@ -79,7 +79,7 @@ export function AriaSidebar({
         backdropFilter: "blur(12px)",
         WebkitBackdropFilter: "blur(12px)",
         borderLeft: "1px solid var(--s-border, rgba(37,99,235,0.12))",
-        padding: "24px 16px 16px",
+        padding: "88px 16px 16px",
       }}
     >
       {/* Small orb */}
@@ -103,17 +103,8 @@ export function AriaSidebar({
         </span>
       </div>
 
-      {/* Speech bubble — contextual hint OR subtitle */}
-      <div
-        className="w-full mb-4"
-        style={{
-          background: "color-mix(in srgb, var(--s-bg, #080e1a) 60%, transparent)",
-          border: "1px solid var(--s-border, rgba(37,99,235,0.12))",
-          borderRadius: "10px",
-          padding: "10px 12px",
-          minHeight: "48px",
-        }}
-      >
+      {/* Subtitle or contextual hint */}
+      <div className="w-full mb-4">
         {bubbleText ? (
           <p
             style={{
@@ -124,6 +115,7 @@ export function AriaSidebar({
               lineHeight: 1.6,
               color: "var(--s-t2, #7b8fa8)",
               margin: 0,
+              padding: "0 4px",
             }}
           >
             {bubbleText}
@@ -133,6 +125,7 @@ export function AriaSidebar({
             text={subtitleText}
             revealedWords={subtitleRevealedWords}
             isRevealing={isTTSPlaying}
+            compact
           />
         )}
       </div>

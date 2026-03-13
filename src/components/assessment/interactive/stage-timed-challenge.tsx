@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { StageChoiceCards } from "./stage-choice-cards";
 
 interface StageTimedChallengeProps {
@@ -28,23 +28,46 @@ export function StageTimedChallenge({
 }: StageTimedChallengeProps) {
   const [remaining, setRemaining] = useState(timeLimit);
   const [answered, setAnswered] = useState(false);
+  const elapsedRef = useRef(0);
+  const lastTickRef = useRef(Date.now());
+  const pausedRef = useRef(false);
 
   useEffect(() => {
     if (disabled || answered) return;
 
-    const interval = setInterval(() => {
-      setRemaining((prev) => {
-        if (prev <= 1) {
-          clearInterval(interval);
-          onTimeout();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+    // Pause timer when tab is hidden
+    const handleVisibility = () => {
+      if (document.hidden) {
+        pausedRef.current = true;
+      } else {
+        pausedRef.current = false;
+        lastTickRef.current = Date.now();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
 
-    return () => clearInterval(interval);
-  }, [disabled, answered, onTimeout]);
+    // Use wall-clock time at 4Hz for accuracy
+    const interval = setInterval(() => {
+      if (pausedRef.current) return;
+      const now = Date.now();
+      const delta = (now - lastTickRef.current) / 1000;
+      lastTickRef.current = now;
+      elapsedRef.current += delta;
+
+      const newRemaining = Math.max(0, Math.round(timeLimit - elapsedRef.current));
+      setRemaining(newRemaining);
+
+      if (newRemaining <= 0) {
+        clearInterval(interval);
+        onTimeout();
+      }
+    }, 250);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [disabled, answered, onTimeout, timeLimit]);
 
   const handleSelect = useCallback(
     (value: string) => {
@@ -79,7 +102,7 @@ export function StageTimedChallenge({
         <span
           style={{
             fontFamily: "var(--font-mono)",
-            fontSize: "9px",
+            fontSize: "clamp(9px, 2vw, 11px)",
             fontWeight: 600,
             color: "var(--s-t3, #3d5068)",
             textTransform: "uppercase",
@@ -94,7 +117,7 @@ export function StageTimedChallenge({
           aria-label={`${remaining} seconds remaining`}
           style={{
             fontFamily: "var(--font-mono)",
-            fontSize: "24px",
+            fontSize: "clamp(24px, 5vw, 32px)",
             fontWeight: 300,
             color: timerColor,
             fontVariantNumeric: "tabular-nums",
@@ -109,7 +132,7 @@ export function StageTimedChallenge({
       {/* Timer track */}
       <div
         style={{
-          height: "3px",
+          height: "4px",
           borderRadius: "2px",
           background: "rgba(255,255,255,0.05)",
           overflow: "hidden",

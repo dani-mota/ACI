@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { createLogger } from "@/lib/assessment/logger";
+
+const log = createLogger("tts-route");
 
 export const maxDuration = 30;
 
@@ -100,9 +103,7 @@ export async function POST(
     );
 
     if (!ttsResponse.ok) {
-      console.error(
-        `[TTS] ElevenLabs error: ${ttsResponse.status} ${ttsResponse.statusText}`,
-      );
+      log.error("ElevenLabs error", { status: ttsResponse.status, statusText: ttsResponse.statusText });
       return new Response(
         JSON.stringify({ error: "TTS provider error", fallback: true }),
         { status: 502, headers: { "Content-Type": "application/json" } },
@@ -117,7 +118,7 @@ export async function POST(
       },
     });
   } catch (err) {
-    console.error("[TTS] Proxy error:", err);
+    log.error("TTS proxy error", { error: String(err) });
     return new Response(
       JSON.stringify({ error: "TTS proxy error", fallback: true }),
       { status: 502, headers: { "Content-Type": "application/json" } },

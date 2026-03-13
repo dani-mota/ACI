@@ -147,6 +147,8 @@ export function StageConfidenceRating({ prompt, onSelect, disabled }: StageConfi
                 alignItems: "center",
                 gap: "8px",
                 padding: "18px 12px",
+                minHeight: "72px",
+                minWidth: "80px",
                 borderRadius: "10px",
                 border: isSelected
                   ? `1px solid ${opt.colorBorder}`

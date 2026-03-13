@@ -152,7 +152,8 @@ export function WelcomeScreen({ token, candidateName, roleName, companyName }: W
                 <CheckItem
                   label="Microphone access"
                   checked={checklist.mic}
-                  onChange={(v) => setChecklist((c) => ({ ...c, mic: v }))}
+                  onChange={() => {}}
+                  disabled
                   icon={<Mic className="w-3.5 h-3.5" />}
                 />
                 {micStatus === "idle" && (
@@ -286,15 +287,17 @@ function CheckItem({
   onChange,
   optional,
   icon,
+  disabled,
 }: {
   label: string;
   checked: boolean;
   onChange: (v: boolean) => void;
   optional?: boolean;
   icon?: React.ReactNode;
+  disabled?: boolean;
 }) {
   return (
-    <label className="flex items-center gap-3 cursor-pointer">
+    <label className={`flex items-center gap-3 ${disabled ? "cursor-default" : "cursor-pointer"}`}>
       <div
         className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 transition-all border ${
           checked
@@ -303,7 +306,7 @@ function CheckItem({
         }`}
         onClick={(e) => {
           e.preventDefault();
-          onChange(!checked);
+          if (!disabled) onChange(!checked);
         }}
       >
         {checked && (

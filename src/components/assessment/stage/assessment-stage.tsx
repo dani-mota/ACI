@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useChatAssessmentStore } from "@/stores/chat-assessment-store";
 import { LivingBackground } from "@/components/assessment/background/living-background";
+import { OfflineOverlay } from "@/components/assessment/offline-overlay";
 import { AssessmentOrb } from "@/components/assessment/orb/assessment-orb";
 import { StageProgressBar } from "./progress-bar";
 import { ActLabel } from "./act-label";
@@ -93,6 +94,7 @@ export function AssessmentStage({
   const [phase0MicCheck, setPhase0MicCheck] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [orbGliding, setOrbGliding] = useState(false);
+  const [layoutExiting, setLayoutExiting] = useState(false);
   const [showCompletionScreen, setShowCompletionScreen] = useState(false);
 
   // ── Refs ──
@@ -106,12 +108,23 @@ export function AssessmentStage({
   const transitionInProgress = useRef(false);
   const sequenceIdRef = useRef(0);
   const justTransitionedRef = useRef(false);
+  const lastFailedMessageRef = useRef<string | null>(null);
 
   // ── Session timer ──
   useEffect(() => {
     const interval = setInterval(() => setElapsedSeconds((s) => s + 1), 1000);
     return () => clearInterval(interval);
   }, []);
+
+  // ── Warn before tab close during active assessment ──
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (isComplete || orchestratorPhase === "COMPLETING") return;
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isComplete, orchestratorPhase]);
 
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60);
@@ -138,11 +151,16 @@ export function AssessmentStage({
     return () => engine.destroy();
   }, []);
 
-  // ── Audio unlock ──
-  const handleAudioUnlock = useCallback(async () => {
+  // ── Auto-unlock audio on mount (user already interacted on welcome page) ──
+  useEffect(() => {
     if (audioUnlocked) return;
-    await ttsRef.current?.resumeContext();
-    setAudioUnlocked(true);
+    const unlock = async () => {
+      await ttsRef.current?.resumeContext();
+      setAudioUnlocked(true);
+    };
+    // Small delay to ensure TTS engine is initialized
+    const timer = setTimeout(unlock, 200);
+    return () => clearTimeout(timer);
   }, [audioUnlocked]);
 
   // ══════════════════════════════════════════════
@@ -156,13 +174,25 @@ export function AssessmentStage({
       const s = getStore();
       s.setOrbMode("speaking");
       s.setSubtitleText(text);
+      s.setSubtitleRevealedWords(0);
 
       const words = text.split(/\s+/);
       let revealed = 0;
       let revealInterval: ReturnType<typeof setInterval> | null = null;
 
-      // Start word reveal only when TTS playback begins, paced to audio duration
-      const startReveal = (durationSec: number) => {
+      // Start a slow pre-reveal immediately so words begin appearing while TTS loads
+      const estimatedMsPerWord = 350; // ~170 wpm reading pace
+      revealInterval = setInterval(() => {
+        revealed++;
+        getStore().setSubtitleRevealedWords(revealed);
+        if (revealed >= words.length && revealInterval) clearInterval(revealInterval);
+      }, estimatedMsPerWord);
+
+      // Once TTS playback begins, re-sync reveal pacing to audio duration
+      const syncReveal = (durationSec: number) => {
+        if (revealInterval) clearInterval(revealInterval);
+        const remaining = words.length - revealed;
+        if (remaining <= 0) return;
         const msPerWord = Math.max(60, (durationSec * 1000) / words.length);
         revealInterval = setInterval(() => {
           revealed++;
@@ -175,7 +205,7 @@ export function AssessmentStage({
         const ttsTimeout = Math.max(30000, words.length * 800);
         try {
           await Promise.race([
-            ttsRef.current.speak(text, token, startReveal),
+            ttsRef.current.speak(text, token, syncReveal),
             new Promise<void>((resolve) => setTimeout(() => {
               console.warn("[TTS] Safety timeout reached, continuing");
               ttsRef.current?.stop();
@@ -184,8 +214,7 @@ export function AssessmentStage({
           ]);
         } catch { /* fallback timing from word reveal */ }
       } else {
-        // No TTS engine — reveal at estimated speech rate
-        startReveal(words.length * 0.4);
+        // No TTS engine — pre-reveal interval already running at estimated pace
         await new Promise<void>((resolve) => setTimeout(resolve, words.length * 400 + 200));
       }
 
@@ -290,6 +319,11 @@ export function AssessmentStage({
         };
 
         if (ttsRef.current) {
+          // Pre-fetch next sentence while current one plays (N+1 lookahead)
+          if (i + 1 < sentences.length) {
+            ttsRef.current.prefetch(sentences[i + 1], token);
+          }
+
           const ttsTimeout = Math.max(30000, totalWords * 800);
           try {
             await Promise.race([
@@ -311,7 +345,7 @@ export function AssessmentStage({
 
         // Brief pause between sentences
         if (i < sentences.length - 1 && sequenceIdRef.current === myId) {
-          await new Promise((r) => setTimeout(r, 400));
+          await new Promise((r) => setTimeout(r, 150));
         }
       }
 
@@ -401,24 +435,28 @@ export function AssessmentStage({
   // ══════════════════════════════════════════════
 
   const handleBeginAct1 = useCallback(async () => {
-    // Phase 1: Glide orb from center to right side
-    setOrbGliding(true);
-    await new Promise((r) => setTimeout(r, 1000));
-
-    // Phase 2: Switch to split layout (orb is already in the right position)
     const s = getStore();
-    s.setOrchestratorPhase("ACT_1");
-    s.setOrbMode("speaking");
-    s.setOrbTargetSize(getOrbSize("FULL"));
-    setOrbGliding(false);
 
-    // Phase 3: Warm-up introduction before first scenario
+    // Phase 1: Glide orb from center → sidebar position + shrink to sidebar size (88px)
+    s.setOrbTargetSize(88);
+    s.setOrbMode("speaking");
+    setOrbGliding(true);
+    await new Promise((r) => setTimeout(r, 1200));
+
+    // Phase 2: Play warm-up narration while orb is at sidebar position (still CenteredLayout)
     try {
       const { ACT1_WARMUP_LINES } = await import("@/lib/assessment/transitions");
       await playSentenceSequence(ACT1_WARMUP_LINES);
     } catch {
       // If TTS warm-up fails, continue to assessment
     }
+
+    // Phase 3: Crossfade — fade out centered layout, then switch to split layout
+    setLayoutExiting(true);
+    await new Promise((r) => setTimeout(r, 350));
+    s.setOrchestratorPhase("ACT_1");
+    setOrbGliding(false);
+    setLayoutExiting(false);
 
     // Phase 4: Begin assessment
     s.setOrbMode("processing");
@@ -810,12 +848,19 @@ export function AssessmentStage({
         return;
       }
 
+      // During Phase 0 intro segments, just stop TTS — don't send message
+      if (phase0Ref.current === "playing" || phase0Ref.current === "completing") {
+        s.setOrbMode("idle");
+        return;
+      }
+
       const el = s.activeElement;
       if (el && !el.responded) {
         s.sendElementResponse({ elementType: el.elementType, value: text });
       } else {
         s.setOrbMode("processing");
-        s.sendMessage(text);
+        lastFailedMessageRef.current = text;
+        s.sendMessage(text).then(() => { lastFailedMessageRef.current = null; }).catch(() => {});
       }
     },
     [handlePhase0Response],
@@ -858,7 +903,8 @@ export function AssessmentStage({
       s.sendElementResponse({ elementType: el.elementType, value: text });
     } else {
       s.setOrbMode("processing");
-      s.sendMessage(text);
+      lastFailedMessageRef.current = text;
+      s.sendMessage(text).then(() => { lastFailedMessageRef.current = null; }).catch(() => {});
     }
   }, [textInput, handlePhase0Response]);
 
@@ -901,7 +947,8 @@ export function AssessmentStage({
     ? inputMode === "voice"
     : inputMode === "voice" || currentAct !== "ACT_2";
   const showInputToggle = (currentAct === "ACT_2" && !activeElement) || phase0MicCheck;
-  const showInput = !isComplete && !isTransition && !activeElement && (!isPhase0 || phase0MicCheck);
+  // Show mic during entire Phase 0 so user can interrupt Aria at any time
+  const showInput = !isComplete && !isTransition && !activeElement;
 
   // Format resolver — single source of truth for layout selection
   const format: AssessmentFormat = resolveFormat(
@@ -1009,49 +1056,9 @@ export function AssessmentStage({
       className="stage-root fixed inset-0 z-50 overflow-hidden"
       style={{ background: "var(--s-bg, #080e1a)" }}
     >
-      {/* Audio unlock gate */}
-      {!audioUnlocked && (
-        <button
-          className="absolute inset-0 z-[100] flex flex-col items-center justify-center cursor-pointer border-none"
-          onClick={handleAudioUnlock}
-          aria-label="Begin assessment — audio required"
-          autoFocus
-          style={{ background: "rgba(8, 14, 26, 0.95)" }}
-        >
-          <div
-            className="w-16 h-16 rounded-full flex items-center justify-center mb-6"
-            style={{
-              background: "rgba(37, 99, 235, 0.12)",
-              border: "1px solid rgba(37, 99, 235, 0.25)",
-            }}
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(37, 99, 235, 0.8)" strokeWidth="2">
-              <polygon points="5 3 19 12 5 21 5 3" />
-            </svg>
-          </div>
-          <p
-            className="text-sm text-center"
-            style={{
-              fontFamily: "var(--font-display)",
-              color: "rgba(184, 196, 214, 0.7)",
-              fontWeight: 300,
-            }}
-          >
-            Tap to begin your assessment
-          </p>
-          <p
-            className="text-[10px] mt-2"
-            style={{
-              fontFamily: "var(--font-mono)",
-              color: "rgba(184, 196, 214, 0.3)",
-              letterSpacing: "1.5px",
-              textTransform: "uppercase",
-            }}
-          >
-            Audio required
-          </p>
-        </button>
-      )}
+      <OfflineOverlay />
+
+      {/* Audio auto-unlocks on mount — no gate needed (user already interacted on welcome page) */}
 
       {/* Living background */}
       <LivingBackground />
@@ -1096,7 +1103,10 @@ export function AssessmentStage({
         </div>
 
         {/* Main content — format-based layout selection (keyed for crossfade) */}
-        <div key={layoutKey} className="stage-layout-enter absolute inset-0 z-10">
+        <div
+          key={layoutKey}
+          className={`stage-layout-enter absolute inset-0 z-10${layoutExiting ? " stage-layout-exit" : ""}`}
+        >
         {(format === 2 || format === 3) ? (
           /* ── Formats 2-3: Reference card + AriaSidebar ── */
           <ReferenceSplitLayout
@@ -1206,8 +1216,9 @@ export function AssessmentStage({
         ) : (
           /* ── Formats 1, 8, 9: Centered conversational / transition / completion ── */
           <CenteredLayout
-            orbTop={orbGliding ? "35%" : "38%"}
-            orbLeft={orbGliding ? "71%" : "50%"}
+            orbTop={orbGliding ? "14%" : "38%"}
+            orbLeft={orbGliding ? "90%" : "50%"}
+            orbTransition="top 1200ms cubic-bezier(0.25,0.1,0.25,1), left 1200ms cubic-bezier(0.25,0.1,0.25,1)"
             actLabel={<ActLabel currentAct={currentAct} visible={showActLabel} />}
             orb={
               <AssessmentOrb
@@ -1224,6 +1235,15 @@ export function AssessmentStage({
                     onContinue={handleBeginAct1}
                     visible={true}
                   />
+                ) : isBreak && orbGliding ? (
+                  /* During Phase 0→Act 1 glide: subtitles only (no 3-dot transition screen) */
+                  <>
+                    <SubtitleDisplay
+                      text={subtitleText}
+                      revealedWords={subtitleRevealedWords}
+                      isRevealing={isTTSPlaying}
+                    />
+                  </>
                 ) : format === 9 && showCompletionScreen ? (
                   <CompletionScreen
                     elapsedMinutes={Math.round(elapsedSeconds / 60)}
@@ -1312,6 +1332,34 @@ export function AssessmentStage({
           }}
         >
           <span>Something went wrong. Please try again.</span>
+          {lastFailedMessageRef.current && (
+            <button
+              onClick={() => {
+                const msg = lastFailedMessageRef.current;
+                if (!msg) return;
+                useChatAssessmentStore.setState({ error: null });
+                const s = getStore();
+                s.setOrbMode("processing");
+                lastFailedMessageRef.current = msg;
+                s.sendMessage(msg).then(() => { lastFailedMessageRef.current = null; }).catch(() => {});
+              }}
+              aria-label="Retry"
+              style={{
+                color: "#fca5a5",
+                cursor: "pointer",
+                padding: "4px 10px",
+                background: "rgba(252, 165, 165, 0.1)",
+                border: "1px solid rgba(252, 165, 165, 0.25)",
+                borderRadius: "4px",
+                fontSize: "11px",
+                fontFamily: "var(--font-mono)",
+                fontWeight: 600,
+                letterSpacing: "0.5px",
+              }}
+            >
+              Retry
+            </button>
+          )}
           <button
             onClick={() => { const s = getStore(); s.setSubtitleText(""); useChatAssessmentStore.setState({ error: null }); }}
             aria-label="Dismiss error"

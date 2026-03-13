@@ -245,7 +245,12 @@
   100% { opacity: 1; }
 }
 .stage-layout-enter {
-  animation: layoutFadeIn 180ms ease both;
+  animation: layoutFadeIn 300ms ease both;
+}
+.stage-layout-exit {
+  animation: none;
+  opacity: 0;
+  transition: opacity 350ms ease;
 }
 
 /* ── Stage: focus-visible for keyboard navigation ── */

@@ -1,6 +1,10 @@
-import { PrismaClient } from "@prisma/client";
+import pg from "pg";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "../src/generated/prisma/client";
 
-const prisma = new PrismaClient();
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+const adapter = new PrismaPg(pool);
+const prisma = new PrismaClient({ adapter });
 
 async function main() {
   const org = await prisma.organization.findFirstOrThrow({
@@ -14,11 +18,30 @@ async function main() {
     include: { primaryRole: true },
   });
 
-  // Clear any existing invitations so there's no conflict
-  await prisma.assessmentInvitation.deleteMany({ where: { candidateId: candidate.id } });
+  // Find existing assessments for this candidate
+  const existingAssessments = await prisma.assessment.findMany({
+    where: { candidateId: candidate.id },
+    select: { id: true },
+  });
+  const assessmentIds = existingAssessments.map((a) => a.id);
 
-  // Also clear any existing assessment so it starts fresh
-  await prisma.assessment.deleteMany({ where: { candidateId: candidate.id } });
+  if (assessmentIds.length > 0) {
+    // Delete child records in dependency order
+    await prisma.aIEvaluationRun.deleteMany({ where: { assessmentId: { in: assessmentIds } } });
+    await prisma.assessmentState.deleteMany({ where: { assessmentId: { in: assessmentIds } } });
+    await prisma.conversationMessage.deleteMany({ where: { assessmentId: { in: assessmentIds } } });
+    await prisma.postAssessmentSurvey.deleteMany({ where: { assessmentId: { in: assessmentIds } } });
+    await prisma.itemResponse.deleteMany({ where: { assessmentId: { in: assessmentIds } } });
+    await prisma.redFlag.deleteMany({ where: { assessmentId: { in: assessmentIds } } });
+    await prisma.prediction.deleteMany({ where: { assessmentId: { in: assessmentIds } } });
+    await prisma.aIInteraction.deleteMany({ where: { assessmentId: { in: assessmentIds } } });
+    await prisma.compositeScore.deleteMany({ where: { assessmentId: { in: assessmentIds } } });
+    await prisma.subtestResult.deleteMany({ where: { assessmentId: { in: assessmentIds } } });
+    await prisma.assessment.deleteMany({ where: { id: { in: assessmentIds } } });
+  }
+
+  // Clear any existing invitations
+  await prisma.assessmentInvitation.deleteMany({ where: { candidateId: candidate.id } });
 
   const inv = await prisma.assessmentInvitation.create({
     data: {
@@ -34,4 +57,7 @@ async function main() {
   console.log(`\nTest URL  : http://localhost:3000/assess/${inv.linkToken}\n`);
 }
 
-main().catch(console.error).finally(() => prisma.$disconnect());
+main().catch(console.error).finally(async () => {
+  await prisma.$disconnect();
+  await pool.end();
+});

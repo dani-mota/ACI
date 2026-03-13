@@ -19,7 +19,7 @@ export function InteractiveSplitLayout({
 }: InteractiveSplitLayoutProps) {
   return (
     <div
-      className="flex-1 flex items-center px-6 gap-8"
+      className="h-full flex items-center px-6 gap-8"
       style={{ transition: "all 800ms cubic-bezier(0.25,0.1,0.25,1)" }}
     >
       {/* Left: Question panel */}

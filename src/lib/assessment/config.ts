@@ -33,6 +33,8 @@ export const AI_CONFIG = {
 export const FEATURE_FLAGS = {
   /** Enable pre-generated content libraries instead of live AI generation */
   CONTENT_LIBRARY_ENABLED: process.env.FEATURE_CONTENT_LIBRARY === "true",
+  /** Enable few-shot examples in classification prompts (default: true) */
+  CLASSIFICATION_FEW_SHOT: process.env.FEATURE_CLASSIFICATION_FEW_SHOT !== "false",
 } as const;
 
 /**

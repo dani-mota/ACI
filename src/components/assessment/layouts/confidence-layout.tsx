@@ -26,7 +26,7 @@ export function ConfidenceLayout({
   showElements,
 }: ConfidenceLayoutProps) {
   return (
-    <div className="relative flex-1">
+    <div className="relative h-full">
       {/* Act label */}
       <div
         className="absolute left-0 right-0 flex justify-center z-10"

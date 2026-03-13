@@ -14,6 +14,7 @@ export interface ClassificationResult {
   constructSignals: Record<string, { signalStrength: number; evidence: string }>;
   branchRationale: string;
   isFallback?: boolean; // true when AI evaluation was unavailable and heuristic was used
+  tokenUsage?: { inputTokens: number; outputTokens: number };
 }
 
 // ──────────────────────────────────────────────
@@ -81,6 +82,7 @@ export interface Act2Item {
   distractorRationale?: Record<string, string>; // option -> what it reveals
   timingExpectations: { fast: number; typical: number; slow: number }; // in ms
   imageUrl?: string; // For spatial visualization items
+  asciiDiagram?: string; // Monospace-rendered diagram for spatial items
 }
 
 export interface ItemResult {

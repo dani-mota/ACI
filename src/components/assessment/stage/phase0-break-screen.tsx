@@ -60,9 +60,9 @@ export function Phase0BreakScreen({
 
   return (
     <div
-      className="absolute left-0 right-0 z-30 flex flex-col items-center pointer-events-none"
+      className="w-full flex flex-col items-center pointer-events-none"
       style={{
-        top: "calc(38% + 140px)",
+        paddingTop: "8px",
         opacity: fadingOut ? 0 : 1,
         transition: "opacity 500ms ease-out",
       }}

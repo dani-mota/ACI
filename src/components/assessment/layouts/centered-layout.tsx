@@ -31,7 +31,7 @@ export function CenteredLayout({
   orbTransition = "top 1000ms cubic-bezier(0.25,0.1,0.25,1), left 1000ms cubic-bezier(0.25,0.1,0.25,1)",
 }: CenteredLayoutProps) {
   return (
-    <div className="relative flex-1">
+    <div className="relative h-full">
       {/* Act label — above orb center */}
       <div
         className="absolute left-0 right-0 flex justify-center z-10"

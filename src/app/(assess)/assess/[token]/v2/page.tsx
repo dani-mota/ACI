@@ -1,6 +1,7 @@
 import prisma from "@/lib/prisma";
 import { notFound, redirect } from "next/navigation";
 import { AssessmentStage } from "@/components/assessment/stage/assessment-stage";
+import { AssessmentErrorBoundary } from "@/components/assessment/error-boundary";
 
 interface PageProps {
   params: Promise<{ token: string }>;
@@ -55,11 +56,13 @@ export default async function AssessmentV2Page({ params }: PageProps) {
   }
 
   return (
-    <AssessmentStage
-      token={token}
-      assessmentId={assessment.id}
-      candidateName={invitation.candidate.firstName}
-      companyName={invitation.candidate.org.name}
-    />
+    <AssessmentErrorBoundary>
+      <AssessmentStage
+        token={token}
+        assessmentId={assessment.id}
+        candidateName={invitation.candidate.firstName}
+        companyName={invitation.candidate.org.name}
+      />
+    </AssessmentErrorBoundary>
   );
 }

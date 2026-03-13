@@ -115,7 +115,8 @@ export function StageChoiceCards({ prompt, options, onSelect, disabled }: StageC
                   display: "flex",
                   alignItems: "center",
                   gap: "12px",
-                  padding: "12px 15px",
+                  padding: "14px 16px",
+                  minHeight: "48px",
                   borderRadius: "10px",
                   border: isSelected
                     ? "1px solid rgba(37,99,235,0.5)"

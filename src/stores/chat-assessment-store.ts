@@ -338,24 +338,39 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
         content: m.content,
       }));
 
-      const response = await fetch(`/api/assess/${token}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: allMessages }),
-      });
+      const doFetch = async (attempt: number) => {
+        const res = await fetch(`/api/assess/${token}/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: allMessages }),
+          signal: AbortSignal.timeout(30_000),
+        });
 
-      if (!response.ok) {
-        if (response.status === 400) {
-          try {
-            const errData = await response.json();
-            if (errData.error?.includes("already completed")) {
-              set({ isComplete: true, isLoading: false });
-              return;
-            }
-          } catch { /* fall through */ }
+        if (!res.ok) {
+          if (res.status === 400) {
+            try {
+              const errData = await res.json();
+              if (errData.error?.includes("already completed")) {
+                set({ isComplete: true, isLoading: false });
+                return null; // Signal early exit
+              }
+            } catch { /* fall through */ }
+          }
+          throw new Error(`Chat request failed: ${res.status}`);
         }
-        throw new Error(`Chat request failed: ${response.status}`);
+        return res;
+      };
+
+      let response: Response | null = null;
+      try {
+        response = await doFetch(1);
+      } catch (fetchErr) {
+        // Retry once after 2s delay
+        await new Promise((r) => setTimeout(r, 2000));
+        response = await doFetch(2);
       }
+
+      if (!response) return; // Early exit (already completed)
 
       const contentType = response.headers.get("content-type") || "";
 
@@ -498,7 +513,10 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
         }
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Something went wrong";
+      const isTimeout = err instanceof DOMException && err.name === "TimeoutError";
+      const errorMessage = isTimeout
+        ? "The response timed out. Please try again."
+        : err instanceof Error ? err.message : "Something went wrong";
       set((s) => ({
         messages: s.messages.filter((m) => m.id !== assistantMessage.id),
         isLoading: false,
@@ -541,6 +559,7 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
               messages: [...messages, userMsg].map((m) => ({ role: m.role, content: m.content })),
               elementResponse: response,
             }),
+            signal: AbortSignal.timeout(30_000),
           });
 
           if (!res.ok) {

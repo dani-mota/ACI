@@ -473,6 +473,17 @@ export async function runScoringPipeline(assessmentId: string) {
     data: { status: status as any },
   });
 
+  // Persist scoring cost to assessment record
+  const costUsd = (tokenUsage.inputTokens * 0.8 + tokenUsage.outputTokens * 4) / 1_000_000;
+  await prisma.assessment.update({
+    where: { id: assessmentId },
+    data: {
+      scoringCostUsd: costUsd,
+      scoringTokensIn: tokenUsage.inputTokens,
+      scoringTokensOut: tokenUsage.outputTokens,
+    },
+  });
+
   const totalMs = Date.now() - pipelineStart;
   log.info("Pipeline completed", {
     assessmentId,
@@ -482,6 +493,7 @@ export async function runScoringPipeline(assessmentId: string) {
     constructCount: constructScores.filter((c) => c.itemCount > 0).length,
     layerBCount: allLayerBScores.length,
     redFlagCount: redFlags.length,
+    costUsd,
   });
 
   return { status, composite, constructScores };

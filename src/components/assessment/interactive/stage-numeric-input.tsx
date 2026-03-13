@@ -140,7 +140,8 @@ export function StageNumericInput({ prompt, onSubmit, disabled, unit }: StageNum
           onClick={handleSubmit}
           disabled={disabled || !value.trim() || submitted}
           style={{
-            padding: "8px 32px",
+            padding: "12px 32px",
+            minHeight: "44px",
             borderRadius: "8px",
             border: hasValidInput
               ? "1px solid rgba(37,99,235,0.3)"

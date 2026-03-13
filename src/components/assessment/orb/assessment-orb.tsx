@@ -78,7 +78,7 @@ export function AssessmentOrb({ mode, amplitude, targetSize, compact }: Assessme
       style={{
         width: canvasSize,
         height: canvasSize,
-        transition: "width 2s cubic-bezier(0.25, 0.1, 0.25, 1), height 2s cubic-bezier(0.25, 0.1, 0.25, 1)",
+        transition: "width 1.2s cubic-bezier(0.25, 0.1, 0.25, 1), height 1.2s cubic-bezier(0.25, 0.1, 0.25, 1)",
       }}
       role="img"
       aria-label={

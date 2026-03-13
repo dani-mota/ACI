@@ -13,6 +13,9 @@ import { SCENARIOS } from "@/lib/assessment/scenarios";
 import { recordResult, initLoopState } from "@/lib/assessment/adaptive-loop";
 import { ITEM_BANK } from "@/lib/assessment/item-bank";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { createLogger } from "@/lib/assessment/logger";
+
+const log = createLogger("chat-route");
 
 // Vercel serverless: ensure enough time for streaming + onFinish DB writes
 export const maxDuration = 60;
@@ -296,6 +299,29 @@ export async function POST(
     }
   }
 
+  // Fire acknowledgment early so it runs in parallel with classification (~200-400ms saved)
+  let acknowledgmentPromise: Promise<string> | null = null;
+  if (
+    state.currentAct === "ACT_1" && lastUserMessage && !isSentinel
+    && FEATURE_FLAGS.CONTENT_LIBRARY_ENABLED && state.contentLibraryId
+    && state.currentBeat > 0 // beat 0 doesn't use acknowledgment
+  ) {
+    const preScenario = SCENARIOS[state.currentScenario];
+    const preBeat = preScenario?.beats[state.currentBeat];
+    if (preScenario && preBeat) {
+      const lastAriaMsg = assessment.messages
+        .filter((m) => m.role === "AGENT")
+        .pop()?.content;
+      acknowledgmentPromise = generateAcknowledgment(
+        lastUserMessage,
+        preBeat.type ?? "INITIAL_RESPONSE",
+        (preBeat.primaryConstructs as string[]) ?? [],
+        preScenario.name,
+        lastAriaMsg,
+      ).catch(() => "");
+    }
+  }
+
   // Classify candidate response during Act 1 and update state
   // Skip classification for sentinel messages (e.g. [BEGIN_ASSESSMENT], [NO_RESPONSE])
   // but DO classify real candidate responses even at beat 0.
@@ -317,27 +343,32 @@ export async function POST(
           roleContext,
         );
 
-        console.log(`[DIAG] Classification: act=${state.currentAct} beat=${state.currentBeat} result=${classification.classification} rubricScore=${classification.rubricScore}`);
+        log.info("Classification complete", { act: state.currentAct, beat: String(state.currentBeat), classification: classification.classification, rubricScore: classification.rubricScore });
 
-        // Update state with classification
+        // Update state with classification + accumulate token usage
         const stateUpdate = computeStateUpdate(state, { type: "AGENT_MESSAGE" } as any, classification.classification);
+        const tokenIncrement = classification.tokenUsage ?? { inputTokens: 0, outputTokens: 0 };
         await prisma.assessmentState.update({
           where: { assessmentId: assessment.id },
-          data: stateUpdate as any,
+          data: {
+            ...(stateUpdate as any),
+            realtimeTokensIn: { increment: tokenIncrement.inputTokens },
+            realtimeTokensOut: { increment: tokenIncrement.outputTokens },
+          },
         });
 
         // Re-fetch state after update
         state = (await prisma.assessmentState.findUnique({
           where: { assessmentId: assessment.id },
         }))!;
-        console.log(`[DIAG] State after classification: act=${state.currentAct} beat=${state.currentBeat} scenario=${state.currentScenario} construct=${state.currentConstruct} phase=${state.currentPhase}`);
+        log.info("State after classification", { act: state.currentAct, beat: String(state.currentBeat), scenario: String(state.currentScenario), construct: state.currentConstruct ?? undefined, phase: String(state.currentPhase ?? 0) });
       }
     }
   }
 
   // Determine the next action from the engine
   const action = getNextAction(state, assessment.messages, lastUserMessage);
-  console.log(`[DIAG] Action: type=${action.type} act=${"act" in action ? (action as any).act : "N/A"} metadata=${JSON.stringify((action as any).metadata ?? {})}`);
+  log.info("Action determined", { actionType: action.type, act: "act" in action ? (action as any).act : undefined });
 
   // Helper: re-fetch state and compute progress for client
   async function getProgress(): Promise<{ act1: number; act2: number; act3: number }> {
@@ -390,7 +421,7 @@ export async function POST(
 
     // S2 fix: Update assessment state for interactive element actions (e.g., Act 3 progress)
     const elStateUpdate = computeStateUpdate(state, action);
-    console.log(`[DIAG] StateUpdate (INTERACTIVE_ELEMENT dispatch): ${JSON.stringify(elStateUpdate)}`);
+    log.info("StateUpdate (interactive element)", { stateUpdate: elStateUpdate });
     if (Object.keys(elStateUpdate).length > 0) {
       await prisma.assessmentState.update({
         where: { assessmentId: assessment.id },
@@ -429,10 +460,16 @@ export async function POST(
     });
 
     const stateUpdate = computeStateUpdate(state, action);
-    console.log(`[DIAG] StateUpdate (TRANSITION): ${JSON.stringify(stateUpdate)}`);
+    // Record per-act completion timestamp
+    const actTimestamp: Record<string, Date> = {};
+    if (action.from?.act === "ACT_1") actTimestamp.act1CompletedAt = new Date();
+    else if (action.from?.act === "ACT_2") actTimestamp.act2CompletedAt = new Date();
+    else if (action.from?.act === "ACT_3") actTimestamp.act3CompletedAt = new Date();
+
+    log.info("StateUpdate (transition)", { stateUpdate, from: action.from?.act, to: action.to?.act });
     await prisma.assessmentState.update({
       where: { assessmentId: assessment.id },
-      data: stateUpdate as any,
+      data: { ...(stateUpdate as any), ...actTimestamp },
     });
 
     const transitionProgress = await getProgress();
@@ -486,7 +523,7 @@ export async function POST(
 
           if (action.metadata) {
             const stateUpdate = computeStateUpdate(state, action);
-            console.log(`[DIAG] StateUpdate (Beat 0 library): ${JSON.stringify(stateUpdate)}`);
+            log.info("StateUpdate (Beat 0 library)", { stateUpdate });
             if (Object.keys(stateUpdate).length > 0) {
               await prisma.assessmentState.update({
                 where: { assessmentId: assessment.id },
@@ -507,7 +544,7 @@ export async function POST(
           );
         }
       } catch (err) {
-        console.error("[V2] Beat 0 content library failed, falling back to streaming:", err);
+        log.error("Beat 0 content library failed, falling back to streaming", { error: String(err) });
       }
     }
 
@@ -534,19 +571,10 @@ export async function POST(
         const branchPath = (state.branchPath as ResponseClassification[] | null) ?? [];
         const classification = branchPath[branchPath.length - 1] ?? "ADEQUATE";
 
-        // Generate acknowledgment in parallel (single Haiku call, ~200ms)
-        const beat = SCENARIOS[scenarioIndex]?.beats[beatIndex];
-        const scenario = SCENARIOS[scenarioIndex];
-        const lastAriaMsg = assessment.messages
-          .filter((m) => m.role === "AGENT")
-          .pop()?.content;
-        const acknowledgment = await generateAcknowledgment(
-          lastUserMessage,
-          beat?.type ?? "INITIAL_RESPONSE",
-          (beat?.primaryConstructs as string[]) ?? [],
-          scenario?.name,
-          lastAriaMsg,
-        );
+        // Acknowledgment was fired in parallel with classification above
+        const acknowledgment = acknowledgmentPromise
+          ? await acknowledgmentPromise
+          : "";
 
         // Look up pre-generated content
         const content = lookupBeatContent(library, scenarioIndex, beatIndex, classification, variantSelections);
@@ -576,7 +604,7 @@ export async function POST(
         // Update state
         if (action.metadata) {
           const stateUpdate = computeStateUpdate(state, action);
-          console.log(`[DIAG] StateUpdate (pre-generated content): ${JSON.stringify(stateUpdate)}`);
+          log.info("StateUpdate (pre-generated content)", { stateUpdate });
           if (Object.keys(stateUpdate).length > 0) {
             await prisma.assessmentState.update({
               where: { assessmentId: assessment.id },
@@ -598,7 +626,7 @@ export async function POST(
         );
       } catch (err) {
         // Fall through to streaming path on any content library error
-        console.error(`[V2] Pre-generated content failed, falling back to streaming:`, err);
+        log.error("Pre-generated content failed, falling back to streaming", { error: String(err) });
       }
     }
 
@@ -629,23 +657,44 @@ export async function POST(
       abortSignal: AbortSignal.timeout(AI_CONFIG.realtimeTimeoutMs),
       async onFinish({ text }) {
         try {
+          // Strip construct_check validation tags from parallel scenarios
+          let cleanText = text;
+          const constructCheckMatch = text.match(/<construct_check>(.*?)<\/construct_check>/);
+          if (constructCheckMatch) {
+            cleanText = text.replace(/<construct_check>.*?<\/construct_check>/g, "").trim();
+            const expectedConstructs = constructCheckMatch[1].split(",");
+            const actionMeta = action.metadata as Record<string, unknown> | undefined;
+            if (actionMeta?.sourceScenarioIndex !== undefined) {
+              const srcScenario = SCENARIOS[actionMeta.sourceScenarioIndex as number];
+              const matched = srcScenario?.primaryConstructs.every(
+                (c: string) => expectedConstructs.includes(c)
+              );
+              if (!matched) {
+                log.warn("Parallel scenario construct mismatch", { expected: srcScenario?.primaryConstructs.join(","), got: constructCheckMatch[1] });
+              }
+            }
+          }
+
           // Persist the agent's message after streaming completes
           const seq = await nextSequenceOrder();
           await prisma.conversationMessage.create({
             data: {
               assessmentId: assessment.id,
               role: "AGENT",
-              content: text,
+              content: cleanText,
               act: action.act,
               sequenceOrder: seq,
-              metadata: action.metadata as any,
+              metadata: {
+                ...((action.metadata as Record<string, unknown>) ?? {}),
+                ...(constructCheckMatch ? { constructValidation: constructCheckMatch[1] } : {}),
+              } as any,
             },
           });
 
           // Update assessment state based on action metadata
           if (action.metadata) {
             const stateUpdate = computeStateUpdate(state!, action);
-            console.log(`[DIAG] StateUpdate (streaming onFinish): ${JSON.stringify(stateUpdate)}`);
+            log.info("StateUpdate (streaming onFinish)", { stateUpdate });
             if (Object.keys(stateUpdate).length > 0) {
               await prisma.assessmentState.update({
                 where: { assessmentId: assessment.id },
@@ -654,7 +703,7 @@ export async function POST(
             }
           }
         } catch (err) {
-          console.error(`[V2] onFinish failed for assessment ${assessment.id}:`, err);
+          log.error("onFinish failed", { assessmentId: assessment.id, error: String(err) });
         }
       },
     });
@@ -685,6 +734,15 @@ export async function GET(
   { params }: { params: Promise<{ token: string }> },
 ) {
   const { token } = await params;
+
+  // Rate limit GET by token: 20/min
+  const rl = checkRateLimit(`chat-get:${token}`, { maxRequests: 20, windowMs: 60_000 });
+  if (!rl.allowed) {
+    return new Response(JSON.stringify({ error: "Too many requests" }), {
+      status: 429,
+      headers: { "Content-Type": "application/json", "Retry-After": String(Math.ceil(rl.retryAfterMs / 1000)) },
+    });
+  }
 
   const invitation = await prisma.assessmentInvitation.findUnique({
     where: { linkToken: token },
@@ -768,10 +826,16 @@ function buildConversationHistory(
   for (const msg of dbMessages) {
     if (msg.role === "SYSTEM") continue;
     if (msg.act === "PHASE_0") continue; // Phase 0 is scripted, not relevant to AI context
-    history.push({
-      role: msg.role === "AGENT" ? "assistant" : "user",
-      content: msg.content,
-    });
+
+    const role = msg.role === "AGENT" ? "assistant" : "user";
+    let content = msg.content;
+
+    // Sanitize candidate messages: strip XML tags and cap length
+    if (role === "user") {
+      content = content.replace(/<\/?[a-zA-Z_][a-zA-Z0-9_]*[^>]*>/g, "").slice(0, 2000);
+    }
+
+    history.push({ role, content });
   }
 
   // Cap context to last 40 messages to manage token usage

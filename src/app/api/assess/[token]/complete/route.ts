@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { runScoringPipeline } from "@/lib/assessment/scoring/pipeline";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { createLogger } from "@/lib/assessment/logger";
+
+const log = createLogger("complete-route");
 
 interface RouteParams {
   params: Promise<{ token: string }>;
@@ -98,10 +101,7 @@ async function runPipelineWithRetry(
       await runScoringPipeline(assessmentId);
       return; // Success
     } catch (err) {
-      console.error(
-        `[Scoring] Pipeline attempt ${attempt}/${maxRetries} failed for ${assessmentId}:`,
-        err,
-      );
+      log.error(`Pipeline attempt ${attempt}/${maxRetries} failed`, { assessmentId, error: String(err) });
       if (attempt < maxRetries) {
         await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
       }
@@ -109,7 +109,7 @@ async function runPipelineWithRetry(
   }
 
   // All retries exhausted — mark candidate as error state so dashboard shows it
-  console.error(`[Scoring] Pipeline exhausted all retries for ${assessmentId}`);
+  log.error("Pipeline exhausted all retries", { assessmentId });
   try {
     const assessment = await prisma.assessment.findUnique({
       where: { id: assessmentId },
@@ -123,5 +123,20 @@ async function runPipelineWithRetry(
     }
   } catch {
     // Best effort — don't throw from error handler
+  }
+
+  // Fire-and-forget webhook notification for admin alerting
+  const webhookUrl = process.env.SCORING_FAILURE_WEBHOOK_URL;
+  if (webhookUrl) {
+    fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        event: "scoring_pipeline_failure",
+        assessmentId,
+        timestamp: new Date().toISOString(),
+        message: `Scoring pipeline exhausted all ${maxRetries} retries`,
+      }),
+    }).catch(() => {}); // Fire-and-forget
   }
 }

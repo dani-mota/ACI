@@ -6,6 +6,8 @@ interface SubtitleDisplayProps {
   text: string;
   revealedWords: number;
   isRevealing: boolean;
+  /** Compact mode for sidebar — smaller font, no max-width */
+  compact?: boolean;
 }
 
 // Safety-net: strip any structural markers that leaked past the parser
@@ -25,7 +27,7 @@ function stripMarkdown(s: string): string {
     .trim();
 }
 
-export function SubtitleDisplay({ text, revealedWords, isRevealing }: SubtitleDisplayProps) {
+export function SubtitleDisplay({ text, revealedWords, isRevealing, compact }: SubtitleDisplayProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const prevTextRef = useRef(text);
   const [fadingOut, setFadingOut] = useState(false);
@@ -68,11 +70,11 @@ export function SubtitleDisplay({ text, revealedWords, isRevealing }: SubtitleDi
     }
   }, [revealedWords, isRevealing]);
 
-  if (!displayText && !fadingOut) return <div className="min-h-[52px]" />;
+  if (!displayText && !fadingOut) return <div className={compact ? "min-h-[32px]" : "min-h-[52px]"} />;
 
   return (
     <div
-      className="text-center max-w-[540px] mx-auto px-4 min-h-[52px]"
+      className={compact ? "text-center w-full px-1 min-h-[32px]" : "text-center max-w-[540px] mx-auto px-4 min-h-[52px]"}
       style={{
         opacity: fadingOut ? 0 : 1,
         transition: "opacity 300ms ease",
@@ -83,12 +85,12 @@ export function SubtitleDisplay({ text, revealedWords, isRevealing }: SubtitleDi
         ref={containerRef}
         style={{
           fontFamily: "var(--font-display)",
-          fontSize: "17px",
+          fontSize: compact ? "13px" : "17px",
           fontWeight: 300,
-          lineHeight: 1.75,
+          lineHeight: compact ? 1.6 : 1.75,
           color: "var(--s-t4, #b8c4d6)",
         }}
-        className="max-sm:text-[15px]"
+        className={compact ? "" : "max-sm:text-[15px]"}
       >
         {words.map((word, i) => {
           const revealed = i < revealedWords;

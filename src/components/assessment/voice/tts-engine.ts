@@ -50,6 +50,12 @@ export class TTSEngine {
   private currentSource: AudioBufferSourceNode | null = null;
   private abortController: AbortController | null = null;
   private fallbackActive = false;
+  /** Resolves when a new buffer is added to playQueue (for pipelined playback) */
+  private bufferReadyResolve: (() => void) | null = null;
+  /** Whether all chunks have been fetched (for pipelined playback) */
+  private allChunksFetched = false;
+  /** Session-level audio cache keyed by text content */
+  private audioCache = new Map<string, AudioBuffer[]>();
 
   private onAmplitude: AmplitudeCallback;
   private onStateChange: StateCallback;
@@ -100,6 +106,12 @@ export class TTSEngine {
       return this.speakFallback(text, onPlaybackStart);
     }
 
+    // Check session cache first
+    const cached = this.audioCache.get(text);
+    if (cached && cached.length > 0) {
+      return this.playCachedBuffers(cached, onPlaybackStart);
+    }
+
     const chunks = chunkText(text);
     if (chunks.length === 0) return;
 
@@ -109,81 +121,71 @@ export class TTSEngine {
     try {
       const ctx = await this.ensureAudioContext();
 
-      // If context is still suspended (no user gesture), skip to fallback
       if (ctx.state === "suspended") {
         this.fallbackActive = true;
         this.onFallback();
         return this.speakFallback(text, onPlaybackStart);
       }
 
-      // Fetch and decode all chunks
-      const buffers: AudioBuffer[] = [];
-      for (const chunk of chunks) {
-        if (signal.aborted) return;
+      // Pipeline: fetch+decode chunk 0, start playback, then fetch remaining in background
+      this.playQueue = [];
+      this.allChunksFetched = false;
+      const allBuffers: AudioBuffer[] = [];
 
-        const res = await fetch(`/api/assess/${token}/tts`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: chunk }),
-          signal,
-        });
+      const firstBuffer = await this.fetchAndDecodeChunk(chunks[0], token, ctx, signal);
+      if (signal.aborted) return;
 
-        if (!res.ok) {
-          // Check for fallback signal
-          try {
-            const err = await res.json();
-            if (err.fallback) {
-              this.fallbackActive = true;
-              this.onFallback();
-              return this.speakFallback(text, onPlaybackStart);
-            }
-          } catch { /* ignore parse errors */ }
-          console.error(`[TTS] Chunk fetch failed: ${res.status}`);
-          continue;
-        }
-
-        const arrayBuffer = await res.arrayBuffer();
-        if (signal.aborted) return;
-
-        // Guard: if the response is too small, it's likely a JSON error, not audio
-        if (arrayBuffer.byteLength < 100) {
-          console.warn("[TTS] Response too small to be audio, skipping chunk");
-          continue;
-        }
-
-        let audioBuffer: AudioBuffer;
-        try {
-          audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-        } catch (decodeErr) {
-          console.error("[TTS] Failed to decode audio chunk:", decodeErr);
-          // If the very first chunk fails to decode, switch to fallback entirely
-          if (buffers.length === 0) {
-            this.fallbackActive = true;
-            this.onFallback();
-            return this.speakFallback(text, onPlaybackStart);
-          }
-          // Otherwise skip this chunk and continue with remaining
-          continue;
-        }
-        buffers.push(audioBuffer);
+      if (!firstBuffer) {
+        // First chunk failed — fall back entirely
+        this.fallbackActive = true;
+        this.onFallback();
+        return this.speakFallback(text, onPlaybackStart);
       }
 
-      if (buffers.length === 0 || signal.aborted) return;
+      allBuffers.push(firstBuffer);
 
-      // Calculate total audio duration and notify caller
-      const totalDuration = buffers.reduce((sum, b) => sum + b.duration, 0);
-      onPlaybackStart?.(totalDuration);
+      // Estimate total duration from first chunk for onPlaybackStart
+      const estimatedDuration = firstBuffer.duration * chunks.length;
+      onPlaybackStart?.(estimatedDuration);
 
-      // Play buffers sequentially
-      this.playQueue = buffers;
+      // Start playback of first chunk immediately
+      this.playQueue.push(firstBuffer);
       this.isPlaying = true;
       this.onStateChange(true);
       this.startAmplitudeLoop();
+
+      // Fetch remaining chunks in background, feeding them to playQueue as they arrive
+      const fetchRemaining = async () => {
+        for (let i = 1; i < chunks.length; i++) {
+          if (signal.aborted) return;
+          const buf = await this.fetchAndDecodeChunk(chunks[i], token, ctx, signal);
+          if (signal.aborted) return;
+          if (buf) {
+            allBuffers.push(buf);
+            this.playQueue.push(buf);
+            // Signal playNext() that a new buffer is available
+            this.bufferReadyResolve?.();
+          }
+        }
+        this.allChunksFetched = true;
+        this.bufferReadyResolve?.();
+        // Cache for potential replay
+        if (allBuffers.length > 0) {
+          this.audioCache.set(text, allBuffers);
+        }
+      };
+
+      // Start background fetch (don't await — playback runs in parallel)
+      const fetchPromise = fetchRemaining();
+
+      // Play the pipelined queue
       await this.playNext();
+
+      // Ensure fetch completes even if playback finishes first
+      await fetchPromise;
     } catch (err) {
       if ((err as Error).name !== "AbortError") {
         console.error("[TTS] Error:", err);
-        // Fall back to browser speech
         this.fallbackActive = true;
         this.onFallback();
         return this.speakFallback(text, onPlaybackStart);
@@ -191,20 +193,116 @@ export class TTSEngine {
     }
   }
 
-  private playNext(): Promise<void> {
-    return new Promise((resolve) => {
-      const buffer = this.playQueue.shift();
-      if (!buffer || !this.audioContext || !this.gainNode) {
-        this.isPlaying = false;
-        this.onStateChange(false);
-        this.stopAmplitudeLoop();
-        resolve();
-        return;
+  /** Fetch and decode a single TTS chunk. Returns null on failure. */
+  private async fetchAndDecodeChunk(
+    chunk: string,
+    token: string,
+    ctx: AudioContext,
+    signal: AbortSignal,
+  ): Promise<AudioBuffer | null> {
+    try {
+      const res = await fetch(`/api/assess/${token}/tts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: chunk }),
+        signal,
+      });
+
+      if (!res.ok) {
+        try {
+          const err = await res.json();
+          if (err.fallback) return null;
+        } catch { /* ignore */ }
+        console.error(`[TTS] Chunk fetch failed: ${res.status}`);
+        return null;
       }
 
-      const source = this.audioContext.createBufferSource();
-      source.buffer = buffer;
-      source.connect(this.gainNode);
+      const arrayBuffer = await res.arrayBuffer();
+      if (signal.aborted) return null;
+
+      if (arrayBuffer.byteLength < 100) {
+        console.warn("[TTS] Response too small to be audio, skipping chunk");
+        return null;
+      }
+
+      return await ctx.decodeAudioData(arrayBuffer);
+    } catch (err) {
+      if ((err as Error).name !== "AbortError") {
+        console.error("[TTS] Failed to fetch/decode chunk:", err);
+      }
+      return null;
+    }
+  }
+
+  /** Play pre-cached audio buffers directly */
+  private async playCachedBuffers(
+    buffers: AudioBuffer[],
+    onPlaybackStart?: (totalDurationSec: number) => void,
+  ): Promise<void> {
+    const ctx = await this.ensureAudioContext();
+    if (ctx.state === "suspended") {
+      return;
+    }
+    const totalDuration = buffers.reduce((sum, b) => sum + b.duration, 0);
+    onPlaybackStart?.(totalDuration);
+    this.playQueue = [...buffers];
+    this.allChunksFetched = true;
+    this.isPlaying = true;
+    this.onStateChange(true);
+    this.startAmplitudeLoop();
+    await this.playNext();
+  }
+
+  /**
+   * Pre-fetch and decode audio for a text, storing in the session cache.
+   * Call this while previous audio is playing to eliminate inter-sentence latency.
+   */
+  async prefetch(text: string, token: string): Promise<void> {
+    if (this.fallbackActive || this.audioCache.has(text)) return;
+
+    const chunks = chunkText(text);
+    if (chunks.length === 0) return;
+
+    try {
+      const ctx = await this.ensureAudioContext();
+      if (ctx.state === "suspended") return;
+
+      const buffers: AudioBuffer[] = [];
+      for (const chunk of chunks) {
+        const buf = await this.fetchAndDecodeChunk(chunk, token, ctx, AbortSignal.timeout(15_000));
+        if (buf) buffers.push(buf);
+      }
+      if (buffers.length > 0) {
+        this.audioCache.set(text, buffers);
+      }
+    } catch {
+      // Pre-fetch is best-effort
+    }
+  }
+
+  private async playNext(): Promise<void> {
+    let buffer = this.playQueue.shift();
+
+    // If queue is empty but more chunks are coming, wait for them
+    while (!buffer && !this.allChunksFetched) {
+      await new Promise<void>((r) => {
+        this.bufferReadyResolve = r;
+      });
+      this.bufferReadyResolve = null;
+      buffer = this.playQueue.shift();
+    }
+
+    if (!buffer || !this.audioContext || !this.gainNode) {
+      this.isPlaying = false;
+      this.onStateChange(false);
+      this.stopAmplitudeLoop();
+      return;
+    }
+
+    await new Promise<void>((resolve) => {
+      const source = this.audioContext!.createBufferSource();
+      source.buffer = buffer!;
+      source.connect(this.gainNode!);
       this.currentSource = source;
 
       let resolved = false;
@@ -213,16 +311,18 @@ export class TTSEngine {
         resolved = true;
         clearTimeout(safetyTimeout);
         this.currentSource = null;
-        this.playNext().then(resolve);
+        resolve();
       };
 
       source.onended = done;
 
       // Safety timeout: if onended never fires (e.g. suspended context), move on
-      const safetyTimeout = setTimeout(done, (buffer.duration + 2) * 1000);
+      const safetyTimeout = setTimeout(done, (buffer!.duration + 2) * 1000);
 
       source.start(0);
     });
+
+    await this.playNext();
   }
 
   private startAmplitudeLoop() {
@@ -331,6 +431,9 @@ export class TTSEngine {
     }
 
     this.playQueue = [];
+    this.allChunksFetched = true; // Unblock any waiting playNext()
+    this.bufferReadyResolve?.();
+    this.bufferReadyResolve = null;
     this.isPlaying = false;
     this.stopAmplitudeLoop();
     this.onStateChange(false);

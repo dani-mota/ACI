@@ -27,6 +27,7 @@ export function InteractiveRenderer({
   const prompt = (elementData.prompt as string) ?? "";
   const options = (elementData.options as string[]) ?? [];
   const timeLimit = (elementData.timeLimit as number) ?? 60;
+  const asciiDiagram = (elementData.asciiDiagram as string) ?? null;
 
   // Retry banner — visible after network failure resets the element
   const retryBanner = error && !activeElement.responded ? (
@@ -99,6 +100,26 @@ export function InteractiveRenderer({
   return (
     <>
       {retryBanner}
+      {asciiDiagram && (
+        <pre
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: "clamp(10px, 2.5vw, 13px)",
+            lineHeight: 1.4,
+            color: "var(--s-t2, #8fadc4)",
+            background: "rgba(255,255,255,0.02)",
+            border: "1px solid rgba(255,255,255,0.05)",
+            borderRadius: "8px",
+            padding: "12px 16px",
+            marginBottom: "12px",
+            whiteSpace: "pre",
+            overflowX: "auto",
+            maxWidth: "100%",
+          }}
+        >
+          {asciiDiagram}
+        </pre>
+      )}
       {element}
     </>
   );

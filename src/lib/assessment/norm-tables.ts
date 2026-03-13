@@ -1,10 +1,26 @@
 /**
  * Percentile lookup tables per construct.
- * For the validation study, we use a simple linear mapping.
- * These will be replaced with IRT-based tables after norming.
  *
- * rawScore is 0-1 (proportion correct / average Likert score)
- * Returns percentile 1-99
+ * STATUS: PLACEHOLDER — these are synthetic sigmoid curves, NOT derived from
+ * empirical norming data. They use a logistic function centered at 0.5 with
+ * per-construct difficulty offsets estimated from item difficulty distributions.
+ *
+ * RECALIBRATION GUIDE:
+ * 1. Collect N ≥ 200 assessment completions with known population characteristics
+ * 2. Run `npx ts-node src/lib/assessment/norm-recalibrator.ts` — it reads all
+ *    scored assessments from the DB and produces updated percentile tables
+ * 3. Replace `defaultMapping()` with the empirical lookup tables from the output
+ * 4. Re-run scoring pipeline on a sample to verify percentile shifts are reasonable
+ * 5. Commit the updated tables with the norming study date and sample size
+ *
+ * WHEN TO RECALIBRATE:
+ * - After adding/removing items to the item bank (difficulty distribution changes)
+ * - After changing scoring weights in pipeline.ts
+ * - After accumulating 200+ additional completions (quarterly recommended)
+ * - After any change to the assessment flow that affects raw score distributions
+ *
+ * rawScore: 0-1 (proportion correct / average evaluation score)
+ * Returns: percentile 1-99
  */
 
 // Default mapping: simple sigmoid-like curve centered at 0.5
