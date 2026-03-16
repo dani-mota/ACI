@@ -50,6 +50,27 @@ export interface Act1BeatContent {
   referenceCard?: ScenarioReferenceData;
   // Beats 1-5: branched by classification
   branches?: Record<ResponseClassification, BranchContent>;
+  /** Standardized probe for this beat (PRD §12.3). Extracted from scenario beat templates. */
+  probeConfig?: ProbeConfig;
+  /** Construct indicators for this beat (PRD §12.3). Merged from scenario rubric data. */
+  constructIndicators?: ConstructIndicators;
+}
+
+/** Probe verification config — the standardized question Aria must ask. */
+export interface ProbeConfig {
+  /** The canonical probe question, e.g. "How does that change your approach?" */
+  primaryProbe: string;
+  /** Alternative phrasings for scaffolding contexts. */
+  approvedVariants: string[];
+  /** Which construct this probe targets. */
+  constructTarget: string;
+}
+
+/** Behavioral indicators for a beat — strong vs weak signals. */
+export interface ConstructIndicators {
+  construct: string;
+  strongIndicators: string[];
+  weakIndicators: string[];
 }
 
 export interface BranchContent {

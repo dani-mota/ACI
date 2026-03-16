@@ -11,6 +11,9 @@ import { lookupBeatContent } from "../content-serving";
 import { SCENARIOS } from "../scenarios";
 import { AI_CONFIG } from "../config";
 import { ARIA_PERSONA } from "../prompts/aria-persona";
+import { getProbeConfig, getConstructIndicators } from "../scenario-probes";
+import { verifyProbePresent, addProbeReinforcement } from "../probe-verification";
+import { sanitizeAriaOutput } from "../sanitize";
 
 export async function buildOpenProbe(ctx: TurnBuilderContext): Promise<AssessmentTurnResponse> {
   const { action, state, contentLibrary, variantSelections, acknowledgment, classificationResult } = ctx;
@@ -49,10 +52,39 @@ export async function buildOpenProbe(ctx: TurnBuilderContext): Promise<Assessmen
 
   // Haiku generation path (streaming buffered per B-1)
   if (!spokenText) {
+    const probeConfig = getProbeConfig(scenarioIndex, beatIndex);
+
     try {
       const systemPrompt = buildStreamingPrompt(ctx, scenarioIndex, beatIndex, classification);
       const userContext = "userContext" in action ? (action as any).userContext : "Generate Aria's next response.";
-      const response = await generateFromHaiku(systemPrompt, userContext);
+      let response = await generateFromHaiku(systemPrompt, userContext);
+      const { cleaned } = sanitizeAriaOutput(response);
+      response = cleaned;
+
+      // Probe verification (PRD §3.2 Step 5): check if required probe is present
+      if (probeConfig && probeConfig.primaryProbe) {
+        const check = verifyProbePresent(response, probeConfig);
+        if (!check.found) {
+          // Retry at temperature 0.3 with reinforced instruction
+          console.warn("[open-probe] Probe missing, retrying at temp 0.3");
+          try {
+            const retryPrompt = addProbeReinforcement(systemPrompt, probeConfig.primaryProbe);
+            const retryResponse = await generateFromHaiku(retryPrompt, userContext, 0.3);
+            const { cleaned: retryCleaned } = sanitizeAriaOutput(retryResponse);
+            const retryCheck = verifyProbePresent(retryCleaned, probeConfig);
+            if (retryCheck.found) {
+              response = retryCleaned;
+            } else {
+              // Fall back to content library
+              console.warn("[open-probe] Retry also missing probe, falling back to content library");
+              throw new Error("Probe verification failed after retry");
+            }
+          } catch {
+            throw new Error("Probe verification failed");
+          }
+        }
+      }
+
       spokenText = response;
       generationMethod = forceStreaming ? "streamed" : "hybrid";
     } catch {
@@ -64,11 +96,15 @@ export async function buildOpenProbe(ctx: TurnBuilderContext): Promise<Assessmen
           referenceUpdate = content.referenceUpdate as ReferenceUpdate | undefined;
           generationMethod = "pre-generated";
         } catch {
-          spokenText = "Let me rephrase that. What would you do in this situation?";
+          spokenText = probeConfig?.primaryProbe
+            ? `Let me ask you this: ${probeConfig.primaryProbe}`
+            : "Let me rephrase that. What would you do in this situation?";
           generationMethod = "pre-generated";
         }
       } else {
-        spokenText = "Let me rephrase that. What would you do in this situation?";
+        spokenText = probeConfig?.primaryProbe
+          ? `Let me ask you this: ${probeConfig.primaryProbe}`
+          : "Let me rephrase that. What would you do in this situation?";
         generationMethod = "pre-generated";
       }
     }
@@ -127,7 +163,7 @@ function buildStreamingPrompt(
 }
 
 /** Call Haiku to generate a buffered response (per B-1: no server-side streaming on Vercel). */
-async function generateFromHaiku(systemPrompt: string, userContext: string): Promise<string> {
+async function generateFromHaiku(systemPrompt: string, userContext: string, temperature = 0.7): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("No API key");
 
@@ -145,7 +181,7 @@ async function generateFromHaiku(systemPrompt: string, userContext: string): Pro
       body: JSON.stringify({
         model: AI_CONFIG.realtimeModel,
         max_tokens: 500,
-        temperature: 0.7,
+        temperature,
         system: systemPrompt,
         messages: [{ role: "user", content: userContext }],
       }),

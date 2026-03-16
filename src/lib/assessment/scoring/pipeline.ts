@@ -88,6 +88,55 @@ export async function runScoringPipeline(assessmentId: string) {
 
   const layerAAggregated = aggregateLayerA(layerAScores);
 
+  // ── 2b. Brier Score: Confidence calibration from Act 3 (P1-8) ──
+  // Pairs each Act 3 confidence rating with the correctness of its preceding item
+  const confidencePairs: { confidence: number; isCorrect: boolean }[] = [];
+  const act3Messages = assessment.messages.filter((m) => m.act === "ACT_3");
+  for (let i = 0; i < act3Messages.length; i++) {
+    const msg = act3Messages[i];
+    if (msg.elementType !== "CONFIDENCE_RATING" || !msg.candidateInput) continue;
+    // Map confidence label to numeric value
+    const confValue = msg.candidateInput === "Very confident" ? 1.0
+      : msg.candidateInput === "Somewhat confident" ? 0.5
+      : msg.candidateInput === "Not sure" ? 0.0
+      : null;
+    if (confValue === null) continue;
+    // Find the preceding item response (the MCQ this confidence rates)
+    for (let j = i - 1; j >= 0; j--) {
+      const prev = act3Messages[j];
+      if (prev.elementType && prev.elementType !== "CONFIDENCE_RATING") {
+        // Found the paired item — check correctness from ItemResponse
+        const meta = prev.metadata as Record<string, unknown> | null;
+        const itemId = meta?.itemId as string | undefined;
+        if (itemId) {
+          const item = itemBankMap.get(itemId);
+          const resp = assessment.itemResponses.find((r) => r.itemId === itemId);
+          if (item && resp) {
+            confidencePairs.push({
+              confidence: confValue,
+              isCorrect: resp.response === item.correctAnswer,
+            });
+          }
+        }
+        break;
+      }
+    }
+  }
+
+  let brierScore: number | null = null;
+  let calibrationBias: string | null = null;
+  if (confidencePairs.length >= 3) {
+    brierScore = confidencePairs.reduce((sum, p) => {
+      const actual = p.isCorrect ? 1.0 : 0.0;
+      return sum + Math.pow(p.confidence - actual, 2);
+    }, 0) / confidencePairs.length;
+    // Classify calibration bias
+    if (brierScore > 0.30) calibrationBias = "POORLY_CALIBRATED";
+    else if (brierScore < 0.15) calibrationBias = "WELL_CALIBRATED";
+    else calibrationBias = "MODERATELY_CALIBRATED";
+    log.info("Brier score computed", { brierScore: Math.round(brierScore * 1000) / 1000, pairs: confidencePairs.length, calibrationBias });
+  }
+
   // ── 3. Layer B: AI-evaluated rubric scoring ────────────────────
   resetTokenUsage();
   const layerBStart = Date.now();
@@ -351,6 +400,18 @@ export async function runScoringPipeline(assessmentId: string) {
   const predictions = generateAllPredictions(subtestResults, roleContext, ceilingCharacterizations);
 
   // ── 12. Status determination ───────────────────────────────────
+  // Check for insufficient data — >2 constructs with no data forces REVIEW_REQUIRED
+  const insufficientCount = constructScores.filter((cs) => cs.insufficientData).length;
+  if (insufficientCount > 2) {
+    redFlags.push({
+      triggered: true,
+      severity: "CRITICAL",
+      category: "Incomplete Assessment",
+      title: "Insufficient data for multiple constructs",
+      description: `${insufficientCount} constructs have insufficient scoring data.`,
+      constructs: constructScores.filter((cs) => cs.insufficientData).map((cs) => cs.construct as string),
+    });
+  }
   const status = determineStatus(passed, distance, redFlags);
 
   // Cross-role rankings (pre-compute before transaction)
@@ -371,6 +432,12 @@ export async function runScoringPipeline(assessmentId: string) {
     for (const cs of constructScores) {
       if (cs.itemCount === 0 && cs.combinedRawScore === 0) continue;
       const ceiling = cs.ceilingCharacterization;
+
+      // Brier score fields for METACOGNITIVE_CALIBRATION
+      const isMetacog = cs.construct === "METACOGNITIVE_CALIBRATION";
+      const calibrationFields = isMetacog && brierScore !== null
+        ? { calibrationScore: brierScore, calibrationBias }
+        : {};
 
       await tx.subtestResult.upsert({
         where: {
@@ -393,6 +460,7 @@ export async function runScoringPipeline(assessmentId: string) {
           ceilingType: ceiling?.ceilingType ?? null,
           ceilingNarrative: ceiling?.narrative ?? null,
           scoringVersion: 2,
+          ...calibrationFields,
         },
         update: {
           rawScore: cs.combinedRawScore,
@@ -408,6 +476,7 @@ export async function runScoringPipeline(assessmentId: string) {
           ceilingType: ceiling?.ceilingType ?? null,
           ceilingNarrative: ceiling?.narrative ?? null,
           scoringVersion: 2,
+          ...calibrationFields,
         },
       });
     }

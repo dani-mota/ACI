@@ -30,15 +30,29 @@ export const AI_CONFIG = {
 /**
  * Feature flags for progressive rollout of new capabilities.
  */
+/**
+ * Feature flags for progressive rollout of new capabilities.
+ *
+ * As of Stage 7, UNIFIED_TURNS and TURN_PLAYER default to ON.
+ * Set to "false" explicitly to revert to legacy behavior.
+ */
+const _UNIFIED_TURNS = process.env.FEATURE_UNIFIED_TURNS !== "false"; // default ON
+const _TURN_PLAYER = process.env.FEATURE_TURN_PLAYER !== "false"; // default ON
+
+// Guard: TURN_PLAYER requires UNIFIED_TURNS (TurnPlayer can't consume legacy response shapes)
+if (_TURN_PLAYER && !_UNIFIED_TURNS) {
+  console.warn("[config] INVALID FLAG COMBINATION: TURN_PLAYER=true requires UNIFIED_TURNS=true. Forcing TURN_PLAYER=false.");
+}
+
 export const FEATURE_FLAGS = {
   /** Enable pre-generated content libraries instead of live AI generation */
-  CONTENT_LIBRARY_ENABLED: process.env.FEATURE_CONTENT_LIBRARY === "true",
+  CONTENT_LIBRARY_ENABLED: process.env.FEATURE_CONTENT_LIBRARY !== "false", // default ON
   /** Enable few-shot examples in classification prompts (default: true) */
   CLASSIFICATION_FEW_SHOT: process.env.FEATURE_CLASSIFICATION_FEW_SHOT !== "false",
-  /** Enable unified Turn architecture (Stage 2). When ON, chat route returns AssessmentTurnResponse JSON. */
-  UNIFIED_TURNS: process.env.FEATURE_UNIFIED_TURNS === "true",
-  /** Enable TurnPlayer client component (Stage 3). When ON, TurnPlayer handles delivery instead of legacy rendering. */
-  TURN_PLAYER: process.env.FEATURE_TURN_PLAYER === "true",
+  /** Enable unified Turn architecture. When ON, chat route returns AssessmentTurnResponse JSON. */
+  UNIFIED_TURNS: _UNIFIED_TURNS,
+  /** Enable TurnPlayer client component. When ON, TurnPlayer handles delivery. Requires UNIFIED_TURNS. */
+  TURN_PLAYER: _TURN_PLAYER && _UNIFIED_TURNS, // forced false if UNIFIED_TURNS is off
 } as const;
 
 /**

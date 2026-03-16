@@ -257,15 +257,13 @@ export function TurnPlayer({
       if (wordTimerRef.current) clearInterval(wordTimerRef.current);
       store.getState().setSubtitleRevealedWords(words.length);
 
-      // Enforce minimum sentence time
-      const elapsed = Date.now() - startTime;
-      const remaining = MIN_SENTENCE_MS_VOICE - elapsed;
-      if (remaining > 0 && i < sentences.length - 1) {
-        await new Promise((r) => setTimeout(r, Math.min(remaining, INTER_SENTENCE_PAUSE_MS)));
-      }
-
-      // Small inter-sentence pause
+      // Enforce minimum sentence time, then add inter-sentence pause
       if (i < sentences.length - 1) {
+        const elapsed = Date.now() - startTime;
+        const remaining = MIN_SENTENCE_MS_VOICE - elapsed;
+        if (remaining > 0) {
+          await new Promise((r) => setTimeout(r, remaining));
+        }
         await new Promise((r) => setTimeout(r, INTER_SENTENCE_PAUSE_MS));
       }
     }

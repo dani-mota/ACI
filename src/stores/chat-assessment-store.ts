@@ -488,6 +488,9 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
           return;
         }
 
+        // @deprecated Legacy response handlers — used when FEATURE_UNIFIED_TURNS is off.
+        // When on, the `type: "turn"` handler above processes everything.
+
         if (data.type === "interactive_element") {
           set({
             messages: currentMessages,

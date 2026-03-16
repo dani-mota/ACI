@@ -49,7 +49,7 @@ export function aggregateConstructScore(input: AggregationInput): ConstructLayer
   let layerBWeight: number;
 
   if (input.layerAScore === null && input.layerBScore === null) {
-    // No data for this construct
+    // No data for this construct — INSUFFICIENT_DATA
     return {
       construct: input.construct as Construct,
       layer: CONSTRUCT_LAYERS[input.construct] || "COGNITIVE_CORE",
@@ -64,6 +64,32 @@ export function aggregateConstructScore(input: AggregationInput): ConstructLayer
       consistencyLevel: input.consistencyLevel,
       consistencyDownweightApplied: input.consistencyDownweightApplied,
       ceilingCharacterization: input.ceilingCharacterization,
+      insufficientData: true,
+    };
+  }
+
+  // Data availability check (PRD §5.3): minimum thresholds
+  // Layer A requires ≥3 items, Layer B requires ≥2 scored exchanges
+  const layerAInsufficient = input.layerAScore !== null && input.layerAItemCount < 3;
+  const layerBInsufficient = input.layerBScore !== null && input.layerBResponseCount < 2;
+
+  if (layerAInsufficient && input.layerBScore === null) {
+    // Only Layer A but not enough items
+    return {
+      construct: input.construct as Construct,
+      layer: CONSTRUCT_LAYERS[input.construct] || "COGNITIVE_CORE",
+      layerAScore: input.layerAScore,
+      layerBScore: null,
+      layerAWeight: 1.0,
+      layerBWeight: 0,
+      combinedRawScore: input.layerAScore ?? 0,
+      percentile: rawScoreToPercentile(input.construct, input.layerAScore ?? 0),
+      itemCount: input.layerAItemCount,
+      avgResponseTimeMs: input.avgResponseTimeMs,
+      consistencyLevel: input.consistencyLevel,
+      consistencyDownweightApplied: input.consistencyDownweightApplied,
+      ceilingCharacterization: input.ceilingCharacterization,
+      insufficientData: true,
     };
   }
 
@@ -83,12 +109,15 @@ export function aggregateConstructScore(input: AggregationInput): ConstructLayer
 
   const a = input.layerAScore ?? 0;
   const b = input.layerBScore ?? 0;
-  let combinedRawScore = layerAWeight * a + layerBWeight * b;
 
-  // Apply consistency downweight if applicable
-  if (input.consistencyDownweightApplied && input.consistencyLevel === "LOW") {
-    combinedRawScore *= ASSESSMENT_STRUCTURE.consistencyDownweightFactor;
-  }
+  // PRD §8.2, Amendment B-3: consistency factor applies ONLY to Layer B.
+  // constructScore = (w_A × A) + ((w_B × B) × consistencyFactor)
+  // Layer A (structured items) is inherently consistent — no downweight.
+  const consistencyFactor =
+    input.consistencyDownweightApplied && input.consistencyLevel === "LOW"
+      ? ASSESSMENT_STRUCTURE.consistencyDownweightFactor
+      : 1.0;
+  const combinedRawScore = (layerAWeight * a) + ((layerBWeight * b) * consistencyFactor);
 
   const percentile = rawScoreToPercentile(input.construct, combinedRawScore);
   const itemCount = input.layerAItemCount + input.layerBResponseCount;

@@ -217,6 +217,8 @@ export interface ConstructLayeredScore {
   consistencyLevel?: "HIGH" | "LOW" | null;
   consistencyDownweightApplied: boolean;
   ceilingCharacterization?: LayerCCharacterization | null;
+  /** True when construct has insufficient data (< 3 items for Layer A, < 2 exchanges for Layer B). */
+  insufficientData?: boolean;
 }
 
 // ──────────────────────────────────────────────

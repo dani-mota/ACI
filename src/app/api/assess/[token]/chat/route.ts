@@ -491,7 +491,10 @@ export async function POST(
     });
   }
 
-  // ── LEGACY PATH (flag off) ──
+  // ── @deprecated LEGACY PATH — used when FEATURE_UNIFIED_TURNS is off ──
+  // This entire section (through the end of the POST handler) handles the old
+  // multi-shape response format. When UNIFIED_TURNS is on (default since Stage 7),
+  // the unified Turn path above handles all action types.
 
   // Helper: re-fetch state and compute progress for client
   async function getProgress(): Promise<{ act1: number; act2: number; act3: number }> {
@@ -977,10 +980,25 @@ export async function GET(
       progress: computeProgress(assessment.assessmentState),
     } : null;
 
+    // Find the last reference card data from agent messages for visual restoration (P-2)
+    let lastReferenceCard = null;
+    for (let i = assessment.messages.length - 1; i >= 0; i--) {
+      const msg = assessment.messages[i];
+      if (msg.role === "AGENT" && msg.act === "ACT_1") {
+        const meta = msg.metadata as Record<string, unknown> | null;
+        if (meta?.referenceCard) {
+          lastReferenceCard = meta.referenceCard;
+          break;
+        }
+      }
+    }
+
     return new Response(
       JSON.stringify({
         assessmentId: assessment.id,
         state: safeState,
+        recovery: true, // P-2: flag for TurnPlayer to skip audio replay
+        lastReferenceCard, // P-2: reference card state for visual restoration
         messages: assessment.messages.map((m) => {
           // Strip correctAnswer from element data to prevent answer leakage
           let safeElementData = m.elementData as Record<string, unknown> | null;
