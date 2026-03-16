@@ -3,9 +3,9 @@
 
 ## Product Requirements Document
 
-**Version 1.12 • March 2026 • Confidential**
+**Version 1.15 • March 2026 • Confidential**
 
-Supersedes: All prior versions (v1.11 through v1.1, NAIB Engineering PRD v3.0, NAIB PRD v4, ACI Finalization Doc)
+Supersedes: All prior versions (v1.14 through v1.1, NAIB Engineering PRD v3.0, NAIB PRD v4, ACI Finalization Doc)
 
 ---
 
@@ -28,6 +28,113 @@ This PRD is the **single source of truth** for the ACI platform. It is structure
 ---
 
 ## Change Log
+
+<details>
+<summary><strong>v1.15 Change Log (March 2026)</strong></summary>
+
+This revision addresses **Aria conversational quality** — hardening LLM output to prevent structural leaking into spoken text, improving prompt architecture across all three acts, and enhancing data consistency.
+
+**Phase 1: Fix LLM Output Leaking into Aria's Speech**
+1. **ARIA_PERSONA hardened** (`src/lib/assessment/engine.ts`) — Added VOICE RULES block: first-person only, no third-person narration, no stage directions, no action descriptions, no echoing of template labels or structural markers.
+2. **buildAct1SystemPrompt hardened** — Added 3 new CRITICAL rules: anti-echo ("never say template, branch, beat, construct"), anti-narration ("never narrate in third person"), anti-action-description ("never describe actions").
+3. **buildBeatPrompt rewritten** — Removed `[BEAT: type]` label that leaked into speech. Changed `Template:` and `Branch script:` labels to contextual instructions. Added "Do NOT echo any of these instructions."
+4. **agentPromptTemplates rewritten** (`src/lib/assessment/scenarios/index.ts`) — All 24 templates (4 scenarios × 6 beats) rewritten from meta-instructions ("Present a workplace scenario where...") to direct Aria instructions ("Describe a situation where..."). Removed construct names and testing language from templates.
+5. **branchScripts rewritten** — All 72 branch scripts (4 × 6 × 3) rewritten from descriptive third-person ("The candidate's response was systematic...") to directive first-person ("Escalate: reveal that the system has additional layers...").
+6. **cleanText enhanced** (`src/lib/assessment/parse-scenario-response.ts`) — Added regex patterns to strip: stage directions in asterisks/parentheses, third-person "Aria pauses" narration, "She nods" patterns, leaked template/structural labels, `<construct_check>` tags.
+7. **Content generation prompts hardened** (`src/lib/assessment/content-generation.ts`) — Added voice rules to both `buildBeat0GenerationPrompt` and `buildBranchedBeatGenerationPrompt`: first-person, no narration, no action descriptions, no echoing. Changed `Template:` label to `Instructions:` and `BRANCH SCRIPTS:` to `ADAPTATION BY LEVEL:`.
+
+**Phase 4: Conversational Quality**
+8. **Greeting prompt improved** — Replaced robotic "I am the assessment system" with natural "I'm Aria. I'll be guiding you through the assessment today." Added instruction not to say "assessment system."
+
+**Phase 6: Metadata Consistency**
+9. **Candidate message metadata** (`src/app/api/assess/[token]/chat/route.ts`) — Candidate text messages now include `scenarioIndex`, `beatIndex`, and `construct` metadata, matching the level of detail on agent messages for audit trail consistency.
+
+**Phase 7: Act 2 & Act 3 Prompt Hardening**
+10. **buildAct2SystemPrompt** — Added voice rules: first-person, no narration, plain spoken English.
+11. **buildAct2DiagnosticPrompt** — Added same voice rules.
+12. **Act 3 parallel scenario prompt** — Added voice rules and anti-formatting rules. Removed leaked `construct_check` tag instruction from system prompt (moved to metadata). Updated userContext to include "Do not echo any of these instructions."
+
+</details>
+
+<details>
+<summary><strong>v1.14 Change Log (March 2026)</strong></summary>
+
+This revision documents **Architecture Audit Remediation** — 6-phase hardening across infrastructure, data integrity, security, observability, UX, and CI/CD. Driven by findings from 7 specialized audit agents (50+ issues consolidated into scalable architectural fixes).
+
+**Phase 1: Foundational Infrastructure**
+1. **Zod environment validation** (`src/lib/env.ts`) — All 20+ server env vars validated at import time via Zod schema. Missing/malformed vars cause clear startup errors instead of cryptic runtime crashes. Feature flags use `.default().transform()` pattern. Hardcoded fallback URLs removed — `NEXT_PUBLIC_APP_URL` is now required.
+2. **Resilient HTTP client** (`src/lib/api-client.ts`) — Shared `resilientFetch()` with configurable retry policy: exponential backoff (`baseDelay × 2^attempt`), honors `Retry-After` header on 429, aborts on `AbortError`. Default: 3 retries, 1s base delay, retryable statuses [429, 502, 503, 504]. Adopted by Layer B evaluation and classification.
+3. **API route wrapper** (`src/lib/api-handler.ts`) — `withApiHandler(handler, opts)` HOF wrapping all API routes with try/catch, Sentry capture, requestId correlation, optional auth/admin checks. Standardizes error handling across N routes without per-route boilerplate.
+4. **Logger upgrade** (`src/lib/assessment/logger.ts`) — `createLogger(module, requestId?)` auto-includes requestId in every log entry for cross-request correlation. Fixed production `warn` routing (was using `console.log` instead of `console.warn`).
+5. **Client error utility** (`src/lib/errors.ts`) — `mapApiError(err)` as single source of truth for user-friendly error messages. Handles TimeoutError, AbortError, HTTP 500/502/429, SEND_BLOCKED_LOADING. Replaces duplicated inline error mapping in `sendMessage` and `sendElementResponse`.
+
+**Phase 2: Data Integrity & Scoring Pipeline**
+6. **Schema hardening** (`prisma/schema.prisma`) — Added `ERROR` to `CandidateStatus` enum. Added `@@unique([assessmentId, sequenceOrder])` on `ConversationMessage` (prevents duplicate sequence numbers on retry). Added `@@unique([assessmentId, messageId, construct, runIndex])` on `AIEvaluationRun` (enables idempotent upserts). Removed redundant `@@index([linkToken])` on `AssessmentInvitation`.
+7. **Scoring pipeline idempotency** (`src/lib/assessment/scoring/pipeline.ts`) — Before calling `evaluateConstruct()`, checks for existing `AIEvaluationRun` records. If found, reconstructs `LayerBScore` from stored runs — skips API calls entirely. Makes retries free (no duplicate API calls, no cost explosion).
+8. **Transactional save** — Steps 7-13 of the scoring pipeline wrapped in single `prisma.$transaction()`. Either ALL scoring data is committed, or NONE is. Prevents partial scoring states on failure.
+9. **Background execution** (`src/app/api/assess/[token]/complete/route.ts`) — `export const maxDuration = 300` + `after(() => runPipelineWithRetry(...))` ensures scoring pipeline runs after HTTP response (Vercel background execution).
+10. **Connection pool** (`src/lib/prisma.ts`) — `pg.Pool` configured with `max: 1, idleTimeoutMillis: 10_000, connectionTimeoutMillis: 5_000` for serverless.
+
+**Phase 3: Security Hardening**
+11. **Item bank server-only guard** (`src/lib/assessment/item-bank.ts`) — `import "server-only"` at top prevents client-side import at build time.
+12. **Admin route middleware** — Health endpoint uses `withApiHandler` + explicit `HEALTH_SECRET` bearer token check (returns 404 if missing/wrong — doesn't confirm route exists).
+13. **Prompt injection defense** (`src/lib/assessment/role-context.ts`) — Extended `sanitizeForPrompt` with XML tag stripping (`<system>`, `<human>`, `<assistant>`) and code fence removal. Exported for reuse in classification and engine.
+14. **Redis-backed rate limiting** (`src/lib/rate-limit.ts`) — `@upstash/ratelimit` + `@upstash/redis` with in-memory fallback. Distributed enforcement across serverless isolates when Redis configured; graceful degradation to in-memory when not.
+
+**Phase 4: Observability & Error Handling**
+15. **Chat route Sentry** (`src/app/api/assess/[token]/chat/route.ts`) — `Sentry.captureException(err)` at 3 catch sites (outer, streaming, onFinish). GET handler wrapped in try/catch. `assessmentId` added to `stateSnapshot`. Acknowledgment failures now logged instead of silently swallowed.
+16. **Server-side sample rate** (`sentry.server.config.ts`) — `tracesSampleRate: 0.1` → `1.0` (every server request traced).
+17. **Client store cleanup** (`src/stores/chat-assessment-store.ts`) — Removed debug `console.log` calls. Replaced inline error mapping in `sendMessage` and `sendElementResponse` with shared `mapApiError()`.
+18. **Error toast** (`src/components/assessment/stage/assessment-stage.tsx`) — Displays actual error message (`{error}`) instead of hardcoded "Something went wrong". Removed destructive `setSubtitleText("")` from dismiss handler.
+
+**Phase 5: UX & Client Resilience**
+19. **TTS cache fix** (`src/components/assessment/voice/tts-engine.ts`) — Audio cache now stores `{ text, buffers }` instead of bare `AudioBuffer[]`. `playCachedBuffers` falls back to SpeechSynthesis when AudioContext is suspended instead of silently returning. Added error logging for AudioContext resume failures and SpeechSynthesis errors.
+20. **MicButton graceful degradation** (`src/components/assessment/voice/mic-button.tsx`) — Shows "Voice input unavailable in this browser" instead of rendering nothing when SpeechRecognition is unsupported.
+21. **InputModeToggle** — Hides Voice option when SpeechRecognition unavailable. Assessment stage auto-switches to text mode on unsupported browsers.
+22. **Accessibility** — Added `aria-label="Type your response"` to textarea. Defined `.stage-animate` CSS class (referenced 19+ times, never defined) in `globals.css`.
+
+**Phase 6: Platform & CI**
+23. **CI pipeline** (`.github/workflows/ci.yml`) — Added `npm run build` step after type check (catches runtime errors tsc misses). Added `npm audit --audit-level=high` step. Prisma generate uses placeholder DATABASE_URL (no live connection needed).
+24. **`.env.example`** — Documented all 20+ variables from Zod schema, grouped by service, marked required vs optional.
+
+**New Dependencies:**
+- `zod` — Environment validation schema
+- `server-only` — Build-time client import guard
+- `@upstash/redis` — Distributed rate limiting store
+- `@upstash/ratelimit` — Sliding window rate limiter
+
+</details>
+
+<details>
+<summary><strong>v1.13 Change Log (March 2026)</strong></summary>
+
+This revision documents **Sprint 3 bug fixes**: production error handling hardening, TTS playback stability, Phase 0 personalization, and sentence parsing improvements.
+
+**Error Handling Hardening (Chat API Route):**
+1. **Outer try/catch** — Entire POST handler wrapped in try/catch with diagnostic `stateSnapshot` logging (act, scenario, beat, contentLibraryId, variantSelections). Returns 500 with safe error message; includes `detail` in development mode only.
+2. **Streaming try/catch** — `streamText()` call wrapped separately; returns 502 ("AI response generation failed") with structured logging of model, act, beat.
+3. **Narrowed content library try/catch** — Beat 0 and pre-gen content lookups wrapped individually; on failure, falls back to streaming path. DB writes remain outside try/catch to propagate critical errors.
+4. **Classification guard** — `classifyResponse()` wrapped in try/catch. On failure (API timeout, JSON parse error, rate limit), logs error and proceeds with ADEQUATE default path. Previously, classification failures crashed the entire request with 500.
+5. **Diagnostic logging** — `log.info("Assessment state loaded", {...})` after state creation; `log.info("Entering streaming path", {...})` before streaming. Classification results logged with act/beat/score.
+
+**TTS Playback Stability:**
+6. **displayEvent guard hole fix** — `ttsSequenceActiveRef` now triggers early return in the `displayEvent` useEffect, preventing competing `playSentenceSequence` calls from launching parallel sequences that kill each other mid-sentence.
+7. **`preSplit` parameter** — `TTSEngine.speak()` accepts `preSplit = true` to skip internal `chunkText()` re-splitting. `playSentenceSequence` passes `preSplit = true` since sentences are already split by `splitSentences()`. Eliminates double-splitting that fragmented decimals and units.
+8. **Promise.race timeout removed** — `playSentenceSequence` no longer races TTS against a timeout that called `ttsRef.current?.stop()`. Audio now plays to natural completion. Previously, the timeout could kill audio mid-sentence on slow ElevenLabs responses.
+9. **MIN_SENTENCE_MS increased** — From 1000ms to 2500ms. Ensures each sentence gets adequate display time even when TTS fails or resolves instantly, preventing the "rushing" feel during warmup lines.
+10. **Sentence validation filter** — `playSentenceSequence` filters out fragments shorter than 2 words or lone numbers/units before playback. Prevents bad TTS calls on fragments like "2C" or "165".
+
+**Sentence Parsing:**
+11. **Hardened `splitSentences()` regex** — New lookbehind pattern: `(?<![0-9])(?<!\b[A-Z])(?<!\b(?:e\.g|i\.e|vs|etc|approx|Dr|Mr|Ms|Mrs|Jr|Sr|St))(?<=[.!?])\s+(?=[A-Z"])`. Preserves decimals ("165C  2C"), abbreviations ("Dr. Smith"), and unit suffixes. Filter removes sub-2-word fragments.
+
+**Phase 0 Personalization:**
+12. **`getPhase0Segments(candidateName, companyName)`** — Phase 0 script now uses candidate's first name and company name. Replaced static `PHASE_0_SEGMENTS` array with parameterized function.
+13. **`buildCompletionScript(candidateName, callbacks)`** — Completion script addresses candidate by name.
+
+**Client Error Messages:**
+14. **Contextual error messages** — `sendMessage()` catch block now maps error types: 500 → "Something went wrong on our end", 502 → "AI service temporarily unavailable", 429 → "Too many requests", timeout → "Response timed out". Previously all errors showed generic "Something went wrong".
+
+</details>
 
 <details>
 <summary><strong>v1.12 Change Log (March 2026)</strong></summary>
@@ -270,6 +377,7 @@ ACI measures 12 constructs organized into three layers:
 │   │   │   ├── assess/[token]/
 │   │   │   │   ├── start/route.ts     # Create assessment
 │   │   │   │   ├── chat/route.ts      # Main chat endpoint (POST+GET)
+│   │   │   │   ├── tts/route.ts       # ElevenLabs TTS proxy (token-scoped)
 │   │   │   │   └── complete/route.ts  # Finalize + trigger scoring
 │   │   │   ├── generate/route.ts      # Role JD → role context extraction
 │   │   │   ├── ingest/route.ts        # ContentLibrary generation trigger
@@ -346,7 +454,8 @@ ACI measures 12 constructs organized into three layers:
 │   │   │   ├── content-serving.ts     # ContentLibrary lookup + cache
 │   │   │   ├── generate-acknowledgment.ts  # Personalized Haiku acknowledgment
 │   │   │   ├── nudge-system.ts        # Silence detection + re-engagement
-│   │   │   ├── phase-0.ts             # Scripted Phase 0 segments
+│   │   │   ├── parse-scenario-response.ts  # AI response → sentences + reference card
+│   │   │   ├── phase-0.ts             # Scripted Phase 0 segments (personalized)
 │   │   │   ├── role-context.ts        # Domain adaptation + sanitization
 │   │   │   ├── scenarios/index.ts     # Act 1 scenario definitions
 │   │   │   ├── item-bank.ts           # Act 2 static item bank
@@ -358,10 +467,14 @@ ACI measures 12 constructs organized into three layers:
 │   │   │       ├── layer-c.ts         # Ceiling characterization
 │   │   │       └── predictions.ts     # Ramp time, supervision, ceiling, attrition
 │   │   │
+│   │   ├── env.ts                     # Zod-based server env validation (fail-fast)
+│   │   ├── api-client.ts              # Resilient HTTP client (retry, backoff, 429)
+│   │   ├── api-handler.ts             # Shared API route wrapper (try/catch, Sentry, auth)
+│   │   ├── errors.ts                  # Client error mapping utility (mapApiError)
 │   │   ├── data.ts                    # Data access functions (dashboard, profile, etc.)
 │   │   ├── auth.ts                    # NextAuth config
 │   │   ├── email.ts                   # Email sending (invitations, results)
-│   │   ├── rate-limit.ts              # Per-token rate limiting
+│   │   ├── rate-limit.ts              # Redis-backed rate limiting (Upstash + in-memory fallback)
 │   │   └── utils.ts
 │   │
 │   ├── stores/
@@ -1044,18 +1157,20 @@ The production assessment is a full-screen, voice-first experience. No tradition
 
 ### Phase 0: Warmup & Mic Check
 
-Scripted segment (not AI-generated). Aria introduces herself, explains the format, prompts a brief voice test.
+Scripted segment (not AI-generated). Aria introduces herself using candidate's name and company, explains the format, prompts a brief voice test.
 
 **Files:** `src/lib/assessment/phase-0.ts`
 
 ```typescript
-PHASE_0_SEGMENTS: Array<{ text: string, pauseAfterMs?: number }>
+getPhase0Segments(candidateName: string, companyName: string): Array<{ text: string, pauseAfterMs?: number }>
 MIC_NUDGE_15S: string    // "Say anything into the mic to continue."
 MIC_NUDGE_30S: string    // "Try typing if voice isn't working."
 ```
 
+**Personalization:** `getPhase0Segments()` interpolates `candidateName` (from `invitation.candidate.firstName`) and `companyName` (from `invitation.candidate.primaryRole.organization.name`) into the greeting and context segments.
+
 **Flow:**
-1. TTS plays each PHASE_0_SEGMENTS segment
+1. TTS plays each segment from `getPhase0Segments()`
 2. Orb shows in speaking mode, subtitle syncs with word reveal
 3. After final segment: activate voice/text input
 4. Candidate records any response ("Hi, this is Alex")
@@ -1071,15 +1186,24 @@ MIC_NUDGE_30S: string    // "Try typing if voice isn't working."
 
 4 scenarios × 6 beats = 24 interactive turns.
 
+**Warmup lines:** Before Beat 0, Aria plays 3 warmup lines via `playSentenceSequence(ACT1_WARMUP_LINES)` from `src/lib/assessment/transitions.ts`:
+1. "I'm going to walk you through some workplace situations now."
+2. "For each one, I'll describe what's happening and ask how you'd handle it."
+3. "There's no single right answer — I'm interested in how you think through these kinds of problems. Let's start with the first one."
+
+After warmup lines finish, `sendMessage("[BEGIN_ASSESSMENT]")` is sent to trigger Beat 0.
+
 **Domain adaptation:** Aria's scenarios are tailored to the role via `getRoleContext()`. A CNC Machinist gets manufacturing scenarios. A Systems Engineer gets aerospace scenarios. If role is generic (no JD context), neutral scenarios are used.
 
 **Content serving:** With `CONTENT_LIBRARY_ENABLED`, pre-generated content is served instantly (no AI latency). Without it, each beat streams from Sonnet.
 
 **Beat 0 — Reference Card:**
 - Beat 0 response includes a `---REFERENCE---` JSON block
-- Parsed by `parseScenarioResponse()` in the store
+- Parsed by `parseScenarioResponse()` (`src/lib/assessment/parse-scenario-response.ts`) in the store
+- `splitSentences()` uses hardened regex with lookbehinds for decimals, abbreviations (Dr., e.g., etc.), and unit suffixes — fragments < 2 words are filtered out
+- `cleanText()` strips markdown, beat headers, bracket tags, and structural markers before sentence splitting
 - Renders as `ScenarioReferenceCard` component (right panel on desktop, collapsible on mobile)
-- Progressive reveal: sections animate in one-by-one over 8–12 seconds while Aria speaks
+- Progressive reveal: sections animate in one-by-one as sentences play via `referenceRevealCount` state
 
 **Beats 1–5 — Branching:**
 - After candidate responds, `classifyResponse()` classifies as STRONG/ADEQUATE/WEAK
@@ -1238,22 +1362,28 @@ Completion card:
 ElevenLabs streaming API → `AudioContext` (Web Audio API) → `AnalyserNode` → amplitude data → orb animation.
 
 **Streaming with gapless playback:**
-1. Split text into sentences (boundary at `.`, `!`, `?`)
-2. Fetch each sentence from ElevenLabs as ArrayBuffer (via `/api/tts` proxy route)
+1. Split text into sentences via internal `chunkText()` — or skip if `preSplit = true` (caller already split)
+2. Fetch each sentence from ElevenLabs as ArrayBuffer (via `/api/assess/[token]/tts` proxy route)
 3. Decode to `AudioBuffer` immediately
-4. Schedule playback in sequence with zero gap (via `AudioContext.currentTime`)
+4. Pipeline: first chunk plays immediately while remaining chunks fetch in background
 5. `AnalyserNode` reads amplitude data at 60fps → `setAudioAmplitude()` in store
+6. Session-level `audioCache` (Map<text, AudioBuffer[]>) prevents re-fetching on replay
 
-**TTS Proxy:** `src/app/api/tts/route.ts`
+**`preSplit` parameter (v1.13):** When `playSentenceSequence` calls `speak()` per-sentence, it passes `preSplit = true` to skip the internal `chunkText()` re-splitting. This prevents double-splitting that fragmented decimals, units, and abbreviations into tiny audio chunks.
+
+**TTS Proxy:** `src/app/api/assess/[token]/tts/route.ts`
 - Proxies to ElevenLabs API (hides API key)
-- Streams response through to client
-- Request: `{ text: string, voiceId?: string }`
+- Token-scoped: validates assessment invitation token before proxying
+- Request: `{ text: string }`
 - Response: streaming audio bytes
+- Returns `{ fallback: true }` on ElevenLabs failure → client switches to browser SpeechSynthesis
 
 **`onPlaybackStart` callback:**
-- Fires when all chunks are fetched and the first chunk starts playing
-- Provides `totalDurationSec` → drives subtitle word reveal animation
+- Fires when the first chunk starts playing (remaining chunks fetch in background)
+- Provides `totalDurationSec` (estimated: `firstBuffer.duration × chunks.length`) → drives subtitle word reveal animation
 - `speakFallback()` estimates duration as `wordCount × 0.4`
+
+**Prefetch (N+1 lookahead):** `playSentenceSequence` calls `ttsRef.current.prefetch(nextSentence, token)` while the current sentence plays, pre-fetching and decoding audio into the session cache to eliminate inter-sentence latency.
 
 ### SpeechSynthesis Fallback
 
@@ -1265,11 +1395,21 @@ If ElevenLabs is unavailable or `ttsFallbackActive = true`:
 
 ### Race Condition Prevention
 
-`sequenceOrder` on `ConversationMessage`:
+**Server-side:** `sequenceOrder` on `ConversationMessage`:
 - Monotonically increasing per assessment
 - Client tracks last received sequence
 - Discards out-of-order TTS triggers
 - Prevents double-play if two messages arrive simultaneously
+
+**Client-side:** `ttsSequenceActiveRef` + `sequenceIdRef`:
+- `ttsSequenceActiveRef` (boolean ref): set `true` when `playSentenceSequence` starts, `false` when it ends
+- `displayEvent` useEffect early-returns when `ttsSequenceActiveRef` is true, preventing competing sequences
+- `sequenceIdRef` (incrementing counter): each `playSentenceSequence` call gets a unique ID; inner loop breaks if `sequenceIdRef.current !== myId` (sequence was superseded)
+
+**Sentence pacing:**
+- `MIN_SENTENCE_MS = 2500`: each sentence gets at least 2.5 seconds of display time even if TTS fails
+- 150ms inter-sentence pause between sentences
+- `validSentences` filter removes fragments < 2 words before playback
 
 ---
 
@@ -1349,6 +1489,8 @@ ACT_3 → (all 3 phases complete) → COMPLETE
 - Word count < 10 → WEAK (rubricScore: 0.25)
 - Otherwise → ADEQUATE (rubricScore: 0.50)
 - Never STRONG without AI confirmation
+
+**Error handling (v1.13):** `classifyResponse()` is wrapped in try/catch in the chat route. If classification fails (API timeout, JSON parse error, rate limit), the error is logged and the request proceeds without classification — the streaming path generates the next beat content using an ADEQUATE default. This prevents classification failures from crashing the entire candidate session.
 
 **Prompt Safety:**
 - Conversation history sanitized: 500 chars per line, 4000 chars total
@@ -1432,9 +1574,9 @@ Ordered array of `TransitionLine`:
 "This last section helps us calibrate what we've seen so far."
 ```
 
-### `buildCompletionScript(callbacks)`
+### `buildCompletionScript(candidateName, callbacks)`
 ```
-"That's everything — you've done a remarkable job today."
+"That's everything, {candidateName} — you've done a remarkable job today."
 "Your results will be processed and shared with the hiring team shortly."
 → [callback: orbSettle]
 → [callback: subtitleFade at 2000ms]
@@ -1486,6 +1628,22 @@ Ordered array of `TransitionLine`:
 - `nextSequenceOrder()`: `MAX(sequenceOrder) + 1` per assessment
 - State updates use `AssessmentState.updatedAt` version check
 - Transactional element response + state update in single Prisma transaction
+
+**Error handling layers (v1.13):**
+
+| Layer | Scope | Response | Logging |
+|-------|-------|----------|---------|
+| Outer try/catch | Entire POST body | 500 + `"Internal server error"` (detail in dev) | `log.error("Unhandled error in chat route", { stateSnapshot })` |
+| Classification try/catch | `classifyResponse()` only | Fall through with ADEQUATE default | `log.error("Classification failed", { beat, scenario })` |
+| Content library try/catch | `loadContentLibrary()` + `lookupBeatContent()` only | Fall through to streaming path | `log.error("Beat 0 content library lookup failed")` |
+| Streaming try/catch | `streamText()` call | 502 + `"AI response generation failed"` | `log.error("Streaming failed", { model, act, beat })` |
+| `onFinish` try/catch | DB persistence after streaming | Silent (stream already sent) | `log.error("onFinish failed", { assessmentId })` |
+
+**Diagnostic logging:**
+- `log.info("Assessment state loaded", { contentLibraryId, hasVariants })` — after state creation
+- `log.info("Entering streaming path", { act, beat, hasContentLibrary })` — before streaming
+- `log.info("Classification complete", { classification, rubricScore })` — after successful classification
+- `log.info("State after classification", { act, beat, scenario, construct })` — after state update
 
 ### GET Handler
 
@@ -1692,6 +1850,15 @@ setTimerActive(active, seconds?): void
 setInputMode(mode): void
 setIsTransitioning(v): void
 ```
+
+**Error handling (v1.13):** `sendMessage()` catch block maps HTTP status codes to user-friendly messages:
+- 500 → "Something went wrong on our end. Please try again in a moment."
+- 502 → "The AI service is temporarily unavailable. Please try again."
+- 429 → "Too many requests. Please wait a moment and try again."
+- Timeout → "The response timed out. Please try again."
+- Other → "Something went wrong. Please try again."
+
+Error is set on `error` state field and displayed as a toast. Cleared automatically on next `sendMessage()` call (line 331: `error: null`).
 
 ### `useAppStore` (`src/stores/app-store.ts`)
 
@@ -1905,17 +2072,20 @@ const userRole = session.user.role;
 ## Section 25: Security & Compliance
 
 ### Prompt Injection Prevention
-- Candidate responses sanitized before inclusion in AI prompts
+- `sanitizeForPrompt()` (`src/lib/assessment/role-context.ts`): strips control characters, XML structural tags (`<system>`, `<human>`, `<assistant>`), code fences, and enforces per-field length limits
+- Candidate responses wrapped in `<candidate_response>` delimiters with escape handling
 - Length limits: 500 chars per message in history, 4000 total
-- XML-like tags stripped
 - `</candidate_response>` embedded tokens escaped
 
 ### Answer Leakage Prevention
 - GET `/api/assess/[token]/chat` strips `correctAnswer` from `elementData`
 - `correctAnswer` never sent to client after initial element serve
+- `import "server-only"` guard on item bank — build error if imported from client component
 
 ### Rate Limiting
-- Per-token rate limits on chat and complete endpoints
+- Per-token rate limits on chat and complete endpoints via `src/lib/rate-limit.ts`
+- Redis-backed (`@upstash/ratelimit`) when `UPSTASH_REDIS_REST_URL` configured — distributed enforcement across serverless isolates
+- In-memory fallback when Redis unavailable (single-isolate enforcement)
 - Prevents abuse of open assessment links
 
 ### Data Isolation
@@ -1926,6 +2096,12 @@ const userRole = session.user.role;
 - `linkToken` is UUID — not guessable
 - Invitation expires (hard date: `expiresAt`)
 - `status = EXPIRED` checked on every request
+
+### Error Information Leakage Prevention
+- Outer try/catch returns generic `"Internal server error"` to client
+- Error `detail` field only included when `process.env.NODE_ENV === "development"`
+- Stack traces logged server-side only, never sent to client
+- Streaming failures return 502 with generic message, not the underlying AI error
 
 ### Optimistic Concurrency
 - `AssessmentState.updatedAt` used as version check
@@ -2013,6 +2189,7 @@ Scripts using Prisma **must**:
 | POST | `/api/assess/[token]/start` | Token | Create assessment |
 | GET | `/api/assess/[token]/chat` | Token | Load history |
 | POST | `/api/assess/[token]/chat` | Token | Main chat |
+| POST | `/api/assess/[token]/tts` | Token | ElevenLabs TTS proxy |
 | POST | `/api/assess/[token]/complete` | Token | Finalize assessment |
 
 ### Dashboard APIs (Auth Required)
@@ -2022,7 +2199,6 @@ Scripts using Prisma **must**:
 | POST | `/api/generate` | Session | JD → role context (streaming) |
 | POST | `/api/ingest` | Session | Trigger ContentLibrary generation |
 | POST | `/api/score/[id]` | Session | Manual scoring re-run |
-| POST | `/api/tts` | Session | ElevenLabs proxy |
 
 ---
 
@@ -2048,7 +2224,7 @@ Scripts using Prisma **must**:
 | Demo roles | 26 |
 | Demo candidates | 73 |
 | Static item bank size | 60+ items |
-| API routes | 9 |
+| API routes | 9 (5 assessment + 3 dashboard + auth) |
 | Tutorial industry verticals | 4 |
 
 ---
@@ -2060,6 +2236,7 @@ Scripts using Prisma **must**:
 - ✅ Tutorial/Demo v2.0 (4 verticals, audience selector)
 - ✅ ASSESSMENT_TEST_MODE for cost-effective dev testing
 - ✅ Content Library (pre-generated assessment content)
+- ✅ Architecture Audit Remediation (6-phase hardening: env validation, resilient HTTP, API wrappers, pipeline idempotency, Redis rate limiting, Sentry observability, security hardening, CI pipeline)
 - ⏳ Tutorial mini assessment with pre-recorded audio
 - ⏳ Outcome tracking dashboard (HR integration)
 - ⏳ Role template library (20+ OOTB roles by vertical)
@@ -2104,4 +2281,4 @@ Scripts using Prisma **must**:
 
 ---
 
-*ACI PRD v1.12 — March 2026 — Confidential — Arklight*
+*ACI PRD v1.14 — March 2026 — Confidential — Arklight*

@@ -63,6 +63,16 @@ export function cleanText(raw: string): string {
     .replace(/_(.+?)_/g, "$1")
     .replace(/~~(.+?)~~/g, "$1")
     .replace(/`(.+?)`/g, "$1")
+    // Stage directions and third-person narration: *she pauses*, (Aria nods), *smiles warmly*
+    .replace(/\*[^*]*(?:pauses?|nods?|smiles?|leans?|looks?|turns?|gestures?|considers?|thinks?|takes? a|waits?)[^*]*\*/gi, "")
+    .replace(/\([^)]*(?:pauses?|nods?|smiles?|leans?|looks?|turns?|gestures?|considers?)[^)]*\)/gi, "")
+    // Third-person "Aria" references: "Aria pauses", "she nods", etc.
+    .replace(/\bAria\s+(?:pauses?|nods?|smiles?|leans?|looks?|turns?|gestures?|considers?|thinks?|takes?|waits?)\b[^.]*\.\s*/gi, "")
+    .replace(/\bShe\s+(?:pauses?|nods?|smiles?|leans?|looks?|turns?|gestures?|considers?|thinks?|takes?|waits?)\b[^.]*\.\s*/gi, "")
+    // Leaked template/structural labels
+    .replace(/^(?:Template|Branch\s*script|BEAT|Beat\s*type|Construct|Classification)\s*[:—–-].*$/gim, "")
+    // construct_check tags
+    .replace(/<\/?construct_check[^>]*>/gi, "")
     // Collapse excessive whitespace
     .replace(/\n{3,}/g, "\n\n")
     .trim();

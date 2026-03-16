@@ -276,6 +276,11 @@ export async function POST(
         content: lastUserMessage,
         act: state.currentAct,
         sequenceOrder: nextSeq,
+        metadata: {
+          scenarioIndex: state.currentScenario,
+          beatIndex: state.currentBeat,
+          ...(state.currentConstruct ? { construct: state.currentConstruct } : {}),
+        } as any,
       },
     });
   }

@@ -172,7 +172,7 @@ INITIAL SITUATION: ${scenario.domainNeutralContent.initialSituation}
 ${roleContextStr}
 
 BEAT 0 — INITIAL SITUATION
-Template: ${beat.agentPromptTemplate}
+Instructions: ${beat.agentPromptTemplate}
 
 Generate ${VARIANTS_PER_SCENARIO} VARIANTS of this opening beat. Each variant must have:
 1. Different surface details (names, specifics) but the same structural demands
@@ -186,6 +186,10 @@ Rules for spoken text:
 - Sentence 4: What makes it tricky
 - Sentence 5: The question
 - NO specifications, numbers, or process details in spoken text — those go in the reference card
+- Speak as Aria in FIRST PERSON ("I", "you"). Never narrate in third person.
+- Never describe actions, gestures, or expressions (no "she pauses", "Aria nods")
+- No markdown, headers, brackets, beat labels, or structural markers
+- Do not echo template instructions or meta-labels
 
 Rules for reference card items:
 - Use compressed shorthand: "120 units/min · Weigh → Label → Seal"
@@ -228,9 +232,9 @@ PREVIOUS BEATS (for narrative continuity):
 ${previousContext}
 
 BEAT ${beatIdx} — ${beat.type}
-Template: ${beat.agentPromptTemplate}
+Instructions: ${beat.agentPromptTemplate}
 
-BRANCH SCRIPTS:
+ADAPTATION BY LEVEL:
 - STRONG: ${beat.branchScripts.STRONG}
 - ADEQUATE: ${beat.branchScripts.ADEQUATE}
 - WEAK: ${beat.branchScripts.WEAK}
@@ -239,9 +243,12 @@ Generate ${VARIANTS_PER_SCENARIO} VARIANTS. For each variant, generate all 3 bra
 
 Rules for spoken text:
 - 1-2 short sentences each (under 20 words per sentence)
-- Plain English, no markdown
+- Plain English, no markdown, no headers, no brackets, no structural markers
 - Do NOT repeat information from previous beats
 - Acknowledge the candidate's response naturally, then present the beat's content
+- Speak as Aria in FIRST PERSON ("I", "you"). Never narrate in third person.
+- Never describe actions, gestures, or expressions (no "she pauses", "Aria nods")
+- Do not echo template instructions, beat types, or meta-labels
 
 Rules for reference updates:
 - Only include newInformation if this beat reveals new facts

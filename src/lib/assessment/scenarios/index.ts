@@ -44,11 +44,11 @@ const SCENARIO_1: ScenarioShell = {
       primaryConstructs: ["SYSTEMS_DIAGNOSTICS"] as Construct[],
       secondaryConstructs: [] as Construct[],
       agentPromptTemplate:
-        "Present a workplace scenario where a critical system or process has started producing unexpected outputs. Describe the symptoms — data inconsistencies, process deviations, or quality anomalies that have appeared over the past 48 hours. Before describing the failure, briefly explain how the system normally works (this tests Learning Velocity — whether the candidate absorbs the explanation). Include 3-4 relevant variables and constraints.",
+        "Describe a workplace situation where a critical system has started producing unexpected outputs. Briefly explain how the system normally works, then describe the symptoms — data inconsistencies, process deviations, or quality anomalies over the past 48 hours. Include 3-4 relevant variables and constraints in the reference card.",
       branchScripts: {
-        STRONG: "The system is complex with multiple interdependent subsystems. Symptoms suggest a cascading failure that requires understanding of cross-system dependencies.",
-        ADEQUATE: "The system has moderate complexity. Symptoms point to a specific area but could have multiple causes. Clear diagnostic pathways exist.",
-        WEAK: "The system is straightforward with a clear input-output relationship. Symptoms are localized and the diagnostic path is more direct.",
+        STRONG: "Make the system complex with multiple interdependent subsystems. The symptoms should suggest a cascading failure requiring cross-system understanding.",
+        ADEQUATE: "Use moderate complexity. Symptoms should point to a specific area but could have multiple causes, with clear diagnostic pathways.",
+        WEAK: "Keep the system straightforward with a clear input-output relationship. Symptoms are localized and the diagnostic path is direct.",
       },
       rubricIndicators: [
         {
@@ -73,11 +73,11 @@ const SCENARIO_1: ScenarioShell = {
       primaryConstructs: ["FLUID_REASONING", "PROCEDURAL_RELIABILITY"] as Construct[],
       secondaryConstructs: ["SYSTEMS_DIAGNOSTICS"] as Construct[],
       agentPromptTemplate:
-        "The candidate has heard the situation. Ask them what they would do. This is open-ended — no options, no hints. Let them generate their own approach.",
+        "Ask the candidate what they would do in this situation. Keep it open-ended — no options, no hints.",
       branchScripts: {
-        STRONG: "The candidate's response was systematic and well-reasoned. Escalate: the system has additional layers of complexity that their initial approach didn't account for.",
-        ADEQUATE: "The candidate's approach was reasonable but incomplete. Maintain complexity: introduce a parallel issue that tests whether their diagnostic framework extends.",
-        WEAK: "The candidate's approach was unfocused or missed key variables. Simplify: provide a clearer signal about where the problem might be and ask them to narrow their investigation.",
+        STRONG: "Escalate: reveal that the system has additional layers of complexity their initial approach didn't account for.",
+        ADEQUATE: "Introduce a parallel issue that tests whether their diagnostic framework extends to related problems.",
+        WEAK: "Provide a clearer signal about where the problem might be and ask them to narrow their investigation.",
       },
       rubricIndicators: [
         {
@@ -109,11 +109,11 @@ const SCENARIO_1: ScenarioShell = {
       primaryConstructs: ["COGNITIVE_FLEXIBILITY"] as Construct[],
       secondaryConstructs: ["FLUID_REASONING", "SYSTEMS_DIAGNOSTICS"] as Construct[],
       agentPromptTemplate:
-        "Based on the candidate's previous response, introduce a complication that changes the situation. New information arrives that contradicts or complicates their initial approach. Test whether they can abandon or modify their reasoning when the data changes.",
+        "Introduce a complication: new information arrives that contradicts or complicates the candidate's initial approach. Present it as something that just came to your attention.",
       branchScripts: {
-        STRONG: "The complication is subtle and requires re-evaluating multiple assumptions simultaneously. The new data creates a paradox with their initial diagnosis.",
-        ADEQUATE: "The complication clearly contradicts one element of their approach but leaves other parts intact. They need to partially revise their strategy.",
-        WEAK: "The complication is straightforward — new data clearly points in a different direction. The candidate has a clear opportunity to pivot.",
+        STRONG: "Make the complication subtle — it requires re-evaluating multiple assumptions simultaneously and creates a paradox with their initial diagnosis.",
+        ADEQUATE: "The complication clearly contradicts one element of their approach but leaves other parts intact. They need to partially revise.",
+        WEAK: "The complication is straightforward — new data clearly points in a different direction, giving a clear opportunity to pivot.",
       },
       rubricIndicators: [
         {
@@ -138,11 +138,11 @@ const SCENARIO_1: ScenarioShell = {
       primaryConstructs: ["EXECUTIVE_CONTROL", "ETHICAL_JUDGMENT"] as Construct[],
       secondaryConstructs: ["PROCEDURAL_RELIABILITY"] as Construct[],
       agentPromptTemplate:
-        "Another person in the scenario pushes back on the candidate's approach. A colleague or supervisor disagrees, applies pressure to take a shortcut, or proposes an alternative that sacrifices thoroughness for speed. Ask the candidate how they respond to this interpersonal challenge.",
+        "Introduce a person who pushes back on the candidate's approach — a colleague or supervisor who disagrees, applies pressure to take a shortcut, or proposes an alternative. Ask the candidate how they respond.",
       branchScripts: {
-        STRONG: "A senior leader insists on a quick fix that bypasses proper diagnostic procedure. The pressure is significant — career implications are implicit. Multiple stakeholders are watching.",
-        ADEQUATE: "A peer suggests an alternative approach that is faster but less thorough. The disagreement is professional, not confrontational. The candidate needs to weigh efficiency vs. completeness.",
-        WEAK: "A colleague offers a helpful suggestion but frames it as criticism. The candidate needs to separate the feedback from the delivery and decide whether to incorporate it.",
+        STRONG: "A senior leader insists on a quick fix that bypasses proper procedure. Career implications are implicit. Multiple stakeholders are watching.",
+        ADEQUATE: "A peer suggests a faster but less thorough approach. The disagreement is professional. The candidate must weigh efficiency vs. completeness.",
+        WEAK: "A colleague offers a helpful suggestion framed as criticism. The candidate needs to separate the feedback from the delivery.",
       },
       rubricIndicators: [
         {
@@ -167,11 +167,11 @@ const SCENARIO_1: ScenarioShell = {
       primaryConstructs: ["EXECUTIVE_CONTROL"] as Construct[],
       secondaryConstructs: ["METACOGNITIVE_CALIBRATION"] as Construct[],
       agentPromptTemplate:
-        "Reveal the outcome of the candidate's choices across the previous beats. The consequence may be positive, negative, or mixed. Ask the candidate to evaluate what happened and what they would do about it now.",
+        "Reveal what happened as a result of the candidate's choices. The consequence may be positive, negative, or mixed. Ask them to evaluate the outcome.",
       branchScripts: {
-        STRONG: "The outcome is mixed with complex tradeoffs. Some aspects of their approach succeeded while others created new problems. There are second-order consequences they need to address.",
-        ADEQUATE: "The outcome is mostly positive but with a clear gap — something they missed or could have done better. The evaluation is straightforward.",
-        WEAK: "The outcome reveals a clear error from an earlier decision. The path to correction is visible. The question is whether they can identify what went wrong.",
+        STRONG: "The outcome is mixed with complex tradeoffs — some aspects succeeded while others created new problems with second-order consequences.",
+        ADEQUATE: "The outcome is mostly positive but with a clear gap they missed or could have handled better.",
+        WEAK: "The outcome reveals a clear error from an earlier decision. The path to correction is visible.",
       },
       rubricIndicators: [
         {
@@ -196,11 +196,11 @@ const SCENARIO_1: ScenarioShell = {
       primaryConstructs: ["METACOGNITIVE_CALIBRATION", "LEARNING_VELOCITY"] as Construct[],
       secondaryConstructs: [] as Construct[],
       agentPromptTemplate:
-        "Ask the candidate to step back and reflect: 'Knowing what you know now, what would you do differently from the start? What was the hardest part of this situation?' This is open-ended and tests self-awareness and learning extraction.",
+        "Ask the candidate to reflect: 'Knowing what you know now, what would you do differently from the start? What was the hardest part of this situation?'",
       branchScripts: {
-        STRONG: "The candidate has navigated a complex scenario. The reflection should capture whether they can extract generalizable principles from a specific experience.",
-        ADEQUATE: "The candidate handled the scenario adequately. The reflection should reveal their level of self-awareness about their approach.",
-        WEAK: "The candidate struggled with parts of the scenario. The reflection should show whether they recognize where they had difficulty and can articulate why.",
+        STRONG: "Probe whether they can extract generalizable principles from this specific experience.",
+        ADEQUATE: "Explore their level of self-awareness about their approach and decision-making.",
+        WEAK: "Help them recognize where they had difficulty and articulate why.",
       },
       rubricIndicators: [
         {
@@ -248,11 +248,11 @@ const SCENARIO_2: ScenarioShell = {
       primaryConstructs: ["SYSTEMS_DIAGNOSTICS"] as Construct[],
       secondaryConstructs: [] as Construct[],
       agentPromptTemplate:
-        "Present a workplace situation where the candidate discovers something that does not look right — a discrepancy in records, a process shortcut someone has been taking, or a quality issue that has been overlooked. The issue is not immediately catastrophic but could have significant consequences if left unaddressed.",
+        "Describe a situation where the candidate discovers something that doesn't look right — a discrepancy in records, a process shortcut, or an overlooked quality issue. It's not immediately catastrophic but could have significant consequences if left unaddressed.",
       branchScripts: {
-        STRONG: "The discrepancy is subtle and embedded in routine operations. Noticing it requires attention to detail. The implications are serious but not obvious.",
-        ADEQUATE: "The discrepancy is moderately visible. It could be an honest mistake or intentional. The candidate needs to decide how to investigate.",
-        WEAK: "The discrepancy is relatively clear. The main question is what the candidate chooses to do about it rather than whether they notice it.",
+        STRONG: "Make the discrepancy subtle and embedded in routine operations. The implications are serious but not obvious.",
+        ADEQUATE: "The discrepancy is moderately visible — it could be an honest mistake or intentional. The candidate must decide how to investigate.",
+        WEAK: "The discrepancy is relatively clear. The focus is on what the candidate chooses to do about it.",
       },
       rubricIndicators: [
         { id: "S2B0_1", label: "Issue Detection", description: "Recognizes the significance of the discrepancy", positiveCriteria: "Identifies the discrepancy as something that warrants investigation", negativeCriteria: "Dismisses or minimizes the discrepancy" },
@@ -263,11 +263,11 @@ const SCENARIO_2: ScenarioShell = {
       type: "INITIAL_RESPONSE",
       primaryConstructs: ["FLUID_REASONING", "PROCEDURAL_RELIABILITY"] as Construct[],
       secondaryConstructs: ["SYSTEMS_DIAGNOSTICS"] as Construct[],
-      agentPromptTemplate: "Ask the candidate what they do about the discrepancy they've noticed.",
+      agentPromptTemplate: "Ask the candidate what they would do about the discrepancy they've noticed.",
       branchScripts: {
-        STRONG: "Escalate the ethical dimension: the discrepancy involves someone with authority or a sensitive situation that makes reporting more difficult.",
-        ADEQUATE: "The reporting path is clear but requires effort. Test whether the candidate follows through on their stated intention.",
-        WEAK: "Provide more scaffolding about why the discrepancy matters and ask again what they would do.",
+        STRONG: "Escalate the ethical dimension — the discrepancy involves someone with authority or a sensitive situation making reporting harder.",
+        ADEQUATE: "The reporting path is clear but requires effort. See if the candidate follows through on their stated intention.",
+        WEAK: "Provide more context about why the discrepancy matters and ask again what they would do.",
       },
       rubricIndicators: [
         { id: "S2B1_1", label: "Procedural Adherence", description: "References proper channels or procedures", positiveCriteria: "Mentions documenting the finding, reporting through proper channels, or following protocol", negativeCriteria: "Proposes handling it informally or ignoring it" },
@@ -279,11 +279,11 @@ const SCENARIO_2: ScenarioShell = {
       type: "COMPLICATION",
       primaryConstructs: ["COGNITIVE_FLEXIBILITY"] as Construct[],
       secondaryConstructs: ["FLUID_REASONING", "SYSTEMS_DIAGNOSTICS"] as Construct[],
-      agentPromptTemplate: "New information reveals that the issue is larger than initially appeared. The discrepancy is not isolated — it suggests a pattern. This raises the stakes significantly.",
+      agentPromptTemplate: "Reveal that the issue is larger than it first appeared — the discrepancy is not isolated, it suggests a pattern. This raises the stakes.",
       branchScripts: {
-        STRONG: "The pattern suggests systemic issues that implicate processes the candidate was told are reliable. They must question established assumptions.",
-        ADEQUATE: "The pattern is concerning but has a plausible innocent explanation. The candidate must weigh whether to escalate further or investigate more.",
-        WEAK: "The expanded scope is alarming but the next step (escalation) is clear. Test whether the candidate follows through.",
+        STRONG: "The pattern suggests systemic issues implicating processes the candidate was told are reliable. They must question established assumptions.",
+        ADEQUATE: "The pattern is concerning but has a plausible innocent explanation. The candidate must decide whether to escalate or investigate further.",
+        WEAK: "The expanded scope is alarming but the next step is clear.",
       },
       rubricIndicators: [
         { id: "S2B2_1", label: "Scope Adjustment", description: "Adjusts approach to match the expanded scope", positiveCriteria: "Recognizes the broader pattern changes the situation and adjusts their plan", negativeCriteria: "Continues with the same approach regardless of new scope" },
@@ -294,11 +294,11 @@ const SCENARIO_2: ScenarioShell = {
       type: "SOCIAL_PRESSURE",
       primaryConstructs: ["EXECUTIVE_CONTROL", "ETHICAL_JUDGMENT"] as Construct[],
       secondaryConstructs: ["PROCEDURAL_RELIABILITY"] as Construct[],
-      agentPromptTemplate: "Someone with authority or influence pressures the candidate to drop the issue, minimize it, or handle it quietly. The personal cost of doing the right thing increases.",
+      agentPromptTemplate: "Introduce someone with authority who pressures the candidate to drop the issue, minimize it, or handle it quietly. The personal cost of doing the right thing increases.",
       branchScripts: {
-        STRONG: "A respected senior figure tells the candidate to let it go. There are implicit consequences for pushing further. Multiple people seem to know and accept the situation.",
-        ADEQUATE: "A colleague they respect suggests it's not worth the trouble. The pressure is social rather than hierarchical. The candidate must weigh relationships against principles.",
-        WEAK: "Someone suggests an easier path that doesn't fully address the issue but would satisfy minimum requirements. The temptation is convenience rather than fear.",
+        STRONG: "A respected senior figure tells the candidate to let it go. Implicit consequences for pushing further. Multiple people seem to know and accept it.",
+        ADEQUATE: "A respected colleague suggests it's not worth the trouble. Pressure is social rather than hierarchical.",
+        WEAK: "Someone suggests an easier path that satisfies minimum requirements but doesn't fully address the issue.",
       },
       rubricIndicators: [
         { id: "S2B3_1", label: "Ethical Resilience", description: "Maintains principled position under pressure", positiveCriteria: "Refuses to compromise on the issue while remaining professional and constructive", negativeCriteria: "Caves to pressure or finds ways to rationalize inaction" },
@@ -310,10 +310,10 @@ const SCENARIO_2: ScenarioShell = {
       type: "CONSEQUENCE_REVEAL",
       primaryConstructs: ["EXECUTIVE_CONTROL"] as Construct[],
       secondaryConstructs: ["METACOGNITIVE_CALIBRATION"] as Construct[],
-      agentPromptTemplate: "Reveal the outcome. If the candidate held firm, the investigation uncovers the full scope. If they compromised, show what was missed. Ask them to evaluate their decisions.",
+      agentPromptTemplate: "Reveal the outcome. If they held firm, the investigation uncovers the full scope. If they compromised, show what was missed. Ask them to evaluate their decisions.",
       branchScripts: {
-        STRONG: "The outcome validates their persistence but reveals even more complexity. Ask what they learned about navigating institutional pressure.",
-        ADEQUATE: "The outcome is positive but there were costs (strained relationships, time spent). Ask how they would handle the tradeoffs differently.",
+        STRONG: "The outcome validates their persistence but reveals more complexity. Ask what they learned about navigating institutional pressure.",
+        ADEQUATE: "The outcome is positive but with costs — strained relationships, time spent. Ask how they'd handle the tradeoffs differently.",
         WEAK: "The outcome shows consequences of their choices. Ask what they would change and why.",
       },
       rubricIndicators: [
@@ -325,11 +325,11 @@ const SCENARIO_2: ScenarioShell = {
       type: "REFLECTIVE_SYNTHESIS",
       primaryConstructs: ["METACOGNITIVE_CALIBRATION", "LEARNING_VELOCITY"] as Construct[],
       secondaryConstructs: [] as Construct[],
-      agentPromptTemplate: "Ask: 'Knowing what you know now, what would you do differently from the start? What was the hardest part of this situation?'",
+      agentPromptTemplate: "Ask the candidate to reflect: 'Knowing what you know now, what would you do differently from the start? What was the hardest part?'",
       branchScripts: {
-        STRONG: "Probe for deeper insight about systemic vs. individual ethics, and how they balance thoroughness with pragmatism.",
+        STRONG: "Probe for deeper insight about systemic vs. individual ethics and balancing thoroughness with pragmatism.",
         ADEQUATE: "Ask them to generalize: in what other situations would similar principles apply?",
-        WEAK: "Help them articulate what made the situation difficult and what they would look for in the future.",
+        WEAK: "Help them articulate what made it difficult and what they would look for in the future.",
       },
       rubricIndicators: [
         { id: "S2B5_1", label: "Self-Awareness", description: "Demonstrates accurate self-awareness", positiveCriteria: "Identifies specific decisions that were difficult and why", negativeCriteria: "Provides superficial reflection that doesn't match their actual choices" },
@@ -365,11 +365,11 @@ const SCENARIO_3: ScenarioShell = {
       primaryConstructs: ["SYSTEMS_DIAGNOSTICS"] as Construct[],
       secondaryConstructs: [] as Construct[],
       agentPromptTemplate:
-        "Teach the candidate a new system with 4-5 rules. The system should have an internal logic (a pattern the candidate can discover). Explain clearly but concisely. Then say: 'Let me make sure you understood that' and ask them to apply one rule.",
+        "Teach the candidate a new system with 4-5 rules that have an internal logic. Explain clearly and concisely, then ask them to apply one rule to check their understanding.",
       branchScripts: {
-        STRONG: "The system has 5 rules with subtle interdependencies. Mastering it requires holding multiple rules in working memory simultaneously.",
-        ADEQUATE: "The system has 4 rules that are mostly independent. Application is straightforward if the rules are remembered correctly.",
-        WEAK: "The system has 3 clear rules. Each rule applies in a distinct situation with minimal overlap.",
+        STRONG: "Use 5 rules with subtle interdependencies that require holding multiple rules in working memory simultaneously.",
+        ADEQUATE: "Use 4 mostly independent rules. Application is straightforward if remembered correctly.",
+        WEAK: "Use 3 clear rules. Each applies in a distinct situation with minimal overlap.",
       },
       rubricIndicators: [
         { id: "S3B0_1", label: "Rule Absorption", description: "Demonstrates understanding of the taught rules", positiveCriteria: "Correctly applies the rule to the test case", negativeCriteria: "Misapplies or forgets the rule" },
@@ -380,11 +380,11 @@ const SCENARIO_3: ScenarioShell = {
       type: "INITIAL_RESPONSE",
       primaryConstructs: ["FLUID_REASONING", "PROCEDURAL_RELIABILITY"] as Construct[],
       secondaryConstructs: ["SYSTEMS_DIAGNOSTICS"] as Construct[],
-      agentPromptTemplate: "Present a scenario that requires applying 2 rules simultaneously. Ask the candidate to work through it step by step.",
+      agentPromptTemplate: "Give the candidate a case that requires applying 2 rules simultaneously. Ask them to work through it step by step.",
       branchScripts: {
-        STRONG: "Present a complex case requiring 3 rules at once. The interaction between rules creates a non-obvious outcome.",
-        ADEQUATE: "Present a case requiring 2 rules. The interaction is logical if both rules are correctly applied.",
-        WEAK: "Present a simpler case where one rule clearly applies. Confirm basic understanding before adding complexity.",
+        STRONG: "Use a complex case requiring 3 rules at once where the interaction creates a non-obvious outcome.",
+        ADEQUATE: "Use a case requiring 2 rules with a logical interaction if both are correctly applied.",
+        WEAK: "Start with a simpler case where one rule clearly applies. Confirm basic understanding first.",
       },
       rubricIndicators: [
         { id: "S3B1_1", label: "Multi-Rule Application", description: "Applies multiple rules correctly in combination", positiveCriteria: "Arrives at the correct outcome by applying the rules in sequence", negativeCriteria: "Misses one or more rules or applies them incorrectly" },
@@ -395,11 +395,11 @@ const SCENARIO_3: ScenarioShell = {
       type: "COMPLICATION",
       primaryConstructs: ["COGNITIVE_FLEXIBILITY"] as Construct[],
       secondaryConstructs: ["FLUID_REASONING", "SYSTEMS_DIAGNOSTICS"] as Construct[],
-      agentPromptTemplate: "Change one of the rules. Tell the candidate: 'Actually, the rules have been updated.' Give them the new rule and immediately test whether they can apply the updated system without reverting to the old rule.",
+      agentPromptTemplate: "Tell the candidate the rules have been updated. Change one rule and immediately test whether they can apply the updated system without reverting to the old rule.",
       branchScripts: {
-        STRONG: "Change a fundamental rule that affects how other rules interact. The update requires restructuring their mental model of the system.",
-        ADEQUATE: "Change one rule in a way that affects some but not all cases. The candidate needs to identify when the new rule applies.",
-        WEAK: "Change a rule in a straightforward way. The update is clearly explained and the test case obviously uses the new rule.",
+        STRONG: "Change a fundamental rule that affects how other rules interact, requiring a restructured mental model.",
+        ADEQUATE: "Change one rule that affects some but not all cases. The candidate must identify when the new rule applies.",
+        WEAK: "Change a rule in a straightforward way with a test case that obviously uses the new rule.",
       },
       rubricIndicators: [
         { id: "S3B2_1", label: "Rule Update Integration", description: "Successfully integrates the rule change", positiveCriteria: "Applies the new rule correctly without reverting to the old one", negativeCriteria: "Reverts to the old rule, confuses old and new, or cannot adapt" },
@@ -411,11 +411,11 @@ const SCENARIO_3: ScenarioShell = {
       type: "SOCIAL_PRESSURE",
       primaryConstructs: ["EXECUTIVE_CONTROL", "ETHICAL_JUDGMENT"] as Construct[],
       secondaryConstructs: ["PROCEDURAL_RELIABILITY"] as Construct[],
-      agentPromptTemplate: "Add time pressure and a constraint: 'We are running short on time. I need you to process these three cases quickly.' Present three rapid-fire cases that each test different rule combinations.",
+      agentPromptTemplate: "Add time pressure: tell the candidate you're running short on time and need them to process three cases quickly. Present three rapid-fire cases testing different rule combinations.",
       branchScripts: {
-        STRONG: "Three cases of increasing complexity. The third case has an ambiguous element that tests whether speed makes them skip careful analysis.",
-        ADEQUATE: "Three cases at consistent moderate difficulty. Tests whether they maintain accuracy under time pressure.",
-        WEAK: "Three straightforward cases. Tests baseline speed and whether they can maintain confidence under mild pressure.",
+        STRONG: "Three cases of increasing complexity. The third has an ambiguous element testing whether speed makes them skip careful analysis.",
+        ADEQUATE: "Three cases at consistent moderate difficulty testing accuracy under time pressure.",
+        WEAK: "Three straightforward cases testing baseline speed and confidence under mild pressure.",
       },
       rubricIndicators: [
         { id: "S3B3_1", label: "Accuracy Under Pressure", description: "Maintains accuracy when speed is demanded", positiveCriteria: "Gets 2-3 cases correct despite time pressure", negativeCriteria: "Accuracy drops significantly under pressure" },
@@ -426,11 +426,11 @@ const SCENARIO_3: ScenarioShell = {
       type: "CONSEQUENCE_REVEAL",
       primaryConstructs: ["EXECUTIVE_CONTROL"] as Construct[],
       secondaryConstructs: ["METACOGNITIVE_CALIBRATION"] as Construct[],
-      agentPromptTemplate: "Reveal which cases they got right and wrong. Ask them to explain where they went wrong and what was happening in their thinking when they made errors.",
+      agentPromptTemplate: "Tell the candidate which cases they got right and wrong. Ask them to explain where they went wrong and what was happening in their thinking.",
       branchScripts: {
-        STRONG: "Their errors reveal a specific pattern (consistently misapplying one rule or one rule interaction). Point this out and ask them to explain it.",
-        ADEQUATE: "Their errors are mixed. Ask them to identify which types of cases they find most challenging.",
-        WEAK: "Walk through the correct application of a missed case and ask them to explain the difference between their approach and the correct one.",
+        STRONG: "Their errors reveal a specific pattern. Point it out and ask them to explain why that pattern emerged.",
+        ADEQUATE: "Their errors are mixed. Ask them which types of cases they find most challenging.",
+        WEAK: "Walk through the correct application of a missed case and ask them to explain the difference.",
       },
       rubricIndicators: [
         { id: "S3B4_1", label: "Error Analysis", description: "Accurately identifies the source of their errors", positiveCriteria: "Pinpoints the specific rule or step where they went wrong", negativeCriteria: "Cannot identify what went wrong or attributes errors to random causes" },
@@ -441,11 +441,11 @@ const SCENARIO_3: ScenarioShell = {
       type: "REFLECTIVE_SYNTHESIS",
       primaryConstructs: ["METACOGNITIVE_CALIBRATION", "LEARNING_VELOCITY"] as Construct[],
       secondaryConstructs: [] as Construct[],
-      agentPromptTemplate: "Ask: 'What strategy did you use to learn the system? If I taught you a new system tomorrow, what would you do differently to learn it faster?'",
+      agentPromptTemplate: "Ask the candidate: 'What strategy did you use to learn the system? If I taught you a new system tomorrow, what would you do differently?'",
       branchScripts: {
-        STRONG: "Probe for metacognitive strategies: do they have a conscious learning approach, or do they learn reactively?",
-        ADEQUATE: "Ask them to compare how they learn in different contexts (e.g., reading instructions vs. hands-on practice).",
-        WEAK: "Ask what made this system hard or easy to learn, and what kind of support would help them learn faster.",
+        STRONG: "Probe for metacognitive strategies — do they have a conscious learning approach, or do they learn reactively?",
+        ADEQUATE: "Ask them to compare how they learn in different contexts — reading instructions vs. hands-on practice.",
+        WEAK: "Ask what made this system hard or easy to learn and what support would help them learn faster.",
       },
       rubricIndicators: [
         { id: "S3B5_1", label: "Learning Strategy Awareness", description: "Can articulate their learning process", positiveCriteria: "Describes a conscious learning strategy or method they use", negativeCriteria: "Cannot articulate how they learn or says 'I just pick things up'" },
@@ -482,11 +482,11 @@ const SCENARIO_4: ScenarioShell = {
       primaryConstructs: ["SYSTEMS_DIAGNOSTICS"] as Construct[],
       secondaryConstructs: [] as Construct[],
       agentPromptTemplate:
-        "Present a busy workday with 5 tasks that need to be completed by end of day. Each task has a different urgency, importance, dependency, and stakeholder. Resources (time, people, equipment) are constrained. At least two tasks have dependencies — one cannot start until another finishes.",
+        "Describe a busy workday with 5 tasks due by end of day. Each has different urgency, importance, dependencies, and stakeholders. Resources are constrained. At least two tasks have dependencies.",
       branchScripts: {
-        STRONG: "5 tasks with complex interdependencies. Some tasks have hidden dependencies that become apparent only if the candidate asks the right questions. Resource constraints create genuine tradeoffs.",
-        ADEQUATE: "5 tasks with clear priorities and 2 dependencies. The optimal sequence exists but requires deliberate planning.",
-        WEAK: "4 tasks with obvious priority levels and 1 simple dependency. The sequencing challenge is straightforward.",
+        STRONG: "Use 5 tasks with complex interdependencies. Some have hidden dependencies apparent only if the candidate asks the right questions.",
+        ADEQUATE: "Use 5 tasks with clear priorities and 2 dependencies. The optimal sequence requires deliberate planning.",
+        WEAK: "Use 4 tasks with obvious priority levels and 1 simple dependency.",
       },
       rubricIndicators: [
         { id: "S4B0_1", label: "Task Analysis", description: "Identifies key attributes of each task", positiveCriteria: "Assesses urgency, importance, and dependencies for the tasks", negativeCriteria: "Treats all tasks as equivalent or focuses on only one dimension" },
@@ -499,9 +499,9 @@ const SCENARIO_4: ScenarioShell = {
       secondaryConstructs: ["SYSTEMS_DIAGNOSTICS"] as Construct[],
       agentPromptTemplate: "Ask the candidate to create their plan: what order would they tackle the tasks, and why?",
       branchScripts: {
-        STRONG: "Their plan is sound. Now add a 6th task that creates a resource conflict with their optimal sequence.",
-        ADEQUATE: "Their plan has a reasonable structure. Add new information that changes the priority of one task.",
-        WEAK: "Their plan needs refinement. Point out a dependency they missed and ask them to adjust.",
+        STRONG: "Add a 6th task that creates a resource conflict with their optimal sequence.",
+        ADEQUATE: "Add new information that changes the priority of one task.",
+        WEAK: "Point out a dependency they missed and ask them to adjust their plan.",
       },
       rubricIndicators: [
         { id: "S4B1_1", label: "Sequencing Logic", description: "Creates a logical task sequence", positiveCriteria: "Orders tasks based on urgency, dependencies, and strategic importance", negativeCriteria: "Orders tasks randomly or by a single dimension only" },
@@ -513,11 +513,11 @@ const SCENARIO_4: ScenarioShell = {
       type: "COMPLICATION",
       primaryConstructs: ["COGNITIVE_FLEXIBILITY"] as Construct[],
       secondaryConstructs: ["FLUID_REASONING", "SYSTEMS_DIAGNOSTICS"] as Construct[],
-      agentPromptTemplate: "Midway through execution, a crisis arrives: a high-priority urgent request that disrupts the plan. Something has gone wrong that requires immediate attention. Ask the candidate how they reprioritize.",
+      agentPromptTemplate: "Introduce a midday crisis: a high-priority urgent request that disrupts the plan. Something has gone wrong requiring immediate attention. Ask how they reprioritize.",
       branchScripts: {
-        STRONG: "The crisis requires significant replanning. Some tasks must be dropped or delegated. The candidate must make hard tradeoffs with incomplete information.",
-        ADEQUATE: "The crisis affects 2-3 tasks. The candidate needs to reshuffle but most of their plan survives.",
-        WEAK: "The crisis clearly takes top priority. The main question is how they adjust the remaining tasks.",
+        STRONG: "The crisis requires significant replanning — some tasks must be dropped or delegated. Hard tradeoffs with incomplete information.",
+        ADEQUATE: "The crisis affects 2-3 tasks. Most of their plan survives but needs reshuffling.",
+        WEAK: "The crisis clearly takes top priority. The focus is on how they adjust the remaining tasks.",
       },
       rubricIndicators: [
         { id: "S4B2_1", label: "Dynamic Reprioritization", description: "Effectively reprioritizes when circumstances change", positiveCriteria: "Creates a revised plan that accounts for the new constraint", negativeCriteria: "Freezes, panics, or tries to do everything without adjusting" },
@@ -528,11 +528,11 @@ const SCENARIO_4: ScenarioShell = {
       type: "SOCIAL_PRESSURE",
       primaryConstructs: ["EXECUTIVE_CONTROL", "ETHICAL_JUDGMENT"] as Construct[],
       secondaryConstructs: ["PROCEDURAL_RELIABILITY"] as Construct[],
-      agentPromptTemplate: "A team member or stakeholder pushes back on the candidate's reprioritization. They want their task to remain the priority. The candidate must manage this interpersonal dimension while maintaining their plan.",
+      agentPromptTemplate: "Introduce a stakeholder who pushes back on the candidate's reprioritization — they want their task to remain the priority. The candidate must manage this while maintaining their plan.",
       branchScripts: {
-        STRONG: "Two stakeholders simultaneously demand priority for different tasks. The candidate must make a judgment call that will disappoint one of them.",
-        ADEQUATE: "One stakeholder is unhappy with the reprioritization. The candidate needs to explain their reasoning and manage expectations.",
-        WEAK: "A colleague is frustrated about a delayed task. The candidate needs to communicate empathetically while holding the new plan.",
+        STRONG: "Two stakeholders simultaneously demand priority for different tasks. The candidate must make a judgment call that disappoints one.",
+        ADEQUATE: "One stakeholder is unhappy. The candidate needs to explain their reasoning and manage expectations.",
+        WEAK: "A colleague is frustrated about a delayed task. The candidate needs to communicate empathetically while holding firm.",
       },
       rubricIndicators: [
         { id: "S4B3_1", label: "Stakeholder Management", description: "Manages competing stakeholder expectations", positiveCriteria: "Communicates rationale clearly, shows empathy, and maintains the decision", negativeCriteria: "Caves to pressure, becomes defensive, or avoids the conversation" },
@@ -543,11 +543,11 @@ const SCENARIO_4: ScenarioShell = {
       type: "CONSEQUENCE_REVEAL",
       primaryConstructs: ["EXECUTIVE_CONTROL"] as Construct[],
       secondaryConstructs: ["METACOGNITIVE_CALIBRATION"] as Construct[],
-      agentPromptTemplate: "Before revealing the outcome, ask: 'How well do you think you managed this situation overall — on a scale of 1 to 10?' Then reveal the actual outcome. This tests Metacognitive Calibration — does their self-assessment match reality?",
+      agentPromptTemplate: "Ask: 'How well do you think you managed this overall — on a scale of 1 to 10?' Then reveal the actual outcome and compare it to their self-assessment.",
       branchScripts: {
-        STRONG: "The outcome has nuanced successes and failures. Their self-assessment accuracy is the primary data point.",
+        STRONG: "The outcome has nuanced successes and failures. Focus on how accurate their self-assessment was.",
         ADEQUATE: "The outcome is mostly positive with clear lessons. Compare their estimate to reality.",
-        WEAK: "The outcome shows specific improvements needed. Use the gap between self-assessment and reality as a teaching moment.",
+        WEAK: "The outcome shows specific improvements needed. Explore the gap between their self-assessment and reality.",
       },
       rubricIndicators: [
         { id: "S4B4_1", label: "Calibration Accuracy", description: "Self-assessment matches actual performance", positiveCriteria: "Their rating is within 1-2 points of the objective assessment", negativeCriteria: "Their rating is 3+ points away from objective reality" },
@@ -558,11 +558,11 @@ const SCENARIO_4: ScenarioShell = {
       type: "REFLECTIVE_SYNTHESIS",
       primaryConstructs: ["METACOGNITIVE_CALIBRATION", "LEARNING_VELOCITY"] as Construct[],
       secondaryConstructs: [] as Construct[],
-      agentPromptTemplate: "Ask: 'What would you do differently from the start? What frameworks do you use for prioritizing when everything feels urgent?'",
+      agentPromptTemplate: "Ask: 'What would you do differently from the start? What frameworks do you use when everything feels urgent?'",
       branchScripts: {
-        STRONG: "Probe for systematic prioritization frameworks (Eisenhower matrix, RICE, etc.) and whether they have transferable methods.",
-        ADEQUATE: "Ask them to compare this approach to how they typically handle competing priorities.",
-        WEAK: "Help them articulate what was most challenging about managing multiple demands simultaneously.",
+        STRONG: "Probe for systematic prioritization frameworks and whether they have transferable methods.",
+        ADEQUATE: "Ask them to compare this to how they typically handle competing priorities.",
+        WEAK: "Help them articulate what was most challenging about managing multiple demands.",
       },
       rubricIndicators: [
         { id: "S4B5_1", label: "Framework Articulation", description: "Can articulate a prioritization method", positiveCriteria: "Describes a systematic approach to prioritization that they use or would use", negativeCriteria: "Cannot articulate a method beyond 'I just figure it out'" },
