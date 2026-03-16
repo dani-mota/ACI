@@ -802,8 +802,11 @@ export function AssessmentStage({
     if (displayIsHistory) return;
     if (transitionInProgress.current) return;
 
-    // When TurnPlayer is active, it drives word reveal — skip legacy TTS trigger
-    if (FEATURE_FLAGS.TURN_PLAYER && lastTurn) return;
+    // When TurnPlayer is active, it drives word reveal — skip legacy TTS trigger entirely.
+    // FEATURE_FLAGS.TURN_PLAYER is always true in browser (Stage 7 default ON).
+    // We skip regardless of lastTurn state to prevent any race between handleTurn
+    // setting lastTurn and displayEvent firing.
+    if (FEATURE_FLAGS.TURN_PLAYER) return;
 
     // During Phase 0, orchestration owns TTS — ignore displayEvent entirely
     if (orchestratorPhase === "PHASE_0" || orchestratorPhase === "TRANSITION_0_1") return;

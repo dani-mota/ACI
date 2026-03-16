@@ -383,6 +383,9 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
     }
 
     // 7. Set sentences for display (text reveal / TTS)
+    // IMPORTANT: lastTurn is already set (step 1) before displayEvent increments.
+    // This ensures the TTS guard in assessment-stage.tsx sees lastTurn when
+    // the displayEvent useEffect fires.
     const sentences = turn.delivery.sentences;
     if (sentences.length > 0) {
       set((s) => ({
@@ -396,7 +399,8 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
         isLoading: false,
       }));
     } else {
-      set({ isLoading: false, orbMode: "idle" });
+      // No sentences — set orbMode to idle, skip TurnPlayer delivery
+      set({ isLoading: false, orbMode: "idle", lastTurn: null });
     }
   },
 
