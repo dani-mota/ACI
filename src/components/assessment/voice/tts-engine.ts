@@ -100,6 +100,7 @@ export class TTSEngine {
    *   word reveal timing with actual audio length.
    */
   async speak(text: string, token: string, onPlaybackStart?: (totalDurationSec: number) => void, preSplit = false): Promise<void> {
+    console.log(`[TTS] speak() called | text="${text.substring(0, 50)}..." | fallback=${this.fallbackActive} | ctx=${this.audioContext?.state} | cached=${!!this.audioCache.get(text)} | time=${Date.now()}`);
     this.stop();
 
     // P-8: Try to recover from fallback on each speak() call (user gesture may have occurred)
@@ -438,6 +439,7 @@ export class TTSEngine {
 
   /** Stop all playback immediately */
   stop() {
+    console.log(`[TTS] 🛑 stop() called | isPlaying=${this.isPlaying} | queueLen=${this.playQueue.length} | time=${Date.now()}`);
     this.abortController?.abort();
     this.abortController = null;
 

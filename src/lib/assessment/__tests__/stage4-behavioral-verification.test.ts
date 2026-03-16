@@ -98,9 +98,9 @@ describe("Group 2: Fallback Chain", () => {
   const turnPlayerSource = readFile("src/components/assessment/stage/turn-player.tsx");
 
   it("2.1: Per-sentence failure catches error and reveals words as text", () => {
-    // Lines 251-254: catch block reveals all words (text fallback)
-    expect(turnPlayerSource).toContain("} catch {");
-    expect(turnPlayerSource).toContain("// Per-sentence failure: text fallback for this sentence, next tries audio");
+    // Catch block reveals all words (text fallback)
+    expect(turnPlayerSource).toContain("catch (err)");
+    expect(turnPlayerSource).toContain("Sentence ${i} FAILED");
     expect(turnPlayerSource).toContain("store.getState().setSubtitleRevealedWords(words.length)");
   });
 

@@ -270,7 +270,8 @@ describe("Group 4: Architecture Completeness", () => {
 
   it("4.3: Legacy TTS guard unconditionally blocks when TURN_PLAYER on", () => {
     const src = readFile("src/components/assessment/stage/assessment-stage.tsx");
-    expect(src).toContain("if (FEATURE_FLAGS.TURN_PLAYER) return;");
+    expect(src).toContain("if (FEATURE_FLAGS.TURN_PLAYER)");
+    expect(src).toContain("SKIPPED (TURN_PLAYER on)");
   });
 
   it("4.4: Session recovery returns recovery flag + lastReferenceCard", () => {

@@ -194,12 +194,13 @@ export function TurnPlayer({
 
   const playVoiceDelivery = useCallback(async (sentences: string[]) => {
     if (!ttsEngine || !token) {
-      // Fallback to text if TTS unavailable
+      console.log(`[TP] 📝 Text delivery START (no ttsEngine or token)`);
       playTextDelivery(sentences);
       return;
     }
 
     const mySequenceId = sequenceIdRef.current;
+    console.log(`[TP] ▶ Voice delivery START | seqId=${mySequenceId} | sentences=${sentences.length} | time=${Date.now()}`);
 
     // Stop any existing playback
     ttsEngine.stop();
@@ -207,10 +208,14 @@ export function TurnPlayer({
 
     for (let i = 0; i < sentences.length; i++) {
       // Check cancellation
-      if (cancelledRef.current || sequenceIdRef.current !== mySequenceId) return;
+      if (cancelledRef.current || sequenceIdRef.current !== mySequenceId) {
+        console.log(`[TP] ⛔ Delivery CANCELLED | mySeq=${mySequenceId} | currentSeq=${sequenceIdRef.current} | cancelled=${cancelledRef.current} | at sentence ${i}/${sentences.length} | time=${Date.now()}`);
+        return;
+      }
 
       const sentence = sentences[i];
       const words = sentence.split(/\s+/);
+      console.log(`[TP] 📢 Sentence ${i}/${sentences.length} START | seqId=${mySequenceId} | words=${words.length} | text="${sentence.substring(0, 60)}..." | time=${Date.now()}`);
 
       // Set subtitle for this sentence
       store.getState().setSubtitleText(sentence);
@@ -226,6 +231,7 @@ export function TurnPlayer({
 
       // Prefetch next sentence while current plays
       if (i + 1 < sentences.length) {
+        console.log(`[TP] 📦 Prefetch sentence ${i + 1} | time=${Date.now()}`);
         ttsEngine.prefetch(sentences[i + 1], token).catch(() => {});
       }
 
@@ -234,6 +240,7 @@ export function TurnPlayer({
       try {
         // Play this sentence with word reveal sync
         await ttsEngine.speak(sentence, token, (totalDurationSec) => {
+          console.log(`[TP] 🔊 onPlaybackStart | sentence ${i} | duration=${totalDurationSec}s | time=${Date.now()}`);
           // onPlaybackStart: sync word reveal to audio duration
           if (cancelledRef.current || sequenceIdRef.current !== mySequenceId) return;
 
@@ -248,7 +255,9 @@ export function TurnPlayer({
             }
           }, msPerWord);
         }, true); // preSplit=true — sentences already split
-      } catch {
+        console.log(`[TP] ✅ Sentence ${i} COMPLETE | seqId=${mySequenceId} | duration=${Date.now() - startTime}ms | time=${Date.now()}`);
+      } catch (err) {
+        console.log(`[TP] ❌ Sentence ${i} FAILED | seqId=${mySequenceId} | error=${err instanceof Error ? err.message : String(err)} | duration=${Date.now() - startTime}ms | time=${Date.now()}`);
         // Per-sentence failure: text fallback for this sentence, next tries audio
         store.getState().setSubtitleRevealedWords(words.length);
       }
@@ -262,6 +271,7 @@ export function TurnPlayer({
         const elapsed = Date.now() - startTime;
         const remaining = MIN_SENTENCE_MS_VOICE - elapsed;
         if (remaining > 0) {
+          console.log(`[TP] ⏸ Padding sentence ${i} by ${remaining}ms to reach MIN_SENTENCE_MS_VOICE | time=${Date.now()}`);
           await new Promise((r) => setTimeout(r, remaining));
         }
         await new Promise((r) => setTimeout(r, INTER_SENTENCE_PAUSE_MS));
@@ -269,8 +279,12 @@ export function TurnPlayer({
     }
 
     // All sentences delivered
-    if (cancelledRef.current || sequenceIdRef.current !== mySequenceId) return;
+    if (cancelledRef.current || sequenceIdRef.current !== mySequenceId) {
+      console.log(`[TP] ⛔ Post-delivery CANCELLED | mySeq=${mySequenceId} | currentSeq=${sequenceIdRef.current} | time=${Date.now()}`);
+      return;
+    }
 
+    console.log(`[TP] ⏹ Voice delivery END | seqId=${mySequenceId} | completed all ${sentences.length} sentences | time=${Date.now()}`);
     store.getState().setSubtitleRevealedWords(9999);
     store.getState().setReferenceRevealCount(-1);
     store.getState().setOrbMode("idle");

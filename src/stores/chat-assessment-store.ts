@@ -317,6 +317,7 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
    */
   handleTurn: (turn: AssessmentTurnResponse) => {
     const s = get();
+    console.log(`[STORE] handleTurn() | format=${turn.signal.format} | beat=${turn.signal.beatIndex} | sentences=${turn.delivery.sentences.length} | hasRefCard=${!!turn.delivery.referenceCard} | hasElement=${!!turn.delivery.interactiveElement} | time=${Date.now()}`);
 
     // 1. Store the Turn for TurnPlayer rendering
     set({ lastTurn: turn });

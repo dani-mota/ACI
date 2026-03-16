@@ -806,7 +806,11 @@ export function AssessmentStage({
     // FEATURE_FLAGS.TURN_PLAYER is always true in browser (Stage 7 default ON).
     // We skip regardless of lastTurn state to prevent any race between handleTurn
     // setting lastTurn and displayEvent firing.
-    if (FEATURE_FLAGS.TURN_PLAYER) return;
+    if (FEATURE_FLAGS.TURN_PLAYER) {
+      console.log(`[LEGACY] displayEvent=${displayEvent} → SKIPPED (TURN_PLAYER on) | time=${Date.now()}`);
+      return;
+    }
+    console.log(`[LEGACY] displayEvent=${displayEvent} → PROCEEDING (TURN_PLAYER off) | time=${Date.now()}`);
 
     // During Phase 0, orchestration owns TTS — ignore displayEvent entirely
     if (orchestratorPhase === "PHASE_0" || orchestratorPhase === "TRANSITION_0_1") return;
