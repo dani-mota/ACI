@@ -3,6 +3,7 @@ import type { OrchestratorPhase } from "@/lib/assessment/transitions";
 import type { ScenarioReference } from "@/lib/assessment/parse-scenario-response";
 import { parseScenarioResponse, splitSentences, cleanText } from "@/lib/assessment/parse-scenario-response";
 import { mapApiError } from "@/lib/errors";
+import type { AssessmentTurnResponse } from "@/lib/types/turn";
 
 // ── Types ──
 
@@ -91,6 +92,10 @@ interface ChatAssessmentState {
   sendMessage: (content: string) => Promise<void>;
   sendElementResponse: (response: { elementType: string; value: string; itemId?: string; construct?: string; responseTimeMs?: number }) => Promise<void>;
   displayMessage: (content: string, act: string, isHistory: boolean) => void;
+  /** Handle a unified Turn response (Stage 3). Sets all display state from Turn fields. */
+  handleTurn: (turn: AssessmentTurnResponse) => void;
+  /** The last Turn received (for TurnPlayer rendering). */
+  lastTurn: AssessmentTurnResponse | null;
 
   // Simple setters
   setActiveElement: (element: InteractiveElement | null) => void;
@@ -167,6 +172,7 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
   isTransitioning: false,
   timerActive: false,
   timerSeconds: 0,
+  lastTurn: null,
 
   // ── Actions ──
 
@@ -305,6 +311,95 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
     }
   },
 
+  /**
+   * Handle a unified AssessmentTurnResponse from the server.
+   * Maps Turn fields → store state. Used when FEATURE_UNIFIED_TURNS is on.
+   */
+  handleTurn: (turn: AssessmentTurnResponse) => {
+    const s = get();
+
+    // 1. Store the Turn for TurnPlayer rendering
+    set({ lastTurn: turn });
+
+    // 2. Apply progress
+    if (turn.meta.progress) {
+      applyProgress(turn.meta.progress);
+    }
+
+    // 3. Handle completion
+    if (turn.meta.isComplete) {
+      set({ isComplete: true });
+    }
+
+    // 4. Handle transitions
+    if (turn.meta.transition) {
+      set({ currentAct: turn.meta.transition.to });
+    }
+
+    // 5. Handle reference card
+    if (turn.delivery.referenceCard) {
+      set({
+        referenceCard: {
+          role: turn.delivery.referenceCard.role || "",
+          context: turn.delivery.referenceCard.context || "",
+          sections: turn.delivery.referenceCard.sections || [],
+          question: turn.delivery.referenceCard.question || "",
+          newInformation: [],
+        },
+        referenceRevealCount: 0, // progressive reveal
+      });
+    }
+    if (turn.delivery.referenceUpdate) {
+      const card = s.referenceCard;
+      if (card) {
+        set({
+          referenceCard: {
+            ...card,
+            newInformation: [...card.newInformation, ...(turn.delivery.referenceUpdate.newInformation || [])],
+            question: turn.delivery.referenceUpdate.question || card.question,
+          },
+          referenceRevealCount: -1,
+        });
+      }
+    }
+
+    // 6. Handle interactive element
+    if (turn.delivery.interactiveElement) {
+      const el = turn.delivery.interactiveElement;
+      set({
+        activeElement: {
+          elementType: el.elementType,
+          elementData: {
+            prompt: el.prompt,
+            ...(el.options ? { options: el.options } : {}),
+            ...(el.timeLimit ? { timeLimit: el.timeLimit } : {}),
+            ...(el.asciiDiagram ? { asciiDiagram: el.asciiDiagram } : {}),
+            ...(el.unitSuffix ? { unitSuffix: el.unitSuffix } : {}),
+            ...(el.timingExpectations ? { timingExpectations: el.timingExpectations } : {}),
+          },
+          responded: false,
+        },
+      });
+    }
+
+    // 7. Set sentences for display (text reveal / TTS)
+    const sentences = turn.delivery.sentences;
+    if (sentences.length > 0) {
+      set((s) => ({
+        subtitleText: sentences[0],
+        subtitleRevealedWords: 0,
+        sentenceList: sentences,
+        currentSentenceIndex: 0,
+        orbMode: "speaking",
+        displayEvent: s.displayEvent + 1,
+        displayIsHistory: false,
+        isLoading: false,
+      }));
+    } else {
+      set({ isLoading: false, orbMode: "idle" });
+    }
+  },
+
   sendMessage: async (content) => {
     const { token, messages } = get();
     if (!token) return;
@@ -379,6 +474,19 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
       if (contentType.includes("application/json")) {
         const data = await response.json();
         const currentMessages = get().messages.filter((m) => m.id !== assistantMessage.id);
+
+        // Unified Turn response (FEATURE_UNIFIED_TURNS on server)
+        if (data.type === "turn") {
+          const agentContent = data.delivery?.sentences?.join(" ") || "";
+          const msg: ChatMessage = {
+            id: `assistant-${Date.now()}`,
+            role: "assistant",
+            content: agentContent,
+          };
+          set({ messages: [...currentMessages, msg] });
+          get().handleTurn(data as AssessmentTurnResponse);
+          return;
+        }
 
         if (data.type === "interactive_element") {
           set({

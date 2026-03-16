@@ -35,6 +35,9 @@ import {
   type OrchestratorPhase,
   type TransitionLine,
 } from "@/lib/assessment/transitions";
+import { TurnPlayer } from "./turn-player";
+import { ComponentErrorBoundary } from "@/components/assessment/error-boundary";
+import { FEATURE_FLAGS } from "@/lib/assessment/config";
 
 // ── Helpers ──
 
@@ -85,6 +88,7 @@ export function AssessmentStage({
   const displayEvent = useChatAssessmentStore((s) => s.displayEvent);
   const displayIsHistory = useChatAssessmentStore((s) => s.displayIsHistory);
   const sentenceList = useChatAssessmentStore((s) => s.sentenceList);
+  const lastTurn = useChatAssessmentStore((s) => s.lastTurn);
 
   // ── Local state ──
   const [audioUnlocked, setAudioUnlocked] = useState(false);
@@ -798,6 +802,9 @@ export function AssessmentStage({
     if (displayIsHistory) return;
     if (transitionInProgress.current) return;
 
+    // When TurnPlayer is active, it drives word reveal — skip legacy TTS trigger
+    if (FEATURE_FLAGS.TURN_PLAYER && lastTurn) return;
+
     // During Phase 0, orchestration owns TTS — ignore displayEvent entirely
     if (orchestratorPhase === "PHASE_0" || orchestratorPhase === "TRANSITION_0_1") return;
 
@@ -1123,10 +1130,37 @@ export function AssessmentStage({
     >
       <OfflineOverlay />
 
+      {/* TurnPlayer (headless): when FEATURE_TURN_PLAYER is on, drives text delivery from Turn data */}
+      {FEATURE_FLAGS.TURN_PLAYER && lastTurn && orchestratorPhase !== "PHASE_0" && (
+        <TurnPlayer
+          turn={lastTurn}
+          textOnly={true}
+          onDeliveryComplete={() => {
+            getStore().setOrbMode("idle");
+            startNudgeForCurrentAct();
+          }}
+          onInputReceived={(value, meta) => {
+            if (meta?.elementType) {
+              getStore().sendElementResponse({
+                elementType: meta.elementType,
+                value,
+                itemId: meta.itemId,
+                construct: meta.construct,
+                responseTimeMs: meta.responseTimeMs,
+              });
+            } else {
+              getStore().sendMessage(value);
+            }
+          }}
+        />
+      )}
+
       {/* Audio auto-unlocks on mount — no gate needed (user already interacted on welcome page) */}
 
       {/* Living background */}
-      <LivingBackground />
+      <ComponentErrorBoundary componentName="living-background">
+        <LivingBackground />
+      </ComponentErrorBoundary>
 
       {/* Top bar */}
       <div

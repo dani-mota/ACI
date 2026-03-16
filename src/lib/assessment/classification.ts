@@ -137,16 +137,37 @@ export async function classifyResponse(
     return { ...successful[0], tokenUsage: totalTokens };
   }
 
-  // Agreement logic: if both agree on classification, use it
-  // If they disagree, use the one with the lower rubricScore (conservative)
+  // Agreement logic per PRD §3.9 disagreement matrix:
+  // Same → use agreed value (pick higher rubricScore for richer evidence)
+  // One step apart (STRONG/ADEQUATE or ADEQUATE/WEAK) → use the lower
+  // Maximum disagreement (STRONG vs WEAK) → ADEQUATE
   if (successful[0].classification === successful[1].classification) {
-    // Agreed — use the one with higher rubricScore for richer evidence
     const best = successful[0].rubricScore >= successful[1].rubricScore ? successful[0] : successful[1];
     return { ...best, tokenUsage: totalTokens };
   }
 
-  // Disagreement — use the conservative (lower rubricScore) result
-  const conservative = successful[0].rubricScore <= successful[1].rubricScore ? successful[0] : successful[1];
+  // Disagreement — resolve per PRD matrix
+  const ORDER: Record<string, number> = { WEAK: 0, ADEQUATE: 1, STRONG: 2 };
+  const aIdx = ORDER[successful[0].classification] ?? 1;
+  const bIdx = ORDER[successful[1].classification] ?? 1;
+  const gap = Math.abs(aIdx - bIdx);
+
+  if (gap === 2) {
+    // Maximum disagreement (STRONG vs WEAK) → ADEQUATE with averaged rubricScore
+    const avgScore = (successful[0].rubricScore + successful[1].rubricScore) / 2;
+    return {
+      classification: "ADEQUATE" as ResponseClassification,
+      indicatorsPresent: [...successful[0].indicatorsPresent, ...successful[1].indicatorsPresent],
+      indicatorsAbsent: [],
+      rubricScore: avgScore,
+      constructSignals: { ...successful[0].constructSignals, ...successful[1].constructSignals },
+      branchRationale: `Max disagreement (${successful[0].classification} vs ${successful[1].classification}) → ADEQUATE per PRD matrix`,
+      tokenUsage: totalTokens,
+    };
+  }
+
+  // One step apart → use the lower classification
+  const conservative = aIdx <= bIdx ? successful[0] : successful[1];
   return { ...conservative, tokenUsage: totalTokens };
 }
 

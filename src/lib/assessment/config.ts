@@ -35,6 +35,10 @@ export const FEATURE_FLAGS = {
   CONTENT_LIBRARY_ENABLED: process.env.FEATURE_CONTENT_LIBRARY === "true",
   /** Enable few-shot examples in classification prompts (default: true) */
   CLASSIFICATION_FEW_SHOT: process.env.FEATURE_CLASSIFICATION_FEW_SHOT !== "false",
+  /** Enable unified Turn architecture (Stage 2). When ON, chat route returns AssessmentTurnResponse JSON. */
+  UNIFIED_TURNS: process.env.FEATURE_UNIFIED_TURNS === "true",
+  /** Enable TurnPlayer client component (Stage 3). When ON, TurnPlayer handles delivery instead of legacy rendering. */
+  TURN_PLAYER: process.env.FEATURE_TURN_PLAYER === "true",
 } as const;
 
 /**

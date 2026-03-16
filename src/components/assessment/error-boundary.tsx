@@ -2,6 +2,46 @@
 
 import React from "react";
 
+// ──────────────────────────────────────────────
+// Tier 1: Component-level — hides failed component, rest continues (P-4)
+// ──────────────────────────────────────────────
+
+interface ComponentErrorBoundaryProps {
+  children: React.ReactNode;
+  componentName: string;
+  fallback?: React.ReactNode;
+}
+
+interface ComponentErrorBoundaryState {
+  hasError: boolean;
+}
+
+export class ComponentErrorBoundary extends React.Component<ComponentErrorBoundaryProps, ComponentErrorBoundaryState> {
+  constructor(props: ComponentErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(): ComponentErrorBoundaryState {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error(`[ErrorBoundary:${this.props.componentName}]`, error, info.componentStack);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback ?? null;
+    }
+    return this.props.children;
+  }
+}
+
+// ──────────────────────────────────────────────
+// Tier 2: Assessment-level — branded recovery screen (P-4)
+// ──────────────────────────────────────────────
+
 interface Props {
   children: React.ReactNode;
 }

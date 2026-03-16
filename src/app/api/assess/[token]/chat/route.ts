@@ -15,6 +15,10 @@ import { recordResult, initLoopState } from "@/lib/assessment/adaptive-loop";
 import { ITEM_BANK } from "@/lib/assessment/item-bank";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { createLogger } from "@/lib/assessment/logger";
+import { dispatch } from "@/lib/assessment/dispatcher";
+import { normalizeInput } from "@/lib/assessment/validation/input-schema";
+import { validateCandidateMetadata, validateAgentMetadata } from "@/lib/assessment/validation/metadata-schema";
+import type { TurnBuilderContext } from "@/lib/assessment/turn-builders/context";
 
 // Vercel serverless: ensure enough time for streaming + onFinish DB writes
 export const maxDuration = 60;
@@ -91,6 +95,14 @@ export async function POST(
   if (assessment.assessmentState?.isComplete) {
     return new Response(JSON.stringify({ error: "Assessment already completed" }), {
       status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // Lifecycle guard — reject if assessment is currently being scored (P0-5)
+  if (invitation.candidate.status === "SCORING") {
+    return new Response(JSON.stringify({ error: "Assessment is being scored" }), {
+      status: 409,
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -214,10 +226,14 @@ export async function POST(
     });
   }
 
-  // Extract the candidate's last message
-  const lastUserMessage = clientMessages?.filter(
+  // Extract and normalize the candidate's last message (P-9)
+  const rawLastMessage = clientMessages?.filter(
     (m: { role: string }) => m.role === "user",
   ).pop()?.content as string | undefined;
+  const normalized = normalizeInput(rawLastMessage);
+  const lastUserMessage: string | undefined = normalized.isSentinel && rawLastMessage == null
+    ? undefined // truly no message — don't fabricate one
+    : normalized.content;
 
   // Handle structured element responses (MC selection, numeric input, etc.)
   if (elementResponse) {
@@ -265,8 +281,8 @@ export async function POST(
     }
   }
 
-  // Persist candidate's text message (skip internal sentinels like [START_ASSESSMENT])
-  const isSentinel = lastUserMessage && /^\[.+\]$/.test(lastUserMessage.trim());
+  // Persist candidate's text message (skip internal sentinels like [BEGIN_ASSESSMENT])
+  const isSentinel = normalized.isSentinel;
   if (lastUserMessage && !elementResponse && !isSentinel) {
     const nextSeq = await nextSequenceOrder();
     await prisma.conversationMessage.create({
@@ -280,6 +296,7 @@ export async function POST(
           scenarioIndex: state.currentScenario,
           beatIndex: state.currentBeat,
           ...(state.currentConstruct ? { construct: state.currentConstruct } : {}),
+          ...(normalized.inputTruncated ? { inputTruncated: true, originalInputLength: normalized.originalLength } : {}),
         } as any,
       },
     });
@@ -404,6 +421,77 @@ export async function POST(
   // Determine the next action from the engine
   const action = getNextAction(state, assessment.messages, lastUserMessage);
   log.info("Action determined", { actionType: action.type, act: "act" in action ? (action as any).act : undefined });
+
+  // ── UNIFIED TURNS PATH (behind feature flag) ──
+  // When enabled, all action types go through the dispatcher → TurnBuilder → Turn JSON.
+  // The existing streaming/JSON paths below remain as the fallback.
+  if (FEATURE_FLAGS.UNIFIED_TURNS) {
+    const builderCtx: TurnBuilderContext = {
+      action,
+      state,
+      messages: assessment.messages,
+      lastCandidateMessage: lastUserMessage,
+      isSentinel: !!isSentinel,
+      roleContext: roleContext ?? null,
+      candidateName: invitation.candidate.firstName ?? undefined,
+      assessmentId: assessment.id,
+      ...(state.contentLibraryId && FEATURE_FLAGS.CONTENT_LIBRARY_ENABLED ? {
+        contentLibrary: await loadContentLibrary(state.contentLibraryId).catch(() => undefined),
+        variantSelections: (state.variantSelections as Record<string, number>) ?? undefined,
+      } : {}),
+      ...(acknowledgmentPromise ? { acknowledgment: await acknowledgmentPromise.catch(() => "") } : {}),
+    };
+
+    const turn = await dispatch(builderCtx);
+
+    // Persist agent message with validated metadata (P-11)
+    const seq = await nextSequenceOrder();
+    const agentContent = turn.delivery.sentences.join(" ");
+    const rawAgentMeta = {
+      format: turn.signal.format,
+      act: state.currentAct,
+      generationMethod: turn.meta.generationMethod,
+      systemLatencyMs: turn.meta.systemLatencyMs ?? 0,
+      primaryConstructs: turn.signal.primaryConstructs,
+      ...(turn.signal.scenarioIndex != null ? { scenarioIndex: turn.signal.scenarioIndex } : {}),
+      ...(turn.signal.beatIndex != null ? { beatIndex: turn.signal.beatIndex } : {}),
+      ...(turn.signal.beatType ? { beatType: turn.signal.beatType } : {}),
+    };
+    const validatedAgentMeta = validateAgentMetadata(rawAgentMeta);
+    await prisma.conversationMessage.create({
+      data: {
+        assessmentId: assessment.id,
+        role: "AGENT",
+        content: agentContent,
+        act: state.currentAct,
+        sequenceOrder: seq,
+        metadata: (validatedAgentMeta ?? { ...rawAgentMeta, _validationFailed: true }) as any,
+      },
+    });
+
+    // Update assessment state
+    const stateUpdate = computeStateUpdate(state, action);
+    if (Object.keys(stateUpdate).length > 0) {
+      await prisma.assessmentState.update({
+        where: { assessmentId: assessment.id },
+        data: {
+          ...(stateUpdate as any),
+          ...(turn.meta.isComplete ? { isComplete: true } : {}),
+        },
+      });
+    } else if (turn.meta.isComplete) {
+      await prisma.assessmentState.update({
+        where: { assessmentId: assessment.id },
+        data: { isComplete: true },
+      });
+    }
+
+    return new Response(JSON.stringify(turn), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // ── LEGACY PATH (flag off) ──
 
   // Helper: re-fetch state and compute progress for client
   async function getProgress(): Promise<{ act1: number; act2: number; act3: number }> {
