@@ -102,6 +102,17 @@ export class TTSEngine {
   async speak(text: string, token: string, onPlaybackStart?: (totalDurationSec: number) => void, preSplit = false): Promise<void> {
     this.stop();
 
+    // P-8: Try to recover from fallback on each speak() call (user gesture may have occurred)
+    if (this.fallbackActive && this.audioContext) {
+      try {
+        await this.audioContext.resume();
+        if (this.audioContext.state === "running") {
+          this.fallbackActive = false;
+          console.info("[TTS] AudioContext recovered from fallback");
+        }
+      } catch { /* still in fallback */ }
+    }
+
     if (this.fallbackActive) {
       return this.speakFallback(text, onPlaybackStart);
     }

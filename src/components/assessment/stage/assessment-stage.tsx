@@ -1130,11 +1130,14 @@ export function AssessmentStage({
     >
       <OfflineOverlay />
 
-      {/* TurnPlayer (headless): when FEATURE_TURN_PLAYER is on, drives text delivery from Turn data */}
+      {/* TurnPlayer (headless): when FEATURE_TURN_PLAYER is on, drives delivery from Turn data */}
+      {/* textOnly=false enables voice via the existing TTSEngine */}
       {FEATURE_FLAGS.TURN_PLAYER && lastTurn && orchestratorPhase !== "PHASE_0" && (
         <TurnPlayer
           turn={lastTurn}
-          textOnly={true}
+          textOnly={false}
+          ttsEngine={ttsRef.current}
+          token={token}
           onDeliveryComplete={() => {
             getStore().setOrbMode("idle");
             startNudgeForCurrentAct();

@@ -148,14 +148,9 @@ describe("Group 2: Missing Deliverables", () => {
     expect(exists).toBe(false); // Documents: MISSING
   });
 
-  it("2.2: TTS config route — DOES NOT EXIST", () => {
-    const ttsConfigPaths = [
-      path.join(PROJECT_ROOT, "src/app/api/assess/[token]/tts-config/route.ts"),
-      path.join(PROJECT_ROOT, "src/app/api/assess/[token]/api/tts-config/route.ts"),
-    ];
-    const exists = ttsConfigPaths.some((p) => fs.existsSync(p));
-    // REPORT: TTS config route does NOT exist. Only the existing TTS proxy route exists.
-    expect(exists).toBe(false); // Documents: MISSING
+  it("2.2: TTS config route — EXISTS (added in Stage 4)", () => {
+    const ttsConfigPath = path.join(PROJECT_ROOT, "src/app/api/assess/[token]/tts-config/route.ts");
+    expect(fs.existsSync(ttsConfigPath)).toBe(true);
   });
 
   it("2.3: normalizeInput — imported AND called in chat route (FIXED)", () => {

@@ -4,17 +4,17 @@
  * TurnPlayer — renders a single AssessmentTurnResponse.
  *
  * Stage 3: text-only mode (word-by-word reveal, no audio).
- * Stage 4: voice mode (TTS playback with audio sync).
+ * Stage 4: voice mode (TTS playback with subtitle sync).
  *
- * One component renders ALL 9 formats identically. The TurnPlayer doesn't
+ * One component handles ALL 9 formats identically. The TurnPlayer doesn't
  * know which format it's playing — it just reads delivery.sentences,
- * shows referenceCard/referenceUpdate, reveals interactiveElement after
- * delivery completes, and activates input.
+ * drives subtitle reveal, and fires callbacks on completion.
  */
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { AssessmentTurnResponse } from "@/lib/types/turn";
 import { useChatAssessmentStore } from "@/stores/chat-assessment-store";
+import type { TTSEngine } from "@/components/assessment/voice/tts-engine";
 
 export interface InputMeta {
   elementType?: string;
@@ -29,16 +29,31 @@ interface TurnPlayerProps {
   onInputReceived: (value: string, meta?: InputMeta) => void;
   /** Stage 3 = true (text reveal only), Stage 4+ = false (TTS audio) */
   textOnly?: boolean;
+  /** TTS engine ref for voice mode. Required when textOnly=false. */
+  ttsEngine?: TTSEngine | null;
+  /** Assessment token for TTS API calls. Required when textOnly=false. */
+  token?: string;
 }
 
 /** Word reveal stagger in ms (text-only mode). */
 const WORD_STAGGER_MS = 55;
-/** Minimum time per sentence in ms. */
+/** Minimum time per sentence in ms (text-only). */
 const MIN_SENTENCE_MS = 1500;
+/** Minimum time per sentence in ms (voice mode — pads short TTS). */
+const MIN_SENTENCE_MS_VOICE = 2500;
 /** Delay before showing interactive element after delivery. */
 const ELEMENT_REVEAL_DELAY_MS = 300;
+/** Pause between sentences in voice mode (ms). */
+const INTER_SENTENCE_PAUSE_MS = 150;
 
-export function TurnPlayer({ turn, onDeliveryComplete, onInputReceived, textOnly = true }: TurnPlayerProps) {
+export function TurnPlayer({
+  turn,
+  onDeliveryComplete,
+  onInputReceived,
+  textOnly = true,
+  ttsEngine,
+  token,
+}: TurnPlayerProps) {
   const [deliveryComplete, setDeliveryComplete] = useState(false);
   const [showElement, setShowElement] = useState(false);
   const turnIdRef = useRef<string>("");
@@ -46,6 +61,8 @@ export function TurnPlayer({ turn, onDeliveryComplete, onInputReceived, textOnly
   const wordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const revealedRef = useRef(0);
   const reducedMotion = useRef(false);
+  const cancelledRef = useRef(false);
+  const sequenceIdRef = useRef(0);
 
   const store = useChatAssessmentStore;
 
@@ -64,6 +81,8 @@ export function TurnPlayer({ turn, onDeliveryComplete, onInputReceived, textOnly
     const turnId = `${turn.signal.format}-${turn.signal.act}-${turn.meta.progress.act1}-${Date.now()}`;
     if (turnIdRef.current === turnId) return;
     turnIdRef.current = turnId;
+    sequenceIdRef.current++;
+    cancelledRef.current = false;
 
     // Reset state for new Turn
     setDeliveryComplete(false);
@@ -79,11 +98,12 @@ export function TurnPlayer({ turn, onDeliveryComplete, onInputReceived, textOnly
       return;
     }
 
-    // Text-only delivery: reveal sentences word-by-word
-    if (textOnly) {
+    // Route to text or voice delivery
+    if (textOnly || !ttsEngine || !token) {
       playTextDelivery(sentences);
+    } else {
+      playVoiceDelivery(sentences);
     }
-    // Stage 4+: TTS delivery would go here
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [turn]);
 
@@ -101,21 +121,21 @@ export function TurnPlayer({ turn, onDeliveryComplete, onInputReceived, textOnly
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      cancelledRef.current = true;
       if (sentenceTimerRef.current) clearTimeout(sentenceTimerRef.current);
       if (wordTimerRef.current) clearInterval(wordTimerRef.current);
     };
   }, []);
 
-  /**
-   * Text-only delivery: reveal sentences one at a time with word-by-word stagger.
-   * For prefers-reduced-motion: instant appearance with opacity fade.
-   */
+  // ──────────────────────────────────────────────
+  // Text-only delivery (Stage 3)
+  // ──────────────────────────────────────────────
+
   const playTextDelivery = useCallback((sentences: string[]) => {
     let sentenceIdx = 0;
 
     const playNextSentence = () => {
-      if (sentenceIdx >= sentences.length) {
-        // All sentences delivered
+      if (cancelledRef.current || sentenceIdx >= sentences.length) {
         store.getState().setSubtitleRevealedWords(9999);
         store.getState().setReferenceRevealCount(-1);
         setDeliveryComplete(true);
@@ -126,26 +146,22 @@ export function TurnPlayer({ turn, onDeliveryComplete, onInputReceived, textOnly
       const sentence = sentences[sentenceIdx];
       const words = sentence.split(/\s+/);
 
-      // Set subtitle for this sentence
       store.getState().setSubtitleText(sentence);
       store.getState().setCurrentSentenceIndex(sentenceIdx);
 
-      // Progressive reference card reveal (one section per sentence)
+      // Progressive reference card reveal
       const refCard = store.getState().referenceCard;
       if (refCard && store.getState().referenceRevealCount >= 0) {
         store.getState().setReferenceRevealCount(sentenceIdx + 1);
       }
 
       if (reducedMotion.current) {
-        // Instant reveal for reduced motion
         store.getState().setSubtitleRevealedWords(words.length);
-        const duration = Math.max(MIN_SENTENCE_MS, 300);
         sentenceTimerRef.current = setTimeout(() => {
           sentenceIdx++;
           playNextSentence();
-        }, duration);
+        }, Math.max(MIN_SENTENCE_MS, 300));
       } else {
-        // Word-by-word reveal
         revealedRef.current = 0;
         store.getState().setSubtitleRevealedWords(0);
 
@@ -172,8 +188,100 @@ export function TurnPlayer({ turn, onDeliveryComplete, onInputReceived, textOnly
     playNextSentence();
   }, [onDeliveryComplete, store]);
 
-  // The TurnPlayer itself renders nothing — it's a behavior controller.
-  // The actual UI (subtitles, reference cards, interactive elements) is
-  // rendered by the existing components that read from the store.
+  // ──────────────────────────────────────────────
+  // Voice delivery (Stage 4)
+  // ──────────────────────────────────────────────
+
+  const playVoiceDelivery = useCallback(async (sentences: string[]) => {
+    if (!ttsEngine || !token) {
+      // Fallback to text if TTS unavailable
+      playTextDelivery(sentences);
+      return;
+    }
+
+    const mySequenceId = sequenceIdRef.current;
+
+    // Stop any existing playback
+    ttsEngine.stop();
+    store.getState().setOrbMode("speaking");
+
+    for (let i = 0; i < sentences.length; i++) {
+      // Check cancellation
+      if (cancelledRef.current || sequenceIdRef.current !== mySequenceId) return;
+
+      const sentence = sentences[i];
+      const words = sentence.split(/\s+/);
+
+      // Set subtitle for this sentence
+      store.getState().setSubtitleText(sentence);
+      store.getState().setCurrentSentenceIndex(i);
+      store.getState().setSubtitleRevealedWords(0);
+      revealedRef.current = 0;
+
+      // Progressive reference card reveal
+      const refCard = store.getState().referenceCard;
+      if (refCard && store.getState().referenceRevealCount >= 0) {
+        store.getState().setReferenceRevealCount(i + 1);
+      }
+
+      // Prefetch next sentence while current plays
+      if (i + 1 < sentences.length) {
+        ttsEngine.prefetch(sentences[i + 1], token).catch(() => {});
+      }
+
+      const startTime = Date.now();
+
+      try {
+        // Play this sentence with word reveal sync
+        await ttsEngine.speak(sentence, token, (totalDurationSec) => {
+          // onPlaybackStart: sync word reveal to audio duration
+          if (cancelledRef.current || sequenceIdRef.current !== mySequenceId) return;
+
+          const msPerWord = Math.max(60, (totalDurationSec * 1000) / words.length);
+          revealedRef.current = 0;
+
+          wordTimerRef.current = setInterval(() => {
+            revealedRef.current++;
+            store.getState().setSubtitleRevealedWords(revealedRef.current);
+            if (revealedRef.current >= words.length) {
+              if (wordTimerRef.current) clearInterval(wordTimerRef.current);
+            }
+          }, msPerWord);
+        }, true); // preSplit=true — sentences already split
+      } catch {
+        // Per-sentence failure: text fallback for this sentence, next tries audio
+        store.getState().setSubtitleRevealedWords(words.length);
+      }
+
+      // Ensure all words revealed after TTS completes/fails
+      if (wordTimerRef.current) clearInterval(wordTimerRef.current);
+      store.getState().setSubtitleRevealedWords(words.length);
+
+      // Enforce minimum sentence time
+      const elapsed = Date.now() - startTime;
+      const remaining = MIN_SENTENCE_MS_VOICE - elapsed;
+      if (remaining > 0 && i < sentences.length - 1) {
+        await new Promise((r) => setTimeout(r, Math.min(remaining, INTER_SENTENCE_PAUSE_MS)));
+      }
+
+      // Small inter-sentence pause
+      if (i < sentences.length - 1) {
+        await new Promise((r) => setTimeout(r, INTER_SENTENCE_PAUSE_MS));
+      }
+    }
+
+    // All sentences delivered
+    if (cancelledRef.current || sequenceIdRef.current !== mySequenceId) return;
+
+    store.getState().setSubtitleRevealedWords(9999);
+    store.getState().setReferenceRevealCount(-1);
+    store.getState().setOrbMode("idle");
+    store.getState().setAudioAmplitude(0);
+    store.getState().setTTSPlaying(false);
+    setDeliveryComplete(true);
+    onDeliveryComplete();
+  }, [ttsEngine, token, playTextDelivery, onDeliveryComplete, store]);
+
+  // Headless — renders nothing. Drives store state for existing UI components.
   return null;
 }
