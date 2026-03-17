@@ -37,6 +37,21 @@ export async function buildScenarioSetup(ctx: TurnBuilderContext): Promise<Asses
     spokenText = "Let me set the scene for you.";
   }
 
+  // Synthesize a reference card from scenario shell data when the content library
+  // doesn't provide one (e.g., no library for this role, or beat has no card).
+  if (!referenceCard && scenario) {
+    const { domainNeutralContent } = scenario;
+    const otherCharacters = domainNeutralContent.characters.slice(1);
+    referenceCard = {
+      role: domainNeutralContent.characters[0] ?? "You",
+      context: domainNeutralContent.setting,
+      sections: otherCharacters.length > 0
+        ? [{ label: "Key People", items: otherCharacters, highlight: false }]
+        : [],
+      question: "How would you handle this situation?",
+    };
+  }
+
   return {
     type: "turn",
     delivery: {

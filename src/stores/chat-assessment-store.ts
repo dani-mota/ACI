@@ -708,6 +708,19 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
         const data = await res.json();
         const currentMessages = get().messages;
 
+        // Unified Turn response (FEATURE_UNIFIED_TURNS on server)
+        if (data.type === "turn") {
+          const agentContent = data.delivery?.sentences?.join(" ") || "";
+          const msg: ChatMessage = {
+            id: `assistant-${Date.now()}`,
+            role: "assistant",
+            content: agentContent,
+          };
+          set({ messages: [...currentMessages, msg], activeElement: null });
+          get().handleTurn(data as AssessmentTurnResponse);
+          return;
+        }
+
         if (data.type === "interactive_element") {
           set({
             isLoading: false,
