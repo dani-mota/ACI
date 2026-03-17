@@ -101,6 +101,7 @@ export class TTSEngine {
    */
   async speak(text: string, token: string, onPlaybackStart?: (totalDurationSec: number) => void, preSplit = false): Promise<void> {
     console.log(`[TTS] speak() called | text="${text.substring(0, 50)}..." | fallback=${this.fallbackActive} | ctx=${this.audioContext?.state} | cached=${!!this.audioCache.get(text)} | time=${Date.now()}`);
+    console.log(`[TTS-TRACE] speak() | fallback=${this.fallbackActive} | audioCtx=${this.audioContext?.state}`);
     this.stop();
 
     // P-8: Try to recover from fallback on each speak() call (user gesture may have occurred)
@@ -199,7 +200,9 @@ export class TTSEngine {
       await fetchPromise;
     } catch (err) {
       if ((err as Error).name !== "AbortError") {
+        const errMsg = (err as Error).message;
         console.error("[TTS] Error:", err);
+        console.log(`[TTS-TRACE] ERROR: ${errMsg}`);
         this.fallbackActive = true;
         this.onFallback();
         return this.speakFallback(text, onPlaybackStart);
@@ -222,12 +225,14 @@ export class TTSEngine {
         signal,
       });
 
+      console.log(`[TTS-TRACE] fetch response: ${res.status} | size=${res.headers.get('content-length')}`);
       if (!res.ok) {
         try {
           const err = await res.json();
           if (err.fallback) return null;
         } catch { /* ignore */ }
         console.error(`[TTS] Chunk fetch failed: ${res.status}`);
+        console.log(`[TTS-TRACE] ERROR: fetch failed ${res.status}`);
         return null;
       }
 
@@ -366,6 +371,7 @@ export class TTSEngine {
 
   /** Browser SpeechSynthesis fallback */
   private speakFallback(text: string, onPlaybackStart?: (totalDurationSec: number) => void): Promise<void> {
+    console.log(`[TTS-TRACE] SpeechSynthesis playing: "${text.substring(0, 50)}"`);
     return new Promise((resolve) => {
       if (typeof window === "undefined" || !("speechSynthesis" in window)) {
         resolve();

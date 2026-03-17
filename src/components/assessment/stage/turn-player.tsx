@@ -91,6 +91,12 @@ export function TurnPlayer({
 
     const sentences = turn.delivery.sentences;
 
+    console.log(`[TP-TRACE] Delivery mode: ${(textOnly || !ttsEngine || !token) ? 'text' : 'voice'}`);
+    console.log(`[TP-TRACE] ttsEngine available: ${!!ttsEngine}`);
+    console.log(`[TP-TRACE] token available: ${!!token}`);
+    console.log(`[TP-TRACE] textOnly flag: ${textOnly}`);
+    console.log(`[TP-TRACE] sentences total: ${sentences.length} | seqId=${sequenceIdRef.current}`);
+
     // Empty delivery — immediately complete
     if (sentences.length === 0) {
       setDeliveryComplete(true);
@@ -132,6 +138,7 @@ export function TurnPlayer({
   // ──────────────────────────────────────────────
 
   const playTextDelivery = useCallback((sentences: string[]) => {
+    console.log(`[TP-TRACE] playTextDelivery START | sentences=${sentences.length} | seqId=${sequenceIdRef.current}`);
     let sentenceIdx = 0;
 
     const playNextSentence = () => {
@@ -145,6 +152,7 @@ export function TurnPlayer({
 
       const sentence = sentences[sentenceIdx];
       const words = sentence.split(/\s+/);
+      console.log(`[TP-TRACE] Sentence ${sentenceIdx}/${sentences.length} START | seqId=${sequenceIdRef.current} | "${sentence.substring(0, 50)}"`);
 
       store.getState().setSubtitleText(sentence);
       store.getState().setCurrentSentenceIndex(sentenceIdx);
@@ -195,6 +203,7 @@ export function TurnPlayer({
   const playVoiceDelivery = useCallback(async (sentences: string[]) => {
     if (!ttsEngine || !token) {
       console.log(`[TP] 📝 Text delivery START (no ttsEngine or token)`);
+      console.log(`[TP-TRACE] Delivery mode: text`);
       playTextDelivery(sentences);
       return;
     }
@@ -210,12 +219,14 @@ export function TurnPlayer({
       // Check cancellation
       if (cancelledRef.current || sequenceIdRef.current !== mySequenceId) {
         console.log(`[TP] ⛔ Delivery CANCELLED | mySeq=${mySequenceId} | currentSeq=${sequenceIdRef.current} | cancelled=${cancelledRef.current} | at sentence ${i}/${sentences.length} | time=${Date.now()}`);
+        console.log(`[TP-TRACE] CANCELLED at sentence ${i} | mySeq=${mySequenceId} current=${sequenceIdRef.current}`);
         return;
       }
 
       const sentence = sentences[i];
       const words = sentence.split(/\s+/);
       console.log(`[TP] 📢 Sentence ${i}/${sentences.length} START | seqId=${mySequenceId} | words=${words.length} | text="${sentence.substring(0, 60)}..." | time=${Date.now()}`);
+      console.log(`[TP-TRACE] Sentence ${i}/${sentences.length} START | seqId=${mySequenceId} | "${sentence.substring(0, 50)}"`);
 
       // Set subtitle for this sentence
       store.getState().setSubtitleText(sentence);
@@ -256,8 +267,11 @@ export function TurnPlayer({
           }, msPerWord);
         }, true); // preSplit=true — sentences already split
         console.log(`[TP] ✅ Sentence ${i} COMPLETE | seqId=${mySequenceId} | duration=${Date.now() - startTime}ms | time=${Date.now()}`);
+        console.log(`[TP-TRACE] Sentence ${i} DONE | ${Date.now() - startTime}ms`);
       } catch (err) {
-        console.log(`[TP] ❌ Sentence ${i} FAILED | seqId=${mySequenceId} | error=${err instanceof Error ? err.message : String(err)} | duration=${Date.now() - startTime}ms | time=${Date.now()}`);
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.log(`[TP] ❌ Sentence ${i} FAILED | seqId=${mySequenceId} | error=${errMsg} | duration=${Date.now() - startTime}ms | time=${Date.now()}`);
+        console.log(`[TP-TRACE] Sentence ${i} FAILED | ${errMsg}`);
         // Per-sentence failure: text fallback for this sentence, next tries audio
         store.getState().setSubtitleRevealedWords(words.length);
       }

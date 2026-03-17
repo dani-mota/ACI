@@ -322,23 +322,28 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
   handleTurn: (turn: AssessmentTurnResponse) => {
     const s = get();
     console.log(`[STORE] handleTurn() | format=${turn.signal.format} | beat=${turn.signal.beatIndex} | sentences=${turn.delivery.sentences.length} | hasRefCard=${!!turn.delivery.referenceCard} | hasElement=${!!turn.delivery.interactiveElement} | time=${Date.now()}`);
+    console.log(`[STORE-TRACE] handleTurn | format=${turn.signal.format} | sentences=${turn.delivery.sentences.length} | beat=${turn.signal.beatIndex}`);
 
     // 1. Store the Turn for TurnPlayer rendering
     set({ lastTurn: turn });
+    console.log(`[STORE-TRACE] set: lastTurn`);
 
     // 2. Apply progress
     if (turn.meta.progress) {
       applyProgress(turn.meta.progress);
+      console.log(`[STORE-TRACE] set: progress act1=${turn.meta.progress.act1}`);
     }
 
     // 3. Handle completion
     if (turn.meta.isComplete) {
       set({ isComplete: true });
+      console.log(`[STORE-TRACE] set: isComplete=true`);
     }
 
     // 4. Handle transitions
     if (turn.meta.transition) {
       set({ currentAct: turn.meta.transition.to });
+      console.log(`[STORE-TRACE] set: currentAct=${turn.meta.transition.to}`);
     }
 
     // 5. Handle reference card
@@ -353,6 +358,7 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
         },
         referenceRevealCount: 0, // progressive reveal
       });
+      console.log(`[STORE-TRACE] set: referenceCard = ${!!turn.delivery.referenceCard} | revealCount=0`);
     }
     if (turn.delivery.referenceUpdate) {
       const card = s.referenceCard;
@@ -365,6 +371,7 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
           },
           referenceRevealCount: -1,
         });
+        console.log(`[STORE-TRACE] set: referenceUpdate merged | revealCount=-1`);
       }
     }
 
@@ -385,6 +392,7 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
           responded: false,
         },
       });
+      console.log(`[STORE-TRACE] set: activeElement type=${el.elementType}`);
     }
 
     // 7. Re-enable input. All delivery state (subtitleText, sentenceList, orbMode,
@@ -393,9 +401,11 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
     // competing with TurnPlayer for audio delivery (the speech skipping root cause).
     if (turn.delivery.sentences.length > 0) {
       set({ isLoading: false });
+      console.log(`[STORE-TRACE] set: isLoading=false (has sentences, TurnPlayer will drive delivery)`);
     } else {
       // No sentences (e.g., confidence rating) — go directly to idle
       set({ isLoading: false, orbMode: "idle", lastTurn: null });
+      console.log(`[STORE-TRACE] set: isLoading=false orbMode=idle lastTurn=null (no sentences)`);
     }
   },
 
