@@ -44,13 +44,17 @@ interface ChatAssessmentState {
   // Display state (what the screen reads)
   subtitleText: string;
   subtitleRevealedWords: number;
+  /** @deprecated Set by TurnPlayer during delivery. Legacy path only. */
   sentenceList: string[];
+  /** @deprecated Set by TurnPlayer during delivery. Legacy path only. */
   currentSentenceIndex: number;
   referenceCard: ScenarioReference | null;
   /** How many reference card sections to reveal (progressive reveal during Beat 0). -1 = show all. */
   referenceRevealCount: number;
   orbMode: OrbMode;
+  /** @deprecated Legacy TTS trigger. TurnPlayer drives delivery via lastTurn. */
   displayEvent: number;
+  /** @deprecated Only used by legacy displayEvent useEffect. */
   displayIsHistory: boolean;
 
   // Interactive elements
@@ -383,24 +387,14 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
       });
     }
 
-    // 7. Set sentences for display (text reveal / TTS)
-    // IMPORTANT: lastTurn is already set (step 1) before displayEvent increments.
-    // This ensures the TTS guard in assessment-stage.tsx sees lastTurn when
-    // the displayEvent useEffect fires.
-    const sentences = turn.delivery.sentences;
-    if (sentences.length > 0) {
-      set((s) => ({
-        subtitleText: sentences[0],
-        subtitleRevealedWords: 0,
-        sentenceList: sentences,
-        currentSentenceIndex: 0,
-        orbMode: "speaking",
-        displayEvent: s.displayEvent + 1,
-        displayIsHistory: false,
-        isLoading: false,
-      }));
+    // 7. Re-enable input. All delivery state (subtitleText, sentenceList, orbMode,
+    // displayEvent) is now set by TurnPlayer during playback — not here.
+    // Removing these fields eliminates the legacy displayEvent trigger that was
+    // competing with TurnPlayer for audio delivery (the speech skipping root cause).
+    if (turn.delivery.sentences.length > 0) {
+      set({ isLoading: false });
     } else {
-      // No sentences — set orbMode to idle, skip TurnPlayer delivery
+      // No sentences (e.g., confidence rating) — go directly to idle
       set({ isLoading: false, orbMode: "idle", lastTurn: null });
     }
   },
@@ -593,6 +587,11 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
           applyProgress(data.progress);
           return;
         }
+
+        // Catch-all for unknown JSON response types
+        console.error("[sendMessage] Unexpected JSON response type:", data.type, "Keys:", Object.keys(data).join(","));
+        set({ isLoading: false });
+        return;
       }
 
       // Handle streaming response
