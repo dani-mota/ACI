@@ -14,6 +14,7 @@ import { ARIA_PERSONA } from "../prompts/aria-persona";
 import { getProbeConfig, getConstructIndicators } from "../scenario-probes";
 import { verifyProbePresent, addProbeReinforcement } from "../probe-verification";
 import { sanitizeAriaOutput } from "../sanitize";
+import { assembleOpenProbePrompt } from "../prompts/prompt-assembly";
 
 export async function buildOpenProbe(ctx: TurnBuilderContext): Promise<AssessmentTurnResponse> {
   const { action, state, contentLibrary, variantSelections, acknowledgment, classificationResult } = ctx;
@@ -55,8 +56,29 @@ export async function buildOpenProbe(ctx: TurnBuilderContext): Promise<Assessmen
     const probeConfig = getProbeConfig(scenarioIndex, beatIndex);
 
     try {
-      const systemPrompt = buildStreamingPrompt(ctx, scenarioIndex, beatIndex, classification);
-      const userContext = "userContext" in action ? (action as any).userContext : "Generate Aria's next response.";
+      let systemPrompt: string;
+      let userContext: string;
+
+      if (forceStreaming && scenario && beat) {
+        // Beats 1-2: 4-layer prompt (PRD §10) — includes candidate response + history
+        const assembled = assembleOpenProbePrompt({
+          candidateName: ctx.candidateName,
+          roleContext: ctx.roleContext,
+          scenario,
+          scenarioIndex,
+          beat,
+          candidateResponse: ctx.lastCandidateMessage ?? "",
+          classification,
+          messages: ctx.messages,
+        });
+        systemPrompt = assembled.systemPrompt;
+        userContext = assembled.userContext;
+      } else {
+        // Beat 0 fallback or missing scenario: legacy inline prompt
+        systemPrompt = buildStreamingPrompt(ctx, scenarioIndex, beatIndex, classification);
+        userContext = "userContext" in action ? (action as any).userContext : "Generate Aria's next response.";
+      }
+
       let response = await generateFromHaiku(systemPrompt, userContext);
       const { cleaned } = sanitizeAriaOutput(response);
       response = cleaned;

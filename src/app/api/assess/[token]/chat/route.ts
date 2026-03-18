@@ -366,9 +366,23 @@ export async function POST(
   }
 
   // Classify candidate response during Act 1 and update state
-  // Skip classification for sentinel messages (e.g. [BEGIN_ASSESSMENT], [NO_RESPONSE])
-  // but DO classify real candidate responses even at beat 0.
-  if (state.currentAct === "ACT_1" && lastUserMessage && !isSentinel) {
+  // [NO_RESPONSE] (auto-advance after silence) gets synthetic WEAK classification (PRD §7.7).
+  // Other sentinels ([BEGIN_ASSESSMENT], [BEGIN_ACT_2], etc.) skip classification entirely.
+  if (state.currentAct === "ACT_1" && lastUserMessage === "[NO_RESPONSE]") {
+    // Auto-advance: apply WEAK classification directly — no Haiku call needed
+    const stateUpdate = computeStateUpdate(state, { type: "AGENT_MESSAGE" } as any, "WEAK");
+    await prisma.assessmentState.update({
+      where: { assessmentId: assessment.id },
+      data: stateUpdate as any,
+    });
+    state = (await prisma.assessmentState.findUnique({
+      where: { assessmentId: assessment.id },
+    }))!;
+    log.info("[NO_RESPONSE] → WEAK classification applied, beat advanced", {
+      prevBeat: String((stateUpdate as any).currentBeat ?? state.currentBeat),
+      newBeat: String(state.currentBeat),
+    });
+  } else if (state.currentAct === "ACT_1" && lastUserMessage && !isSentinel) {
     const scenario = SCENARIOS[state.currentScenario];
     if (scenario) {
       const beat = scenario.beats[state.currentBeat];
@@ -456,6 +470,8 @@ export async function POST(
       ...(turn.signal.scenarioIndex != null ? { scenarioIndex: turn.signal.scenarioIndex } : {}),
       ...(turn.signal.beatIndex != null ? { beatIndex: turn.signal.beatIndex } : {}),
       ...(turn.signal.beatType ? { beatType: turn.signal.beatType } : {}),
+      // P-2: persist referenceCard for visual restoration on session recovery
+      ...(turn.delivery.referenceCard ? { referenceCard: turn.delivery.referenceCard } : {}),
     };
     const validatedAgentMeta = validateAgentMetadata(rawAgentMeta);
     await prisma.conversationMessage.create({

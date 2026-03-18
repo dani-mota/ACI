@@ -237,7 +237,7 @@ describe("Group 5: Nudge System Without VAD", () => {
 
   it("5.4: Nudge guards against interrupting TTS", () => {
     // Nudge callback checks isTTSPlaying before firing
-    expect(stageSource).toContain("if (s.isLoading || s.isTTSPlaying) return");
+    expect(stageSource).toContain("if (s.isLoading || s.isTTSPlaying) {");
   });
 
   it("5.5: Auto-advance sends [NO_RESPONSE] sentinel", () => {

@@ -323,90 +323,90 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
     const s = get();
     console.log(`[STORE] handleTurn() | format=${turn.signal.format} | beat=${turn.signal.beatIndex} | sentences=${turn.delivery.sentences.length} | hasRefCard=${!!turn.delivery.referenceCard} | hasElement=${!!turn.delivery.interactiveElement} | time=${Date.now()}`);
     console.log(`[STORE-TRACE] handleTurn | format=${turn.signal.format} | sentences=${turn.delivery.sentences.length} | beat=${turn.signal.beatIndex}`);
+    console.log(`[REFCARD-TRACE] Turn has referenceCard: ${!!turn.delivery?.referenceCard}`);
+    console.log(`[REFCARD-TRACE] Turn has referenceUpdate: ${!!turn.delivery?.referenceUpdate}`);
+    if (turn.delivery?.referenceCard) {
+      console.log(`[REFCARD-TRACE] Card sections: ${turn.delivery.referenceCard.sections?.length}`);
+      console.log(`[REFCARD-TRACE] Setting referenceRevealCount to 0`);
+    }
 
-    // 1. Store the Turn for TurnPlayer rendering
-    set({ lastTurn: turn });
-    console.log(`[STORE-TRACE] set: lastTurn`);
+    // Compute ALL state updates before calling set() — ONE re-render, ONE useEffect trigger.
 
-    // 2. Apply progress
+    // Progress (inline applyProgress to avoid nested set() calls)
+    let actProgress = s.actProgress;
     if (turn.meta.progress) {
-      applyProgress(turn.meta.progress);
-      console.log(`[STORE-TRACE] set: progress act1=${turn.meta.progress.act1}`);
+      const p = turn.meta.progress;
+      actProgress = {
+        ...actProgress,
+        ...(p.act1 !== undefined ? { act1: p.act1 } : {}),
+        ...(p.act2 !== undefined ? { act2: p.act2 } : {}),
+        ...(p.act3 !== undefined ? { act3: p.act3 } : {}),
+      };
+      console.log(`[STORE-TRACE] computed: progress act1=${p.act1}`);
     }
 
-    // 3. Handle completion
-    if (turn.meta.isComplete) {
-      set({ isComplete: true });
-      console.log(`[STORE-TRACE] set: isComplete=true`);
-    }
-
-    // 4. Handle transitions
-    if (turn.meta.transition) {
-      set({ currentAct: turn.meta.transition.to });
-      console.log(`[STORE-TRACE] set: currentAct=${turn.meta.transition.to}`);
-    }
-
-    // 5. Handle reference card
+    // Reference card — new card replaces existing
+    let referenceCard = s.referenceCard;
+    let referenceRevealCount = s.referenceRevealCount;
     if (turn.delivery.referenceCard) {
-      set({
-        referenceCard: {
-          role: turn.delivery.referenceCard.role || "",
-          context: turn.delivery.referenceCard.context || "",
-          sections: turn.delivery.referenceCard.sections || [],
-          question: turn.delivery.referenceCard.question || "",
-          newInformation: [],
-        },
-        referenceRevealCount: 0, // progressive reveal
-      });
-      console.log(`[STORE-TRACE] set: referenceCard = ${!!turn.delivery.referenceCard} | revealCount=0`);
+      referenceCard = {
+        role: turn.delivery.referenceCard.role || "",
+        context: turn.delivery.referenceCard.context || "",
+        sections: turn.delivery.referenceCard.sections || [],
+        question: turn.delivery.referenceCard.question || "",
+        newInformation: [],
+      };
+      referenceRevealCount = 0; // progressive reveal
+      console.log(`[STORE-TRACE] computed: referenceCard | revealCount=0`);
     }
+    // Reference update — appends to the card (uses card from this turn or existing)
     if (turn.delivery.referenceUpdate) {
-      const card = s.referenceCard;
-      if (card) {
-        set({
-          referenceCard: {
-            ...card,
-            newInformation: [...card.newInformation, ...(turn.delivery.referenceUpdate.newInformation || [])],
-            question: turn.delivery.referenceUpdate.question || card.question,
-          },
-          referenceRevealCount: -1,
-        });
-        console.log(`[STORE-TRACE] set: referenceUpdate merged | revealCount=-1`);
+      const base = referenceCard;
+      if (base) {
+        referenceCard = {
+          ...base,
+          newInformation: [...base.newInformation, ...(turn.delivery.referenceUpdate.newInformation || [])],
+          question: turn.delivery.referenceUpdate.question || base.question,
+        };
+        referenceRevealCount = -1;
+        console.log(`[STORE-TRACE] computed: referenceUpdate merged | revealCount=-1`);
       }
     }
 
-    // 6. Handle interactive element
+    // Interactive element
+    let activeElement = s.activeElement;
     if (turn.delivery.interactiveElement) {
       const el = turn.delivery.interactiveElement;
-      set({
-        activeElement: {
-          elementType: el.elementType,
-          elementData: {
-            prompt: el.prompt,
-            ...(el.options ? { options: el.options } : {}),
-            ...(el.timeLimit ? { timeLimit: el.timeLimit } : {}),
-            ...(el.asciiDiagram ? { asciiDiagram: el.asciiDiagram } : {}),
-            ...(el.unitSuffix ? { unitSuffix: el.unitSuffix } : {}),
-            ...(el.timingExpectations ? { timingExpectations: el.timingExpectations } : {}),
-          },
-          responded: false,
+      activeElement = {
+        elementType: el.elementType,
+        elementData: {
+          prompt: el.prompt,
+          ...(el.options ? { options: el.options } : {}),
+          ...(el.timeLimit ? { timeLimit: el.timeLimit } : {}),
+          ...(el.asciiDiagram ? { asciiDiagram: el.asciiDiagram } : {}),
+          ...(el.unitSuffix ? { unitSuffix: el.unitSuffix } : {}),
+          ...(el.timingExpectations ? { timingExpectations: el.timingExpectations } : {}),
         },
-      });
-      console.log(`[STORE-TRACE] set: activeElement type=${el.elementType}`);
+        responded: false,
+      };
+      console.log(`[STORE-TRACE] computed: activeElement type=${el.elementType}`);
     }
 
-    // 7. Re-enable input. All delivery state (subtitleText, sentenceList, orbMode,
-    // displayEvent) is now set by TurnPlayer during playback — not here.
-    // Removing these fields eliminates the legacy displayEvent trigger that was
-    // competing with TurnPlayer for audio delivery (the speech skipping root cause).
-    if (turn.delivery.sentences.length > 0) {
-      set({ isLoading: false });
-      console.log(`[STORE-TRACE] set: isLoading=false (has sentences, TurnPlayer will drive delivery)`);
-    } else {
-      // No sentences (e.g., confidence rating) — go directly to idle
-      set({ isLoading: false, orbMode: "idle", lastTurn: null });
-      console.log(`[STORE-TRACE] set: isLoading=false orbMode=idle lastTurn=null (no sentences)`);
-    }
+    const hasSentences = turn.delivery.sentences.length > 0;
+
+    // SINGLE set() call — ONE React re-render — ONE TurnPlayer useEffect trigger
+    set({
+      lastTurn: hasSentences ? turn : null,
+      isLoading: false,
+      actProgress,
+      referenceCard,
+      referenceRevealCount,
+      activeElement,
+      ...(turn.meta.isComplete ? { isComplete: true } : {}),
+      ...(turn.meta.transition ? { currentAct: turn.meta.transition.to } : {}),
+      ...(!hasSentences ? { orbMode: "idle" } : {}),
+    });
+    console.log(`[STORE-TRACE] set: single batch | lastTurn=${hasSentences} | isLoading=false | orbMode=${!hasSentences ? "idle" : "unchanged"}`);
   },
 
   sendMessage: async (content) => {

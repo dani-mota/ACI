@@ -222,13 +222,16 @@ export function AssessmentStage({
       if (ttsRef.current) {
         const ttsTimeout = Math.max(30000, words.length * 800);
         try {
+          let safetyTimeoutId: ReturnType<typeof setTimeout>;
           await Promise.race([
-            ttsRef.current.speak(text, token, syncReveal),
-            new Promise<void>((resolve) => setTimeout(() => {
-              console.warn("[TTS] Safety timeout reached, continuing");
-              ttsRef.current?.stop();
-              resolve();
-            }, ttsTimeout)),
+            ttsRef.current.speak(text, token, syncReveal).finally(() => clearTimeout(safetyTimeoutId)),
+            new Promise<void>((resolve) => {
+              safetyTimeoutId = setTimeout(() => {
+                console.warn("[TTS] Safety timeout reached, continuing");
+                ttsRef.current?.stop();
+                resolve();
+              }, ttsTimeout);
+            }),
           ]);
         } catch { /* fallback timing from word reveal */ }
       } else {
@@ -279,12 +282,15 @@ export function AssessmentStage({
           getStore().setTTSPlaying(false);
         };
         try {
+          let safetyTimeoutId: ReturnType<typeof setTimeout>;
           await Promise.race([
-            ttsRef.current.speak(text, token, startReveal),
-            new Promise<void>((resolve) => setTimeout(() => {
-              ttsRef.current?.stop();
-              resolve();
-            }, ttsTimeout)),
+            ttsRef.current.speak(text, token, startReveal).finally(() => clearTimeout(safetyTimeoutId)),
+            new Promise<void>((resolve) => {
+              safetyTimeoutId = setTimeout(() => {
+                ttsRef.current?.stop();
+                resolve();
+              }, ttsTimeout);
+            }),
           ]);
           ttsComplete();
         } catch {
@@ -444,14 +450,21 @@ export function AssessmentStage({
     nudgeRef.current.start(ctx, {
       onNudge: (level) => {
         const s = getStore();
-        if (s.isLoading || s.isTTSPlaying) return;
-        if (transitionInProgress.current) return;
+        if (s.isLoading || s.isTTSPlaying) {
+          console.log(`[NUDGE-TRACE] Nudge ${level} DROPPED | isLoading=${s.isLoading} isTTSPlaying=${s.isTTSPlaying}`);
+          return;
+        }
+        if (transitionInProgress.current) {
+          console.log(`[NUDGE-TRACE] Nudge ${level} DROPPED | transitionInProgress=true`);
+          return;
+        }
         if (level === "first") {
           playSegmentTTS(NUDGE_FIRST[ctx]);
         } else if (level === "second") {
           s.setInputMode("text");
           playSegmentTTS(NUDGE_SECOND[ctx]);
         } else {
+          console.log(`[NUDGE-TRACE] Sending [NO_RESPONSE] | ctx=${ctx}`);
           playSegmentTTS(NUDGE_FINAL[ctx]).then(() => {
             getStore().setOrbMode("processing");
             getStore().sendMessage("[NO_RESPONSE]");
@@ -484,52 +497,63 @@ export function AssessmentStage({
   // ══════════════════════════════════════════════
 
   const handleBeginAct1 = useCallback(async () => {
-    const s = getStore();
+    if (transitionInProgress.current) return;
+    transitionInProgress.current = true;
 
-    // Phase 1: Glide orb from center → sidebar position + shrink to sidebar size (88px)
-    s.setOrbTargetSize(88);
-    s.setOrbMode("speaking");
-    setOrbGliding(true);
-    await new Promise((r) => setTimeout(r, 1200));
-
-    // Phase 2: Fade out the centered layout
-    setLayoutOpacity(0);
-    await new Promise((r) => setTimeout(r, 600));
-
-    // Phase 3: Switch to split layout while invisible (opacity is 0)
-    s.setOrchestratorPhase("ACT_1");
-    setOrbGliding(false);
-
-    // Wait two frames so browser paints the new layout at opacity 0
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-
-    // Phase 4: Fade in the split layout (AriaSidebar now visible)
-    setLayoutOpacity(1);
-
-    // Phase 5: Play warm-up narration — subtitles now render in AriaSidebar
     try {
-      const { ACT1_WARMUP_LINES } = await import("@/lib/assessment/transitions");
-      await playSentenceSequence(ACT1_WARMUP_LINES);
-    } catch {
-      // If TTS warm-up fails, continue to assessment
-    }
+      const s = getStore();
 
-    // Phase 6: Begin assessment
-    s.setOrbMode("processing");
-    try {
-      await s.sendMessage("[BEGIN_ASSESSMENT]");
-    } catch {
-      console.warn("[Transition] First sendMessage failed, retrying in 2s");
+      // Phase 0: Show TRANSITION_0_1 screen (3-dot transition) for 2 seconds
+      s.setOrchestratorPhase("TRANSITION_0_1");
       await new Promise((r) => setTimeout(r, 2000));
+
+      // Phase 1: Glide orb from center → sidebar position + shrink to sidebar size (88px)
+      s.setOrbTargetSize(88);
+      s.setOrbMode("speaking");
+      setOrbGliding(true);
+      await new Promise((r) => setTimeout(r, 1200));
+
+      // Phase 2: Fade out the centered layout
+      setLayoutOpacity(0);
+      await new Promise((r) => setTimeout(r, 600));
+
+      // Phase 3: Switch to split layout while invisible (opacity is 0)
+      s.setOrchestratorPhase("ACT_1");
+      setOrbGliding(false);
+
+      // Wait two frames so browser paints the new layout at opacity 0
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+      // Phase 4: Fade in the split layout (AriaSidebar now visible)
+      setLayoutOpacity(1);
+
+      // Phase 5: Play warm-up narration — subtitles now render in AriaSidebar
+      try {
+        const { ACT1_WARMUP_LINES } = await import("@/lib/assessment/transitions");
+        await playSentenceSequence(ACT1_WARMUP_LINES);
+      } catch {
+        // If TTS warm-up fails, continue to assessment
+      }
+
+      // Phase 6: Begin assessment
+      s.setOrbMode("processing");
       try {
         await getStore().sendMessage("[BEGIN_ASSESSMENT]");
       } catch {
-        console.error("[Transition] Retry failed, showing recovery UI");
-        const st = getStore();
-        st.setOrbMode("idle");
-        st.setSubtitleText("Whenever you're ready, tap the microphone or type to begin.");
-        st.setSubtitleRevealedWords(100);
+        console.warn("[Transition] First sendMessage failed, retrying in 2s");
+        await new Promise((r) => setTimeout(r, 2000));
+        try {
+          await getStore().sendMessage("[BEGIN_ASSESSMENT]");
+        } catch {
+          console.error("[Transition] Retry failed, showing recovery UI");
+          const st = getStore();
+          st.setOrbMode("idle");
+          st.setSubtitleText("Whenever you're ready, tap the microphone or type to begin.");
+          st.setSubtitleRevealedWords(100);
+        }
       }
+    } finally {
+      transitionInProgress.current = false;
     }
   }, [playSentenceSequence]);
 
@@ -552,24 +576,7 @@ export function AssessmentStage({
         justTransitionedRef.current = true;
         st.setOrchestratorPhase("ACT_2");
         st.setTransitioning(false);
-        nudgeRef.current.start("act_2", {
-          onNudge: (level) => {
-            const s = getStore();
-            if (s.isLoading || s.isTTSPlaying) return;
-            if (transitionInProgress.current) return;
-            if (level === "first") {
-              playSegmentTTS(NUDGE_FIRST["act_2"]);
-            } else if (level === "second") {
-              s.setInputMode("text");
-              playSegmentTTS(NUDGE_SECOND["act_2"]);
-            } else {
-              playSegmentTTS(NUDGE_FINAL["act_2"]).then(() => {
-                getStore().setOrbMode("processing");
-                getStore().sendMessage("[NO_RESPONSE]");
-              });
-            }
-          },
-        });
+        // Nudge starts in onDeliveryComplete after the first Act 2 question plays (PRD §7.7)
       },
     });
 
@@ -599,24 +606,7 @@ export function AssessmentStage({
         justTransitionedRef.current = true;
         st.setOrchestratorPhase("ACT_3");
         st.setTransitioning(false);
-        nudgeRef.current.start("act_3", {
-          onNudge: (level) => {
-            const s = getStore();
-            if (s.isLoading || s.isTTSPlaying) return;
-            if (transitionInProgress.current) return;
-            if (level === "first") {
-              playSegmentTTS(NUDGE_FIRST["act_3"]);
-            } else if (level === "second") {
-              s.setInputMode("text");
-              playSegmentTTS(NUDGE_SECOND["act_3"]);
-            } else {
-              playSegmentTTS(NUDGE_FINAL["act_3"]).then(() => {
-                getStore().setOrbMode("processing");
-                getStore().sendMessage("[NO_RESPONSE]");
-              });
-            }
-          },
-        });
+        // Nudge starts in onDeliveryComplete after the first Act 3 question plays (PRD §7.7)
       },
     });
 
@@ -699,6 +689,12 @@ export function AssessmentStage({
             isComplete: data.state?.isComplete ?? false,
             progress: data.state?.progress,
           });
+
+          // P-2: restore reference card on recovery so ScenarioReferenceCard renders
+          if (data.lastReferenceCard) {
+            st.setReferenceCard({ ...data.lastReferenceCard, newInformation: [] });
+            st.setReferenceRevealCount(-1); // show all sections immediately
+          }
 
           phase0Ref.current = "done";
           prevActRef.current = serverAct;
@@ -1041,6 +1037,15 @@ export function AssessmentStage({
     : format === 7 ? "confidence"
     : "centered";
 
+  // LAYOUT-TRACE: log whenever any layout-relevant state changes
+  useEffect(() => {
+    console.log(`[LAYOUT-TRACE] orchestratorPhase: ${orchestratorPhase}`);
+    console.log(`[LAYOUT-TRACE] format resolved: ${format}`);
+    console.log(`[LAYOUT-TRACE] layoutKey: ${layoutKey}`);
+    console.log(`[LAYOUT-TRACE] referenceCard exists: ${!!referenceCard}`);
+    console.log(`[LAYOUT-TRACE] referenceRevealCount: ${referenceRevealCount}`);
+  }, [orchestratorPhase, format, layoutKey, referenceCard, referenceRevealCount]);
+
   // ── Input area ──
   const renderInputArea = () => {
     if (!showInput) return null;
@@ -1368,7 +1373,12 @@ export function AssessmentStage({
                   <>
                     {format === 8 && (
                       <TransitionScreen
-                        heading=""
+                        heading={
+                          orchestratorPhase === "TRANSITION_0_1" ? "Let's Begin" :
+                          orchestratorPhase === "TRANSITION_1_2" ? "Problem Solving" :
+                          orchestratorPhase === "TRANSITION_2_3" ? "Reflection" :
+                          ""
+                        }
                         visible={true}
                       />
                     )}

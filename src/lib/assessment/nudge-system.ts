@@ -23,9 +23,9 @@ interface NudgeThresholds {
 
 const THRESHOLDS: Record<NudgeContext, NudgeThresholds> = {
   phase_0: { first: 15, second: 30, final: 45 },
-  act_1:   { first: 30, second: 55, final: 90 },
+  act_1:   { first: 15, second: 30, final: 45 },
   act_2:   { first: 15, second: 30, final: 45 },
-  act_3:   { first: 25, second: 50, final: 75 },
+  act_3:   { first: 15, second: 30, final: 45 },
 };
 
 export type NudgeLevel = "first" | "second" | "final";
@@ -53,10 +53,25 @@ export class NudgeManager {
     this.pausedElapsed = 0;
     const t = THRESHOLDS[context];
 
+    console.log(`[NUDGE-TRACE] Timer started | context=${context} | thresholds: ${JSON.stringify(t)}`);
+
+    const startedAt = Date.now();
     this.timers.push(
-      setTimeout(() => callbacks.onNudge("first"), t.first * 1000),
-      setTimeout(() => callbacks.onNudge("second"), t.second * 1000),
-      setTimeout(() => callbacks.onNudge("final"), t.final * 1000),
+      setTimeout(() => {
+        const elapsed = Math.round((Date.now() - startedAt) / 1000);
+        console.log(`[NUDGE-TRACE] Nudge 1 fired at ${elapsed}s | context=${context}`);
+        callbacks.onNudge("first");
+      }, t.first * 1000),
+      setTimeout(() => {
+        const elapsed = Math.round((Date.now() - startedAt) / 1000);
+        console.log(`[NUDGE-TRACE] Nudge 2 fired at ${elapsed}s | context=${context}`);
+        callbacks.onNudge("second");
+      }, t.second * 1000),
+      setTimeout(() => {
+        const elapsed = Math.round((Date.now() - startedAt) / 1000);
+        console.log(`[NUDGE-TRACE] Auto-advance fired at ${elapsed}s | context=${context}`);
+        callbacks.onNudge("final");
+      }, t.final * 1000),
     );
   }
 

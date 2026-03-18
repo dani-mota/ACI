@@ -77,9 +77,16 @@ export function TurnPlayer({
   useEffect(() => {
     if (!turn) return;
 
-    // Generate a unique ID for this Turn to prevent re-processing
-    const turnId = `${turn.signal.format}-${turn.signal.act}-${turn.meta.progress.act1}-${Date.now()}`;
-    if (turnIdRef.current === turnId) return;
+    // Generate a stable ID for this Turn — same Turn object produces same ID,
+    // different Turn produces different ID. Date.now() was removed: it made the
+    // guard never fire, causing double delivery when the effect ran twice.
+    const turnId = `${turn.signal.format}-${turn.signal.act}-${turn.signal.beatIndex ?? 'na'}-${turn.delivery.sentences.length}-${turn.delivery.sentences[0]?.substring(0, 20) ?? ''}`;
+    if (turnIdRef.current === turnId) {
+      // StrictMode re-invocation: [] cleanup may have set cancelledRef=true.
+      // Un-cancel so the ongoing delivery (same Turn) can continue.
+      cancelledRef.current = false;
+      return;
+    }
     turnIdRef.current = turnId;
     sequenceIdRef.current++;
     cancelledRef.current = false;
@@ -208,6 +215,9 @@ export function TurnPlayer({
       return;
     }
 
+    console.log(`[TP-TRACE] Delivery mode: voice`);
+    console.log(`[TP-TRACE] ttsEngine available: ${!!ttsEngine}`);
+    console.log(`[TP-TRACE] token available: ${!!token}`);
     const mySequenceId = sequenceIdRef.current;
     console.log(`[TP] ▶ Voice delivery START | seqId=${mySequenceId} | sentences=${sentences.length} | time=${Date.now()}`);
 

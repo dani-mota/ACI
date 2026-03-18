@@ -137,6 +137,7 @@ export class TTSEngine {
       const ctx = await this.ensureAudioContext();
 
       if (ctx.state === "suspended") {
+        console.log(`[TTS-TRACE] AudioContext suspended → fallback activated | "${text.substring(0, 50)}"`);
         this.fallbackActive = true;
         this.onFallback();
         return this.speakFallback(text, onPlaybackStart);
@@ -148,10 +149,14 @@ export class TTSEngine {
       const allBuffers: AudioBuffer[] = [];
 
       const firstBuffer = await this.fetchAndDecodeChunk(chunks[0], token, ctx, signal);
-      if (signal.aborted) return;
+      if (signal.aborted) {
+        console.log(`[TTS-TRACE] speak() ABORTED mid-fetch (signal.aborted=true) | "${text.substring(0, 50)}"`);
+        return;
+      }
 
       if (!firstBuffer) {
         // First chunk failed — fall back entirely
+        console.log(`[TTS-TRACE] firstBuffer=null → fallback activated | "${text.substring(0, 50)}"`);
         this.fallbackActive = true;
         this.onFallback();
         return this.speakFallback(text, onPlaybackStart);
@@ -258,6 +263,8 @@ export class TTSEngine {
     cached: { text: string; buffers: AudioBuffer[] },
     onPlaybackStart?: (totalDurationSec: number) => void,
   ): Promise<void> {
+    console.log(`[TTS-TRACE] playCachedBuffers | buffers=${cached.buffers.length} | "${cached.text.substring(0, 50)}"`);
+
     const ctx = await this.ensureAudioContext();
     if (ctx.state === "suspended") {
       console.warn("[TTS] AudioContext suspended during cached playback, falling back to SpeechSynthesis");
