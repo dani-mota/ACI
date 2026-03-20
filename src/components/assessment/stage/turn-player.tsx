@@ -33,7 +33,18 @@ interface TurnPlayerProps {
   ttsEngine?: TTSEngine | null;
   /** Assessment token for TTS API calls. Required when textOnly=false. */
   token?: string;
+  /** Called after SCENARIO_SETUP delivery completes (Beat 0 auto-advance). */
+  onAutoAdvance?: () => void;
+  /**
+   * Monotonically increasing counter. When it increments above 0, the current
+   * delivery is cancelled immediately (cancelledRef=true). Used by the parent
+   * to cancel mid-sentence TTS when the mic activates, without TurnPlayer
+   * needing to know about mic state.
+   */
+  cancelToken?: number;
 }
+
+const __DEBUG = process.env.NODE_ENV !== "production";
 
 /** Word reveal stagger in ms (text-only mode). */
 const WORD_STAGGER_MS = 55;
@@ -53,6 +64,8 @@ export function TurnPlayer({
   textOnly = true,
   ttsEngine,
   token,
+  onAutoAdvance,
+  cancelToken = 0,
 }: TurnPlayerProps) {
   const [deliveryComplete, setDeliveryComplete] = useState(false);
   const [showElement, setShowElement] = useState(false);
@@ -63,6 +76,12 @@ export function TurnPlayer({
   const reducedMotion = useRef(false);
   const cancelledRef = useRef(false);
   const sequenceIdRef = useRef(0);
+  const autoAdvanceRef = useRef(false);
+  const onAutoAdvanceRef = useRef(onAutoAdvance);
+  onAutoAdvanceRef.current = onAutoAdvance;
+  // Fix: PRO-38 — use ref for onDeliveryComplete to avoid stale closure capture
+  const onDeliveryCompleteRef = useRef(onDeliveryComplete);
+  onDeliveryCompleteRef.current = onDeliveryComplete;
 
   const store = useChatAssessmentStore;
 
@@ -90,6 +109,7 @@ export function TurnPlayer({
     turnIdRef.current = turnId;
     sequenceIdRef.current++;
     cancelledRef.current = false;
+    autoAdvanceRef.current = !!(turn?.signal.format === "SCENARIO_SETUP" && turn?.input.type === "none");
 
     // Reset state for new Turn
     setDeliveryComplete(false);
@@ -98,16 +118,17 @@ export function TurnPlayer({
 
     const sentences = turn.delivery.sentences;
 
-    console.log(`[TP-TRACE] Delivery mode: ${(textOnly || !ttsEngine || !token) ? 'text' : 'voice'}`);
-    console.log(`[TP-TRACE] ttsEngine available: ${!!ttsEngine}`);
-    console.log(`[TP-TRACE] token available: ${!!token}`);
-    console.log(`[TP-TRACE] textOnly flag: ${textOnly}`);
-    console.log(`[TP-TRACE] sentences total: ${sentences.length} | seqId=${sequenceIdRef.current}`);
+    __DEBUG && console.log(`[TP-TRACE] Delivery mode: ${(textOnly || !ttsEngine || !token) ? 'text' : 'voice'}`);
+    __DEBUG && console.log(`[TP-TRACE] ttsEngine available: ${!!ttsEngine}`);
+    __DEBUG && console.log(`[TP-TRACE] token available: ${!!token}`);
+    __DEBUG && console.log(`[TP-TRACE] textOnly flag: ${textOnly}`);
+    __DEBUG && console.log(`[TP-TRACE] sentences total: ${sentences.length} | seqId=${sequenceIdRef.current}`);
 
     // Empty delivery — immediately complete
     if (sentences.length === 0) {
       setDeliveryComplete(true);
-      onDeliveryComplete();
+      onDeliveryCompleteRef.current(); // Fix: PRO-38
+      if (autoAdvanceRef.current) onAutoAdvanceRef.current?.();
       return;
     }
 
@@ -131,6 +152,17 @@ export function TurnPlayer({
     return () => clearTimeout(timer);
   }, [deliveryComplete, turn]);
 
+  // Cancel delivery when cancelToken increments (e.g., mic activates mid-sentence).
+  // Sets cancelledRef so the delivery loop bails at the next sentence boundary.
+  // Skip initial mount (cancelToken=0) to avoid cancelling on first render.
+  // Skip narration-only turns (autoAdvanceRef=true) — Beat 0 must play to completion;
+  // the mic button is visible but should not interrupt a non-interactive delivery.
+  useEffect(() => {
+    if (cancelToken === 0) return;
+    if (autoAdvanceRef.current) return;
+    cancelledRef.current = true;
+  }, [cancelToken]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -145,21 +177,25 @@ export function TurnPlayer({
   // ──────────────────────────────────────────────
 
   const playTextDelivery = useCallback((sentences: string[]) => {
-    console.log(`[TP-TRACE] playTextDelivery START | sentences=${sentences.length} | seqId=${sequenceIdRef.current}`);
+    __DEBUG && console.log(`[TP-TRACE] playTextDelivery START | sentences=${sentences.length} | seqId=${sequenceIdRef.current}`);
     let sentenceIdx = 0;
 
     const playNextSentence = () => {
       if (cancelledRef.current || sentenceIdx >= sentences.length) {
         store.getState().setSubtitleRevealedWords(9999);
         store.getState().setReferenceRevealCount(-1);
-        setDeliveryComplete(true);
-        onDeliveryComplete();
+        if (!cancelledRef.current) {
+          store.getState().applyPendingReferenceUpdate();
+          setDeliveryComplete(true);
+          onDeliveryCompleteRef.current(); // Fix: PRO-38
+          if (autoAdvanceRef.current) onAutoAdvanceRef.current?.();
+        }
         return;
       }
 
       const sentence = sentences[sentenceIdx];
       const words = sentence.split(/\s+/);
-      console.log(`[TP-TRACE] Sentence ${sentenceIdx}/${sentences.length} START | seqId=${sequenceIdRef.current} | "${sentence.substring(0, 50)}"`);
+      __DEBUG && console.log(`[TP-TRACE] Sentence ${sentenceIdx}/${sentences.length} START | seqId=${sequenceIdRef.current} | "${sentence.substring(0, 50)}"`);
 
       store.getState().setSubtitleText(sentence);
       store.getState().setCurrentSentenceIndex(sentenceIdx);
@@ -201,7 +237,7 @@ export function TurnPlayer({
     };
 
     playNextSentence();
-  }, [onDeliveryComplete, store]);
+  }, [store]); // Fix: PRO-38 — removed onDeliveryComplete dep, uses ref instead
 
   // ──────────────────────────────────────────────
   // Voice delivery (Stage 4)
@@ -209,17 +245,17 @@ export function TurnPlayer({
 
   const playVoiceDelivery = useCallback(async (sentences: string[]) => {
     if (!ttsEngine || !token) {
-      console.log(`[TP] 📝 Text delivery START (no ttsEngine or token)`);
-      console.log(`[TP-TRACE] Delivery mode: text`);
+      __DEBUG && console.log(`[TP] Text delivery START (no ttsEngine or token)`); // Fix: PRO-75
+      __DEBUG && console.log(`[TP-TRACE] Delivery mode: text`);
       playTextDelivery(sentences);
       return;
     }
 
-    console.log(`[TP-TRACE] Delivery mode: voice`);
-    console.log(`[TP-TRACE] ttsEngine available: ${!!ttsEngine}`);
-    console.log(`[TP-TRACE] token available: ${!!token}`);
+    __DEBUG && console.log(`[TP-TRACE] Delivery mode: voice`);
+    __DEBUG && console.log(`[TP-TRACE] ttsEngine available: ${!!ttsEngine}`);
+    __DEBUG && console.log(`[TP-TRACE] token available: ${!!token}`);
     const mySequenceId = sequenceIdRef.current;
-    console.log(`[TP] ▶ Voice delivery START | seqId=${mySequenceId} | sentences=${sentences.length} | time=${Date.now()}`);
+    __DEBUG && console.log(`[TP] Voice delivery START | seqId=${mySequenceId} | sentences=${sentences.length} | time=${Date.now()}`); // Fix: PRO-75
 
     // Stop any existing playback
     ttsEngine.stop();
@@ -228,15 +264,19 @@ export function TurnPlayer({
     for (let i = 0; i < sentences.length; i++) {
       // Check cancellation
       if (cancelledRef.current || sequenceIdRef.current !== mySequenceId) {
-        console.log(`[TP] ⛔ Delivery CANCELLED | mySeq=${mySequenceId} | currentSeq=${sequenceIdRef.current} | cancelled=${cancelledRef.current} | at sentence ${i}/${sentences.length} | time=${Date.now()}`);
-        console.log(`[TP-TRACE] CANCELLED at sentence ${i} | mySeq=${mySequenceId} current=${sequenceIdRef.current}`);
+        __DEBUG && console.log(`[TP] Delivery CANCELLED | mySeq=${mySequenceId} | currentSeq=${sequenceIdRef.current} | cancelled=${cancelledRef.current} | at sentence ${i}/${sentences.length} | time=${Date.now()}`); // Fix: PRO-75
+        __DEBUG && console.log(`[TP-TRACE] CANCELLED at sentence ${i} | mySeq=${mySequenceId} current=${sequenceIdRef.current}`);
+        if (wordTimerRef.current) clearInterval(wordTimerRef.current);
+        store.getState().setSubtitleRevealedWords(9999);
+        store.getState().setReferenceRevealCount(-1);
+        store.getState().setTTSPlaying(false);
         return;
       }
 
       const sentence = sentences[i];
       const words = sentence.split(/\s+/);
-      console.log(`[TP] 📢 Sentence ${i}/${sentences.length} START | seqId=${mySequenceId} | words=${words.length} | text="${sentence.substring(0, 60)}..." | time=${Date.now()}`);
-      console.log(`[TP-TRACE] Sentence ${i}/${sentences.length} START | seqId=${mySequenceId} | "${sentence.substring(0, 50)}"`);
+      __DEBUG && console.log(`[TP] Sentence ${i}/${sentences.length} START | seqId=${mySequenceId} | words=${words.length} | text="${sentence.substring(0, 60)}..." | time=${Date.now()}`); // Fix: PRO-75
+      __DEBUG && console.log(`[TP-TRACE] Sentence ${i}/${sentences.length} START | seqId=${mySequenceId} | "${sentence.substring(0, 50)}"`);
 
       // Set subtitle for this sentence
       store.getState().setSubtitleText(sentence);
@@ -252,7 +292,7 @@ export function TurnPlayer({
 
       // Prefetch next sentence while current plays
       if (i + 1 < sentences.length) {
-        console.log(`[TP] 📦 Prefetch sentence ${i + 1} | time=${Date.now()}`);
+        __DEBUG && console.log(`[TP] Prefetch sentence ${i + 1} | time=${Date.now()}`); // Fix: PRO-75
         ttsEngine.prefetch(sentences[i + 1], token).catch(() => {});
       }
 
@@ -261,7 +301,7 @@ export function TurnPlayer({
       try {
         // Play this sentence with word reveal sync
         await ttsEngine.speak(sentence, token, (totalDurationSec) => {
-          console.log(`[TP] 🔊 onPlaybackStart | sentence ${i} | duration=${totalDurationSec}s | time=${Date.now()}`);
+          __DEBUG && console.log(`[TP] onPlaybackStart | sentence ${i} | duration=${totalDurationSec}s | time=${Date.now()}`); // Fix: PRO-75
           // onPlaybackStart: sync word reveal to audio duration
           if (cancelledRef.current || sequenceIdRef.current !== mySequenceId) return;
 
@@ -276,12 +316,12 @@ export function TurnPlayer({
             }
           }, msPerWord);
         }, true); // preSplit=true — sentences already split
-        console.log(`[TP] ✅ Sentence ${i} COMPLETE | seqId=${mySequenceId} | duration=${Date.now() - startTime}ms | time=${Date.now()}`);
-        console.log(`[TP-TRACE] Sentence ${i} DONE | ${Date.now() - startTime}ms`);
+        __DEBUG && console.log(`[TP] Sentence ${i} COMPLETE | seqId=${mySequenceId} | duration=${Date.now() - startTime}ms | time=${Date.now()}`); // Fix: PRO-75
+        __DEBUG && console.log(`[TP-TRACE] Sentence ${i} DONE | ${Date.now() - startTime}ms`);
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
-        console.log(`[TP] ❌ Sentence ${i} FAILED | seqId=${mySequenceId} | error=${errMsg} | duration=${Date.now() - startTime}ms | time=${Date.now()}`);
-        console.log(`[TP-TRACE] Sentence ${i} FAILED | ${errMsg}`);
+        __DEBUG && console.log(`[TP] Sentence ${i} FAILED | seqId=${mySequenceId} | error=${errMsg} | duration=${Date.now() - startTime}ms | time=${Date.now()}`); // Fix: PRO-75
+        __DEBUG && console.log(`[TP-TRACE] Sentence ${i} FAILED | ${errMsg}`);
         // Per-sentence failure: text fallback for this sentence, next tries audio
         store.getState().setSubtitleRevealedWords(words.length);
       }
@@ -295,7 +335,7 @@ export function TurnPlayer({
         const elapsed = Date.now() - startTime;
         const remaining = MIN_SENTENCE_MS_VOICE - elapsed;
         if (remaining > 0) {
-          console.log(`[TP] ⏸ Padding sentence ${i} by ${remaining}ms to reach MIN_SENTENCE_MS_VOICE | time=${Date.now()}`);
+          __DEBUG && console.log(`[TP] Padding sentence ${i} by ${remaining}ms to reach MIN_SENTENCE_MS_VOICE | time=${Date.now()}`); // Fix: PRO-75
           await new Promise((r) => setTimeout(r, remaining));
         }
         await new Promise((r) => setTimeout(r, INTER_SENTENCE_PAUSE_MS));
@@ -304,19 +344,25 @@ export function TurnPlayer({
 
     // All sentences delivered
     if (cancelledRef.current || sequenceIdRef.current !== mySequenceId) {
-      console.log(`[TP] ⛔ Post-delivery CANCELLED | mySeq=${mySequenceId} | currentSeq=${sequenceIdRef.current} | time=${Date.now()}`);
+      __DEBUG && console.log(`[TP] Post-delivery CANCELLED | mySeq=${mySequenceId} | currentSeq=${sequenceIdRef.current} | time=${Date.now()}`); // Fix: PRO-75
+      if (wordTimerRef.current) clearInterval(wordTimerRef.current);
+      store.getState().setSubtitleRevealedWords(9999);
+      store.getState().setReferenceRevealCount(-1);
+      store.getState().setTTSPlaying(false);
       return;
     }
 
-    console.log(`[TP] ⏹ Voice delivery END | seqId=${mySequenceId} | completed all ${sentences.length} sentences | time=${Date.now()}`);
+    __DEBUG && console.log(`[TP] Voice delivery END | seqId=${mySequenceId} | completed all ${sentences.length} sentences | time=${Date.now()}`); // Fix: PRO-75
     store.getState().setSubtitleRevealedWords(9999);
     store.getState().setReferenceRevealCount(-1);
     store.getState().setOrbMode("idle");
     store.getState().setAudioAmplitude(0);
     store.getState().setTTSPlaying(false);
+    store.getState().applyPendingReferenceUpdate();
     setDeliveryComplete(true);
-    onDeliveryComplete();
-  }, [ttsEngine, token, playTextDelivery, onDeliveryComplete, store]);
+    onDeliveryCompleteRef.current(); // Fix: PRO-38
+    if (autoAdvanceRef.current) onAutoAdvanceRef.current?.();
+  }, [ttsEngine, token, playTextDelivery, store]); // Fix: PRO-38 — removed onDeliveryComplete dep, uses ref instead
 
   // Headless — renders nothing. Drives store state for existing UI components.
   return null;

@@ -501,8 +501,8 @@ describe("Group 7: Targeted Fix Verification", () => {
     const routePath = path.join(PROJECT_ROOT, "src/app/api/assess/[token]/chat/route.ts");
     const source = fs.readFileSync(routePath, "utf-8");
 
-    // normalizeInput is called (not just imported)
-    expect(source).toContain("normalizeInput(rawLastMessage)");
+    // normalizeInput is called with allowSentinels guard (PRO-8 fix)
+    expect(source).toContain("normalizeInput(rawLastMessage");
     expect(source).toContain("normalized.isSentinel");
     expect(source).toContain("normalized.inputTruncated");
     expect(source).toContain("originalInputLength");

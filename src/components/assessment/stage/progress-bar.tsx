@@ -2,10 +2,11 @@
 
 import type { OrchestratorPhase } from "@/lib/assessment/transitions";
 
+// Fix: PRO-59 — use "Part One/Two/Three" to match act-label.tsx naming
 const ACTS = [
-  { key: "ACT_1", label: "Act 1" },
-  { key: "ACT_2", label: "Act 2" },
-  { key: "ACT_3", label: "Act 3" },
+  { key: "ACT_1", label: "Part One" },
+  { key: "ACT_2", label: "Part Two" },
+  { key: "ACT_3", label: "Part Three" },
 ] as const;
 
 const ACT_ORDER = ["ACT_1", "ACT_2", "ACT_3"];
@@ -68,7 +69,7 @@ export function StageProgressBar({
             {/* Segment */}
             <div className="flex flex-col gap-1.5 flex-1">
               <span
-                className="text-[9px] tracking-[1.8px] uppercase stage-animate"
+                className="text-[11px] tracking-[1.8px] uppercase stage-animate" /* Fix: PRO-53 */
                 style={{
                   fontFamily: "var(--font-mono)",
                   color: isActive

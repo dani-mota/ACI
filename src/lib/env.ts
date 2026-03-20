@@ -37,7 +37,8 @@ const serverSchema = z.object({
   SMTP_PASS: z.string().optional(),
 
   // ── Cron / webhooks ──────────────────────────────────
-  CRON_SECRET: z.string().optional(),
+  // Fix: PRO-65 — CRON_SECRET must be required; optional allows "Bearer undefined" bypass
+  CRON_SECRET: z.string().min(32, "CRON_SECRET must be at least 32 characters"),
   SCORING_FAILURE_WEBHOOK_URL: z.string().url().optional(),
 
   // ── Admin / monitoring ────────────────────────────────

@@ -70,7 +70,7 @@ export function ReferenceSplitLayout({
           <span
             style={{
               fontFamily: "var(--font-mono)",
-              fontSize: "9px",
+              fontSize: "11px", // Fix: PRO-53
               fontWeight: 600,
               color: "rgba(96,165,250,0.6)",
               textTransform: "uppercase",

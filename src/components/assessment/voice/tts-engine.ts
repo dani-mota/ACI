@@ -9,6 +9,8 @@
  * - Fallback to browser SpeechSynthesis when ElevenLabs is unavailable
  */
 
+const __DEBUG = process.env.NODE_ENV !== "production";
+
 type AmplitudeCallback = (amplitude: number) => void;
 type StateCallback = (playing: boolean) => void;
 type FallbackCallback = () => void;
@@ -100,8 +102,8 @@ export class TTSEngine {
    *   word reveal timing with actual audio length.
    */
   async speak(text: string, token: string, onPlaybackStart?: (totalDurationSec: number) => void, preSplit = false): Promise<void> {
-    console.log(`[TTS] speak() called | text="${text.substring(0, 50)}..." | fallback=${this.fallbackActive} | ctx=${this.audioContext?.state} | cached=${!!this.audioCache.get(text)} | time=${Date.now()}`);
-    console.log(`[TTS-TRACE] speak() | fallback=${this.fallbackActive} | audioCtx=${this.audioContext?.state}`);
+    __DEBUG && console.log(`[TTS] speak() called | text="${text.substring(0, 50)}..." | fallback=${this.fallbackActive} | ctx=${this.audioContext?.state} | cached=${!!this.audioCache.get(text)} | time=${Date.now()}`); // Fix: PRO-75
+    __DEBUG && console.log(`[TTS-TRACE] speak() | fallback=${this.fallbackActive} | audioCtx=${this.audioContext?.state}`);
     this.stop();
 
     // P-8: Try to recover from fallback on each speak() call (user gesture may have occurred)
@@ -137,7 +139,7 @@ export class TTSEngine {
       const ctx = await this.ensureAudioContext();
 
       if (ctx.state === "suspended") {
-        console.log(`[TTS-TRACE] AudioContext suspended → fallback activated | "${text.substring(0, 50)}"`);
+        __DEBUG && console.log(`[TTS-TRACE] AudioContext suspended → fallback activated | "${text.substring(0, 50)}"`);
         this.fallbackActive = true;
         this.onFallback();
         return this.speakFallback(text, onPlaybackStart);
@@ -150,13 +152,13 @@ export class TTSEngine {
 
       const firstBuffer = await this.fetchAndDecodeChunk(chunks[0], token, ctx, signal);
       if (signal.aborted) {
-        console.log(`[TTS-TRACE] speak() ABORTED mid-fetch (signal.aborted=true) | "${text.substring(0, 50)}"`);
+        __DEBUG && console.log(`[TTS-TRACE] speak() ABORTED mid-fetch (signal.aborted=true) | "${text.substring(0, 50)}"`);
         return;
       }
 
       if (!firstBuffer) {
         // First chunk failed — fall back entirely
-        console.log(`[TTS-TRACE] firstBuffer=null → fallback activated | "${text.substring(0, 50)}"`);
+        __DEBUG && console.log(`[TTS-TRACE] firstBuffer=null → fallback activated | "${text.substring(0, 50)}"`);
         this.fallbackActive = true;
         this.onFallback();
         return this.speakFallback(text, onPlaybackStart);
@@ -207,7 +209,7 @@ export class TTSEngine {
       if ((err as Error).name !== "AbortError") {
         const errMsg = (err as Error).message;
         console.error("[TTS] Error:", err);
-        console.log(`[TTS-TRACE] ERROR: ${errMsg}`);
+        __DEBUG && console.log(`[TTS-TRACE] ERROR: ${errMsg}`);
         this.fallbackActive = true;
         this.onFallback();
         return this.speakFallback(text, onPlaybackStart);
@@ -230,14 +232,14 @@ export class TTSEngine {
         signal,
       });
 
-      console.log(`[TTS-TRACE] fetch response: ${res.status} | size=${res.headers.get('content-length')}`);
+      __DEBUG && console.log(`[TTS-TRACE] fetch response: ${res.status} | size=${res.headers.get('content-length')}`);
       if (!res.ok) {
         try {
           const err = await res.json();
           if (err.fallback) return null;
         } catch { /* ignore */ }
         console.error(`[TTS] Chunk fetch failed: ${res.status}`);
-        console.log(`[TTS-TRACE] ERROR: fetch failed ${res.status}`);
+        __DEBUG && console.log(`[TTS-TRACE] ERROR: fetch failed ${res.status}`);
         return null;
       }
 
@@ -263,7 +265,7 @@ export class TTSEngine {
     cached: { text: string; buffers: AudioBuffer[] },
     onPlaybackStart?: (totalDurationSec: number) => void,
   ): Promise<void> {
-    console.log(`[TTS-TRACE] playCachedBuffers | buffers=${cached.buffers.length} | "${cached.text.substring(0, 50)}"`);
+    __DEBUG && console.log(`[TTS-TRACE] playCachedBuffers | buffers=${cached.buffers.length} | "${cached.text.substring(0, 50)}"`);
 
     const ctx = await this.ensureAudioContext();
     if (ctx.state === "suspended") {
@@ -378,7 +380,7 @@ export class TTSEngine {
 
   /** Browser SpeechSynthesis fallback */
   private speakFallback(text: string, onPlaybackStart?: (totalDurationSec: number) => void): Promise<void> {
-    console.log(`[TTS-TRACE] SpeechSynthesis playing: "${text.substring(0, 50)}"`);
+    __DEBUG && console.log(`[TTS-TRACE] SpeechSynthesis playing: "${text.substring(0, 50)}"`);
     return new Promise((resolve) => {
       if (typeof window === "undefined" || !("speechSynthesis" in window)) {
         resolve();
@@ -452,7 +454,7 @@ export class TTSEngine {
 
   /** Stop all playback immediately */
   stop() {
-    console.log(`[TTS] 🛑 stop() called | isPlaying=${this.isPlaying} | queueLen=${this.playQueue.length} | time=${Date.now()}`);
+    __DEBUG && console.log(`[TTS] stop() called | isPlaying=${this.isPlaying} | queueLen=${this.playQueue.length} | time=${Date.now()}`); // Fix: PRO-75
     this.abortController?.abort();
     this.abortController = null;
 

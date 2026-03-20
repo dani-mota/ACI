@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getSession } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { generateContentLibrary } from "@/lib/assessment/content-generation";
 
 const ALLOWED_ROLES = ["TA_LEADER", "ADMIN"];
 
@@ -130,6 +131,11 @@ export async function POST(request: NextRequest) {
 
       return newRole;
     });
+
+    // Auto-trigger content generation for custom roles with JD context
+    if (!role.isGeneric && body.jdContext) {
+      after(() => generateContentLibrary(role.id).catch(console.error));
+    }
 
     return NextResponse.json({ role }, { status: 201 });
   } catch (error) {

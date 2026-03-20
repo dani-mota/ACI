@@ -107,7 +107,7 @@ export function Phase0BreakScreen({
       {/* Continue button */}
       <button
         onClick={handleContinue}
-        className="group flex items-center gap-2 px-5 py-2.5"
+        className="group flex items-center gap-2 px-5 py-2.5 hover:text-[color-mix(in_srgb,var(--s-t4,#b8c4d6)_80%,transparent)] hover:border-[rgba(255,255,255,0.15)] hover:bg-[rgba(255,255,255,0.05)] motion-safe:transition-all"
         style={{
           fontFamily: "var(--font-display)",
           fontSize: "13px",
@@ -122,16 +122,6 @@ export function Phase0BreakScreen({
           pointerEvents: "auto",
           opacity: entered ? 1 : 0,
           transform: entered ? "translateY(0)" : "translateY(12px)",
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.color = "color-mix(in srgb, var(--s-t4, #b8c4d6) 80%, transparent)";
-          e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.15)";
-          e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.color = "color-mix(in srgb, var(--s-t4, #b8c4d6) 50%, transparent)";
-          e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.07)";
-          e.currentTarget.style.background = "rgba(255, 255, 255, 0.03)";
         }}
       >
         Continue

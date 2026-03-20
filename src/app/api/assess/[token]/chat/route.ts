@@ -1,8 +1,9 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 import { streamText } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import prisma from "@/lib/prisma";
+import { runScoringPipeline } from "@/lib/assessment/scoring/pipeline";
 import { getRoleContext } from "@/lib/assessment/role-context";
 import { getNextAction, computeStateUpdate, computeProgress } from "@/lib/assessment/engine";
 import { AI_CONFIG, FEATURE_FLAGS } from "@/lib/assessment/config";
@@ -13,12 +14,14 @@ import { loadContentLibrary, lookupBeatContent, getReadyLibrary, selectRandomVar
 import { SCENARIOS } from "@/lib/assessment/scenarios";
 import { recordResult, initLoopState } from "@/lib/assessment/adaptive-loop";
 import { ITEM_BANK } from "@/lib/assessment/item-bank";
-import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { checkRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 import { createLogger } from "@/lib/assessment/logger";
 import { dispatch } from "@/lib/assessment/dispatcher";
+import { escapeXml } from "@/lib/assessment/prompts/prompt-assembly";
 import { normalizeInput } from "@/lib/assessment/validation/input-schema";
 import { validateCandidateMetadata, validateAgentMetadata } from "@/lib/assessment/validation/metadata-schema";
 import type { TurnBuilderContext } from "@/lib/assessment/turn-builders/context";
+import { validateAssessSession, bindAssessSession } from "@/lib/session/assess-session";
 
 // Vercel serverless: ensure enough time for streaming + onFinish DB writes
 export const maxDuration = 60;
@@ -46,7 +49,8 @@ export async function POST(
   try {
 
   // Rate limit by token
-  const rl = checkRateLimit(`chat:${token}`, RATE_LIMITS.assessmentChat);
+  // Fix: PRO-9 — use Redis-backed rate limiter
+  const rl = await checkRateLimitAsync(`chat:${token}`, RATE_LIMITS.assessmentChat, "assessmentChat");
   if (!rl.allowed) {
     return new Response(JSON.stringify({ error: "Too many requests" }), {
       status: 429,
@@ -73,6 +77,28 @@ export async function POST(
     });
   }
 
+  // PRO-57: Session binding — prevent URL sharing / proxy test-taking
+  // Session is bound on GET (first page load). POST only validates.
+  // If no binding exists yet (edge case: POST arrives before GET), allow but don't bind here.
+  if (invitation.sessionBindingId) {
+    const sessionCheck = validateAssessSession(invitation, request);
+    if (!sessionCheck.valid) {
+      return new Response(JSON.stringify({ error: "Session mismatch" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }
+  const sessionCookieHeader: string | null = null;
+
+  /** Attach the session-binding cookie to a Response (first request only). */
+  function withSessionCookie(res: Response): Response {
+    if (sessionCookieHeader) {
+      res.headers.append("Set-Cookie", sessionCookieHeader);
+    }
+    return res;
+  }
+
   // Find the assessment
   const assessment = await prisma.assessment.findFirst({
     where: { candidateId: invitation.candidateId },
@@ -92,9 +118,10 @@ export async function POST(
   const assessmentId = assessment.id;
 
   // Completion guard — reject if assessment is already complete
-  if (assessment.assessmentState?.isComplete) {
+  // Fix: PRO-33 — also check completedAt and candidate COMPLETED status
+  if (assessment.assessmentState?.isComplete || assessment.completedAt || invitation.status === "COMPLETED") {
     return new Response(JSON.stringify({ error: "Assessment already completed" }), {
-      status: 400,
+      status: 403,
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -105,6 +132,19 @@ export async function POST(
       status: 409,
       headers: { "Content-Type": "application/json" },
     });
+  }
+
+  // Fix: PRO-31 — idempotency check for message deduplication
+  const idempotencyKey = request.headers.get("X-Idempotency-Key");
+  if (idempotencyKey) {
+    const existing = await prisma.conversationMessage.findUnique({
+      where: { idempotencyKey },
+    });
+    if (existing) {
+      return new Response(JSON.stringify({ type: "deduplicated", message: "Request already processed" }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
   }
 
   const body = await request.json();
@@ -165,12 +205,29 @@ export async function POST(
 
   log.info("Assessment state loaded", { contentLibraryId: state.contentLibraryId ?? "none", hasVariants: !!state.variantSelections });
 
+  // Lazy library bind — safety net for assessments whose state was created before a library was READY.
+  // Only fires at Beat 0 (scenario start) to avoid mid-scenario content discontinuity.
+  // Runs before stateVersion capture so optimistic locking remains consistent.
+  if (!state.contentLibraryId && FEATURE_FLAGS.CONTENT_LIBRARY_ENABLED && state.currentBeat === 0) {
+    const readyLib = await getReadyLibrary(invitation.roleId);
+    if (readyLib) {
+      const vs = selectRandomVariants(readyLib.content);
+      await prisma.assessmentState.update({
+        where: { assessmentId: assessment.id },
+        data: { contentLibraryId: readyLib.id, variantSelections: vs as any },
+      });
+      state = { ...state, contentLibraryId: readyLib.id, variantSelections: vs as any };
+      log.info("Lazy library bind applied", { libraryId: readyLib.id });
+    }
+  }
+
   // Capture state version for optimistic concurrency checks
   const stateVersion = state.updatedAt;
 
   /**
-   * Optimistic concurrency helper: only update state if it hasn't been modified
-   * since we read it. Returns the count of updated rows (0 = conflict).
+   * Fix: PRO-7 — Optimistic concurrency helper: only update state if it hasn't been
+   * modified since we read it. Returns the count of updated rows (0 = conflict).
+   * Uses updatedAt as a compare-and-swap version field.
    */
   async function updateStateOptimistic(data: Record<string, unknown>): Promise<number> {
     const result = await prisma.assessmentState.updateMany({
@@ -180,7 +237,17 @@ export async function POST(
     return result.count;
   }
 
-  // Helper: get next sequence order from DB to avoid race conditions
+  /** Conflict response for concurrent request detection */
+  function conflictResponse(): Response {
+    return new Response(
+      JSON.stringify({ error: "State conflict — concurrent request detected. Please retry." }),
+      { status: 409, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  // Fix: PRO-30 — atomic sequence order with retry on unique constraint collision.
+  // Under concurrent requests, two callers may read the same MAX. The retry loop
+  // catches the P2002 unique constraint error and retries with a fresh MAX.
   async function nextSequenceOrder(): Promise<number> {
     const result = await prisma.conversationMessage.aggregate({
       where: { assessmentId },
@@ -189,57 +256,85 @@ export async function POST(
     return (result._max.sequenceOrder ?? 0) + 1;
   }
 
+  async function createMessageWithRetry(data: Parameters<typeof prisma.conversationMessage.create>[0]["data"], maxRetries = 3) {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        return await prisma.conversationMessage.create({ data });
+      } catch (err: unknown) {
+        const isPrismaUniqueViolation = err instanceof Error && "code" in err && (err as { code: string }).code === "P2002";
+        if (!isPrismaUniqueViolation || attempt === maxRetries - 1) throw err;
+        // Retry with fresh sequence order
+        const freshSeq = await nextSequenceOrder();
+        data = { ...data, sequenceOrder: freshSeq };
+      }
+    }
+    throw new Error("createMessageWithRetry exhausted retries");
+  }
+
   // ── Phase 0 triggers ──
 
   // Persist a Phase 0 scripted message (Aria segment or candidate mic-check reply)
   if (body.trigger === "phase_0_message") {
-    const { content, role } = body as { content: string; role: "AGENT" | "CANDIDATE" };
-    if (!content || !role) {
-      return new Response(JSON.stringify({ error: "Missing content or role" }), {
+    const { content } = body as { content: string };
+    if (!content) {
+      return new Response(JSON.stringify({ error: "Missing content" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
       });
     }
     const seq = await nextSequenceOrder();
-    await prisma.conversationMessage.create({
-      data: {
+    // Fix: PRO-10 — hardcode role to CANDIDATE; never trust client-submitted role
+    await createMessageWithRetry({
         assessmentId: assessment.id,
-        role,
+        role: "CANDIDATE",
         content: String(content).slice(0, 5000),
         act: "PHASE_0",
         sequenceOrder: seq,
-      },
     });
-    return new Response(JSON.stringify({ ok: true }), {
+    return withSessionCookie(new Response(JSON.stringify({ ok: true }), {
       headers: { "Content-Type": "application/json" },
-    });
+    }));
   }
 
   // Complete Phase 0 → transition to ACT_1
   if (body.trigger === "phase_0_complete") {
-    await prisma.assessmentState.update({
-      where: { assessmentId: assessment.id },
-      data: { currentAct: "ACT_1", phase0Complete: true },
-    });
-    return new Response(JSON.stringify({ ok: true }), {
+    // Fix: PRO-32 — guard against late-arriving Phase 0 completion retries
+    if (assessment.assessmentState?.phase0Complete) {
+      const resp = new Response(JSON.stringify({ status: "already_complete" }), {
+        headers: { "Content-Type": "application/json" },
+      });
+      if (sessionCookieHeader) {
+        resp.headers.set("Set-Cookie", sessionCookieHeader);
+      }
+      return resp;
+    }
+    // Fix: PRO-7 — optimistic lock on state-advance write
+    const count = await updateStateOptimistic({ currentAct: "ACT_1", phase0Complete: true });
+    if (count === 0) return conflictResponse();
+    return withSessionCookie(new Response(JSON.stringify({ ok: true }), {
       headers: { "Content-Type": "application/json" },
-    });
+    }));
   }
 
   // Extract and normalize the candidate's last message (P-9)
   const rawLastMessage = clientMessages?.filter(
     (m: { role: string }) => m.role === "user",
   ).pop()?.content as string | undefined;
-  const normalized = normalizeInput(rawLastMessage);
-  const lastUserMessage: string | undefined = normalized.isSentinel && rawLastMessage == null
+  // Fix: PRO-8 — Sentinels are only recognized from the trusted `trigger` field,
+  // not from candidate-submitted message content. This prevents sentinel injection.
+  const trustedSentinel: string | undefined = body.trigger === "sentinel" ? body.sentinel : undefined;
+  const normalized = trustedSentinel
+    ? normalizeInput(trustedSentinel, /* allowSentinels */ true)
+    : normalizeInput(rawLastMessage, /* allowSentinels */ false);
+  const lastUserMessage: string | undefined = normalized.isSentinel && rawLastMessage == null && !trustedSentinel
     ? undefined // truly no message — don't fabricate one
     : normalized.content;
 
   // Handle structured element responses (MC selection, numeric input, etc.)
   if (elementResponse) {
     const nextSeq = await nextSequenceOrder();
-    await prisma.conversationMessage.create({
-      data: {
+    // Fix: PRO-49 — capture message ID to populate ItemResponse.messageId
+    const elementMsg = await createMessageWithRetry({
         assessmentId: assessment.id,
         role: "CANDIDATE",
         content: elementResponse.value,
@@ -248,11 +343,11 @@ export async function POST(
         candidateInput: elementResponse.value,
         responseTimeMs: elementResponse.responseTimeMs,
         sequenceOrder: nextSeq,
+        idempotencyKey: idempotencyKey ?? undefined,
         metadata: {
           itemId: elementResponse.itemId,
           construct: elementResponse.construct,
         },
-      },
     });
 
     // Also persist as ItemResponse for scoring pipeline (with act field)
@@ -271,11 +366,13 @@ export async function POST(
           response: elementResponse.value,
           responseTimeMs: elementResponse.responseTimeMs ?? null,
           act: state.currentAct,
+          messageId: elementMsg?.id ?? null, // Fix: PRO-49
         },
         update: {
           response: elementResponse.value,
           responseTimeMs: elementResponse.responseTimeMs ?? null,
           act: state.currentAct,
+          messageId: elementMsg?.id ?? null, // Fix: PRO-49
         },
       });
     }
@@ -285,20 +382,19 @@ export async function POST(
   const isSentinel = normalized.isSentinel;
   if (lastUserMessage && !elementResponse && !isSentinel) {
     const nextSeq = await nextSequenceOrder();
-    await prisma.conversationMessage.create({
-      data: {
+    await createMessageWithRetry({
         assessmentId: assessment.id,
         role: "CANDIDATE",
         content: lastUserMessage,
         act: state.currentAct,
         sequenceOrder: nextSeq,
+        idempotencyKey: idempotencyKey ?? undefined,
         metadata: {
           scenarioIndex: state.currentScenario,
           beatIndex: state.currentBeat,
           ...(state.currentConstruct ? { construct: state.currentConstruct } : {}),
           ...(normalized.inputTruncated ? { inputTruncated: true, originalInputLength: normalized.originalLength } : {}),
         } as any,
-      },
     });
   }
 
@@ -323,13 +419,12 @@ export async function POST(
         ? ["CALIBRATION", "BOUNDARY_MAPPING", "PRESSURE_TEST", "DIAGNOSTIC_PROBE"].indexOf(nextPhase)
         : (state.currentPhase ?? 0);
 
-      await prisma.assessmentState.update({
-        where: { assessmentId: assessment.id },
-        data: {
-          act2Progress: { ...act2Progress, [constructId]: updatedLoop },
-          ...(phaseTransition ? { currentPhase: newPhaseNumber } : {}),
-        } as any,
-      });
+      // Fix: PRO-7 — optimistic lock on adaptive loop state advance
+      const loopCount = await updateStateOptimistic({
+        act2Progress: { ...act2Progress, [constructId]: updatedLoop },
+        ...(phaseTransition ? { currentPhase: newPhaseNumber } : {}),
+      } as Record<string, unknown>);
+      if (loopCount === 0) return conflictResponse();
 
       // Re-fetch state after update
       state = (await prisma.assessmentState.findUnique({
@@ -358,6 +453,7 @@ export async function POST(
         (preBeat.primaryConstructs as string[]) ?? [],
         preScenario.name,
         lastAriaMsg,
+        invitation.candidate.firstName ?? undefined,
       ).catch((err) => {
         log.warn("Acknowledgment generation failed", { error: String(err) });
         return "";
@@ -371,15 +467,27 @@ export async function POST(
   if (state.currentAct === "ACT_1" && lastUserMessage === "[NO_RESPONSE]") {
     // Auto-advance: apply WEAK classification directly — no Haiku call needed
     const stateUpdate = computeStateUpdate(state, { type: "AGENT_MESSAGE" } as any, "WEAK");
-    await prisma.assessmentState.update({
-      where: { assessmentId: assessment.id },
-      data: stateUpdate as any,
-    });
+    // Fix: PRO-7 — optimistic lock on beat advance
+    const weakCount = await updateStateOptimistic(stateUpdate as Record<string, unknown>);
+    if (weakCount === 0) return conflictResponse();
     state = (await prisma.assessmentState.findUnique({
       where: { assessmentId: assessment.id },
     }))!;
     log.info("[NO_RESPONSE] → WEAK classification applied, beat advanced", {
       prevBeat: String((stateUpdate as any).currentBeat ?? state.currentBeat),
+      newBeat: String(state.currentBeat),
+    });
+  } else if (state.currentAct === "ACT_1" && lastUserMessage === "[AUTO_ADVANCE]") {
+    // Beat 0 (SCENARIO_SETUP) is narration-only — no candidate response to evaluate.
+    // Advance beat with ADEQUATE so the engine moves to Beat 1 without a quality penalty.
+    const stateUpdate = computeStateUpdate(state, { type: "AGENT_MESSAGE" } as any, "ADEQUATE");
+    // Fix: PRO-7 — optimistic lock on beat advance
+    const autoCount = await updateStateOptimistic(stateUpdate as Record<string, unknown>);
+    if (autoCount === 0) return conflictResponse();
+    state = (await prisma.assessmentState.findUnique({
+      where: { assessmentId: assessment.id },
+    }))!;
+    log.info("[AUTO_ADVANCE] → ADEQUATE applied, beat advanced", {
       newBeat: String(state.currentBeat),
     });
   } else if (state.currentAct === "ACT_1" && lastUserMessage && !isSentinel) {
@@ -389,7 +497,8 @@ export async function POST(
       if (beat) {
         const conversationHistory = assessment.messages
           .slice(-10)
-          .map((m) => `${m.role}: ${m.content.slice(0, 300)}`)
+          // Fix: PRO-68 — escape message content to prevent two-turn prompt injection
+          .map((m) => `${m.role}: ${escapeXml(m.content.slice(0, 300))}`)
           .join("\n");
 
         try {
@@ -406,14 +515,14 @@ export async function POST(
           // Update state with classification + accumulate token usage
           const stateUpdate = computeStateUpdate(state, { type: "AGENT_MESSAGE" } as any, classification.classification);
           const tokenIncrement = classification.tokenUsage ?? { inputTokens: 0, outputTokens: 0 };
-          await prisma.assessmentState.update({
-            where: { assessmentId: assessment.id },
-            data: {
-              ...(stateUpdate as any),
-              realtimeTokensIn: { increment: tokenIncrement.inputTokens },
-              realtimeTokensOut: { increment: tokenIncrement.outputTokens },
-            },
+          // Fix: PRO-7 — optimistic lock on classification state advance
+          // Token counters set as absolute values since updateMany doesn't support { increment }
+          const classCount = await updateStateOptimistic({
+            ...(stateUpdate as Record<string, unknown>),
+            realtimeTokensIn: state.realtimeTokensIn + tokenIncrement.inputTokens,
+            realtimeTokensOut: state.realtimeTokensOut + tokenIncrement.outputTokens,
           });
+          if (classCount === 0) return conflictResponse();
 
           // Re-fetch state after update
           state = (await prisma.assessmentState.findUnique({
@@ -421,12 +530,27 @@ export async function POST(
           }))!;
           log.info("State after classification", { act: state.currentAct, beat: String(state.currentBeat), scenario: String(state.currentScenario), construct: state.currentConstruct ?? undefined, phase: String(state.currentPhase ?? 0) });
         } catch (classErr) {
-          log.error("Classification failed, proceeding with ADEQUATE default", {
+          log.error("Classification failed — applying ADEQUATE fallback to advance beat", {
             error: classErr instanceof Error ? classErr.message : String(classErr),
             beat: String(state.currentBeat),
             scenario: String(state.currentScenario),
           });
-          // Fall through with current state — streaming will still work with ADEQUATE default
+          // Apply ADEQUATE fallback so beat still advances despite classification failure.
+          // Wrapped in its own try/catch so a DB failure here doesn't crash the request.
+          try {
+            const fallbackUpdate = computeStateUpdate(state, { type: "AGENT_MESSAGE" } as any, "ADEQUATE");
+            // Fix: PRO-7 — optimistic lock on fallback beat advance
+            const fbCount = await updateStateOptimistic(fallbackUpdate as Record<string, unknown>);
+            if (fbCount === 0) return conflictResponse();
+            state = (await prisma.assessmentState.findUnique({
+              where: { assessmentId: assessment.id },
+            }))!;
+            log.info("ADEQUATE fallback applied, beat advanced", { newBeat: String(state.currentBeat) });
+          } catch (fallbackErr) {
+            log.error("ADEQUATE fallback DB write also failed — proceeding with stale state", {
+              error: fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr),
+            });
+          }
         }
       }
     }
@@ -474,37 +598,64 @@ export async function POST(
       ...(turn.delivery.referenceCard ? { referenceCard: turn.delivery.referenceCard } : {}),
     };
     const validatedAgentMeta = validateAgentMetadata(rawAgentMeta);
-    await prisma.conversationMessage.create({
-      data: {
+    await createMessageWithRetry({
         assessmentId: assessment.id,
         role: "AGENT",
         content: agentContent,
         act: state.currentAct,
         sequenceOrder: seq,
         metadata: (validatedAgentMeta ?? { ...rawAgentMeta, _validationFailed: true }) as any,
-      },
     });
 
-    // Update assessment state
+    // Update assessment state via action metadata.
+    // For ACT_1: this is a no-op (returns {}) — beat advancement and branchPath were already
+    // written above in the classification block, which also re-fetches state before getNextAction().
+    // For ACT_2/ACT_3: this is the PRIMARY state updater — it processes action metadata fields
+    // like advancePhase, constructComplete, parallelScenarioIndex, selfAssessment, etc.
+    // Fix: PRO-7 — optimistic lock on unified turn state advance
     const stateUpdate = computeStateUpdate(state, action);
-    if (Object.keys(stateUpdate).length > 0) {
-      await prisma.assessmentState.update({
-        where: { assessmentId: assessment.id },
-        data: {
-          ...(stateUpdate as any),
-          ...(turn.meta.isComplete ? { isComplete: true } : {}),
-        },
-      });
-    } else if (turn.meta.isComplete) {
-      await prisma.assessmentState.update({
-        where: { assessmentId: assessment.id },
-        data: { isComplete: true },
-      });
+    const unifiedData: Record<string, unknown> = {
+      ...(stateUpdate as Record<string, unknown>),
+      ...(turn.meta.isComplete ? { isComplete: true } : {}),
+    };
+    if (Object.keys(unifiedData).length > 0) {
+      const unifiedCount = await updateStateOptimistic(unifiedData);
+      if (unifiedCount === 0) return conflictResponse();
     }
 
-    return new Response(JSON.stringify(turn), {
+    // Fix: PRO-5 — Server-side atomic completion when engine signals isComplete
+    if (turn.meta.isComplete) {
+      const now = new Date();
+      const durationMinutes = Math.round(
+        (now.getTime() - assessment.startedAt.getTime()) / 60000
+      );
+      await prisma.$transaction(async (tx) => {
+        const fresh = await tx.assessment.findUnique({
+          where: { id: assessment.id },
+          select: { completedAt: true },
+        });
+        if (fresh?.completedAt) return; // Already completed — skip
+        await tx.assessment.update({
+          where: { id: assessment.id },
+          data: { completedAt: now, durationMinutes },
+        });
+        await tx.assessmentInvitation.update({
+          where: { id: invitation!.id },
+          data: { status: "COMPLETED" },
+        });
+        await tx.candidate.update({
+          where: { id: invitation!.candidateId },
+          data: { status: "SCORING" },
+        });
+      });
+      after(() => runScoringPipeline(assessment.id).catch((err) =>
+        log.error("Scoring pipeline failed (will be recovered by cron)", { error: String(err) })
+      ));
+    }
+
+    return withSessionCookie(new Response(JSON.stringify(turn), {
       headers: { "Content-Type": "application/json" },
-    });
+    }));
   }
 
   // ── @deprecated LEGACY PATH — used when FEATURE_UNIFIED_TURNS is off ──
@@ -522,19 +673,45 @@ export async function POST(
   if (action.type === "COMPLETE") {
     // Persist closing message
     const seq = await nextSequenceOrder();
-    await prisma.conversationMessage.create({
-      data: {
+    await createMessageWithRetry({
         assessmentId: assessment.id,
         role: "AGENT",
         content: action.closingMessage,
         act: state.currentAct,
         sequenceOrder: seq,
-      },
     });
     await prisma.assessmentState.update({
       where: { assessmentId: assessment.id },
       data: { isComplete: true },
     });
+
+    // Fix: PRO-5 — Server-side atomic completion (legacy path)
+    const completeNow = new Date();
+    const completeDuration = Math.round(
+      (completeNow.getTime() - assessment.startedAt.getTime()) / 60000
+    );
+    await prisma.$transaction(async (tx) => {
+      const fresh = await tx.assessment.findUnique({
+        where: { id: assessment.id },
+        select: { completedAt: true },
+      });
+      if (fresh?.completedAt) return;
+      await tx.assessment.update({
+        where: { id: assessment.id },
+        data: { completedAt: completeNow, durationMinutes: completeDuration },
+      });
+      await tx.assessmentInvitation.update({
+        where: { id: invitation!.id },
+        data: { status: "COMPLETED" },
+      });
+      await tx.candidate.update({
+        where: { id: invitation!.candidateId },
+        data: { status: "SCORING" },
+      });
+    });
+    after(() => runScoringPipeline(assessment.id).catch((err) =>
+      createLogger("chat-route").error("Scoring pipeline failed (legacy path)", { error: String(err) })
+    ));
 
     return new Response(
       JSON.stringify({
@@ -549,8 +726,7 @@ export async function POST(
   if (action.type === "INTERACTIVE_ELEMENT") {
     // Send element data as JSON (not streamed)
     const seq = await nextSequenceOrder();
-    await prisma.conversationMessage.create({
-      data: {
+    await createMessageWithRetry({
         assessmentId: assessment.id,
         role: "AGENT",
         content: action.elementData.prompt,
@@ -558,17 +734,15 @@ export async function POST(
         elementType: action.elementType,
         elementData: action.elementData as any,
         sequenceOrder: seq,
-      },
     });
 
     // S2 fix: Update assessment state for interactive element actions (e.g., Act 3 progress)
+    // Fix: PRO-7 — optimistic lock on interactive element state advance
     const elStateUpdate = computeStateUpdate(state, action);
     log.info("StateUpdate (interactive element)", { stateUpdate: elStateUpdate });
     if (Object.keys(elStateUpdate).length > 0) {
-      await prisma.assessmentState.update({
-        where: { assessmentId: assessment.id },
-        data: elStateUpdate as any,
-      });
+      const elCount = await updateStateOptimistic(elStateUpdate as Record<string, unknown>);
+      if (elCount === 0) return conflictResponse();
     }
 
     // Strip correctAnswer from client-facing element data
@@ -590,15 +764,13 @@ export async function POST(
   if (action.type === "TRANSITION") {
     // Persist transition message and update state
     const seq = await nextSequenceOrder();
-    await prisma.conversationMessage.create({
-      data: {
+    await createMessageWithRetry({
         assessmentId: assessment.id,
         role: "AGENT",
         content: action.transitionMessage,
         act: action.from.act as any,
         sequenceOrder: seq,
         metadata: { transition: true, from: action.from, to: action.to },
-      },
     });
 
     const stateUpdate = computeStateUpdate(state, action);
@@ -608,11 +780,10 @@ export async function POST(
     else if (action.from?.act === "ACT_2") actTimestamp.act2CompletedAt = new Date();
     else if (action.from?.act === "ACT_3") actTimestamp.act3CompletedAt = new Date();
 
+    // Fix: PRO-7 — optimistic lock on act transition state advance
     log.info("StateUpdate (transition)", { stateUpdate, from: action.from?.act, to: action.to?.act });
-    await prisma.assessmentState.update({
-      where: { assessmentId: assessment.id },
-      data: { ...(stateUpdate as any), ...actTimestamp },
-    });
+    const transCount = await updateStateOptimistic({ ...(stateUpdate as Record<string, unknown>), ...actTimestamp });
+    if (transCount === 0) return conflictResponse();
 
     const transitionProgress = await getProgress();
     return new Response(
@@ -653,8 +824,7 @@ export async function POST(
       if (beat0Content) {
         // DB writes outside try/catch — failures propagate to outer handler
         const seq = await nextSequenceOrder();
-        await prisma.conversationMessage.create({
-          data: {
+        await createMessageWithRetry({
             assessmentId: assessment.id,
             role: "AGENT",
             content: beat0Content.spokenText,
@@ -665,17 +835,15 @@ export async function POST(
               preGenerated: true,
               beat0: true,
             } as any,
-          },
         });
 
         if (action.metadata) {
+          // Fix: PRO-7 — optimistic lock on Beat 0 state advance
           const stateUpdate = computeStateUpdate(state, action);
           log.info("StateUpdate (Beat 0 library)", { stateUpdate });
           if (Object.keys(stateUpdate).length > 0) {
-            await prisma.assessmentState.update({
-              where: { assessmentId: assessment.id },
-              data: stateUpdate as any,
-            });
+            const b0Count = await updateStateOptimistic(stateUpdate as Record<string, unknown>);
+            if (b0Count === 0) return conflictResponse();
           }
         }
 
@@ -750,8 +918,7 @@ export async function POST(
       if (preGenContent) {
         // DB writes outside try/catch — failures propagate to outer handler
         const seq = await nextSequenceOrder();
-        await prisma.conversationMessage.create({
-          data: {
+        await createMessageWithRetry({
             assessmentId: assessment.id,
             role: "AGENT",
             content: preGenContent.spokenText,
@@ -762,17 +929,15 @@ export async function POST(
               preGenerated: true,
               classification: preGenClassification,
             } as any,
-          },
         });
 
         if (action.metadata) {
+          // Fix: PRO-7 — optimistic lock on pre-generated content state advance
           const stateUpdate = computeStateUpdate(state, action);
           log.info("StateUpdate (pre-generated content)", { stateUpdate });
           if (Object.keys(stateUpdate).length > 0) {
-            await prisma.assessmentState.update({
-              where: { assessmentId: assessment.id },
-              data: stateUpdate as any,
-            });
+            const pgCount = await updateStateOptimistic(stateUpdate as Record<string, unknown>);
+            if (pgCount === 0) return conflictResponse();
           }
         }
 
@@ -855,8 +1020,7 @@ export async function POST(
 
             // Persist the agent's message after streaming completes
             const seq = await nextSequenceOrder();
-            await prisma.conversationMessage.create({
-              data: {
+            await createMessageWithRetry({
                 assessmentId: assessment.id,
                 role: "AGENT",
                 content: cleanText,
@@ -866,18 +1030,18 @@ export async function POST(
                   ...((action.metadata as Record<string, unknown>) ?? {}),
                   ...(constructCheckMatch ? { constructValidation: constructCheckMatch[1] } : {}),
                 } as any,
-              },
             });
 
             // Update assessment state based on action metadata
+            // Fix: PRO-7 — optimistic lock on streaming onFinish state advance
             if (action.metadata) {
               const stateUpdate = computeStateUpdate(state!, action);
               log.info("StateUpdate (streaming onFinish)", { stateUpdate });
               if (Object.keys(stateUpdate).length > 0) {
-                await prisma.assessmentState.update({
-                  where: { assessmentId: assessment.id },
-                  data: stateUpdate as any,
-                });
+                const sfCount = await updateStateOptimistic(stateUpdate as Record<string, unknown>);
+                if (sfCount === 0) {
+                  log.warn("State conflict in onFinish — concurrent request won", { assessmentId: assessment.id });
+                }
               }
             }
           } catch (err) {
@@ -892,7 +1056,7 @@ export async function POST(
       const streamResponse = result.toTextStreamResponse();
       const streamHeaders = new Headers(streamResponse.headers);
       streamHeaders.set("X-ACI-Progress", JSON.stringify(streamProgress));
-      return new Response(streamResponse.body, { status: 200, headers: streamHeaders });
+      return withSessionCookie(new Response(streamResponse.body, { status: 200, headers: streamHeaders }));
     } catch (streamErr) {
       Sentry.captureException(streamErr, { extra: { requestId, act: state.currentAct, beat: state.currentBeat } });
       log.error("Streaming failed", {
@@ -947,7 +1111,8 @@ export async function GET(
 
   try {
     // Rate limit GET by token: 20/min
-    const rl = checkRateLimit(`chat-get:${token}`, { maxRequests: 20, windowMs: 60_000 });
+    // Fix: PRO-9 — use Redis-backed rate limiter
+    const rl = await checkRateLimitAsync(`chat-get:${token}`, { maxRequests: 20, windowMs: 60_000 }, "aiProbe");
     if (!rl.allowed) {
       return new Response(JSON.stringify({ error: "Too many requests" }), {
         status: 429,
@@ -964,6 +1129,24 @@ export async function GET(
         status: 401,
         headers: { "Content-Type": "application/json" },
       });
+    }
+
+    // PRO-57: Session binding validation (GET — session recovery)
+    let sessionCookieHeader: string | null = null;
+    if (invitation.sessionBindingId) {
+      const sessionCheck = validateAssessSession(invitation, request);
+      if (!sessionCheck.valid) {
+        return new Response(JSON.stringify({ error: "Session mismatch" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    // If no session bound yet, bind on GET (first visit)
+    if (!invitation.sessionBindingId) {
+      const binding = await bindAssessSession(invitation.id);
+      sessionCookieHeader = binding.setCookieHeader;
     }
 
     const assessment = await prisma.assessment.findUnique({
@@ -1009,7 +1192,7 @@ export async function GET(
       }
     }
 
-    return new Response(
+    const response = new Response(
       JSON.stringify({
         assessmentId: assessment.id,
         state: safeState,
@@ -1036,6 +1219,10 @@ export async function GET(
       }),
       { headers: { "Content-Type": "application/json" } },
     );
+    if (sessionCookieHeader) {
+      response.headers.set("Set-Cookie", sessionCookieHeader);
+    }
+    return response;
   } catch (err) {
     Sentry.captureException(err);
     log.error("GET handler failed", { error: err instanceof Error ? err.message : String(err) });

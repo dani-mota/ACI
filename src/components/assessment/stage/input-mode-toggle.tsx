@@ -14,12 +14,13 @@ export function InputModeToggle({ mode, onToggle, speechSupported = true }: Inpu
       {speechSupported && (
         <button
           onClick={() => onToggle("voice")}
+          aria-pressed={mode === "voice"} /* Fix: PRO-61 */
           className="stage-animate"
           style={{
             padding: "5px 14px",
             borderRadius: "16px",
             fontFamily: "var(--font-mono)",
-            fontSize: "9px",
+            fontSize: "11px", // Fix: PRO-53
             letterSpacing: "0.5px",
             textTransform: "uppercase",
             border:
@@ -43,12 +44,13 @@ export function InputModeToggle({ mode, onToggle, speechSupported = true }: Inpu
       )}
       <button
         onClick={() => onToggle("text")}
+        aria-pressed={mode === "text"} /* Fix: PRO-61 */
         className="stage-animate"
         style={{
           padding: "5px 14px",
           borderRadius: "16px",
           fontFamily: "var(--font-mono)",
-          fontSize: "9px",
+          fontSize: "11px", // Fix: PRO-53
           letterSpacing: "0.5px",
           textTransform: "uppercase",
           border:

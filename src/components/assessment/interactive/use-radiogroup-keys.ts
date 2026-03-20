@@ -44,6 +44,10 @@ export function useRadiogroupKeys({
       const buttons = groupRef.current.querySelectorAll<HTMLElement>('[role="radio"]');
       if (!buttons.length) return;
 
+      // Fix: PRO-15 — skip keyboard shortcuts when text input is focused
+      const tag = document.activeElement?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || (document.activeElement as HTMLElement)?.isContentEditable) return;
+
       if (e.key === "ArrowDown" || e.key === "ArrowRight") {
         e.preventDefault();
         const next = (focusedIndex + 1) % itemCount;

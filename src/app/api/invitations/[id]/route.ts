@@ -93,6 +93,10 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  // Fix: PRO-80 — block external collaborators from deleting invitations
+  if (isExternalCollaborator(session.user.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const { id } = await params;
 

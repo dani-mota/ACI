@@ -169,8 +169,18 @@ DESCRIPTION: ${scenario.description}
 DOMAIN-NEUTRAL SETTING: ${scenario.domainNeutralContent.setting}
 CHARACTERS: ${scenario.domainNeutralContent.characters.join(", ")}
 INITIAL SITUATION: ${scenario.domainNeutralContent.initialSituation}
-${roleContextStr}
+${roleContextStr}${roleContextStr ? `
 
+DOMAIN ADAPTATION REQUIRED:
+The scenario shell above is domain-neutral. You MUST adapt it fully to the candidate's role context:
+- Replace the domain-neutral setting, characters, and situation with the candidate's actual working environment
+- Use domain-appropriate equipment, systems, processes, and terminology throughout
+- Reference card sections must contain domain-authentic specs (e.g., for manufacturing: process rates, tolerances, equipment names, safety limits — NOT generic business metrics)
+- The structural demands of the scenario (which cognitive skill it measures) must stay the same; only the surface domain changes
+- "The System" section: describe the candidate's actual system or equipment with realistic specs
+- "The Problem" section: use domain-realistic failure modes, deviations, or anomalies
+- "Constraints" section: use domain-realistic constraints (regulations, material limits, production targets)
+` : ""}
 BEAT 0 — INITIAL SITUATION
 Instructions: ${beat.agentPromptTemplate}
 

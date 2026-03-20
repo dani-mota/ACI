@@ -12,7 +12,10 @@ import type { AdaptiveLoopState } from "../types";
 export async function buildDiagnosticProbe(ctx: TurnBuilderContext): Promise<AssessmentTurnResponse> {
   const { action, state } = ctx;
   const startTime = Date.now();
-  const construct = state.currentConstruct ?? "FLUID_REASONING";
+  // Read construct from action metadata first — state.currentConstruct is null when this builder
+  // handles the construct INTRO message (computeStateUpdate hasn't run yet at dispatch time).
+  const meta = ("metadata" in action ? action.metadata : undefined) as Record<string, unknown> | undefined;
+  const construct = (meta?.construct as string | undefined) ?? state.currentConstruct ?? "FLUID_REASONING";
   const act2Progress = (state.act2Progress as Record<string, AdaptiveLoopState> | null) ?? {};
   const loopState = act2Progress[construct];
 

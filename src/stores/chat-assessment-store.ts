@@ -3,7 +3,9 @@ import type { OrchestratorPhase } from "@/lib/assessment/transitions";
 import type { ScenarioReference } from "@/lib/assessment/parse-scenario-response";
 import { parseScenarioResponse, splitSentences, cleanText } from "@/lib/assessment/parse-scenario-response";
 import { mapApiError } from "@/lib/errors";
-import type { AssessmentTurnResponse } from "@/lib/types/turn";
+import type { AssessmentTurnResponse, ReferenceUpdate } from "@/lib/types/turn";
+
+const __DEBUG = process.env.NODE_ENV !== "production";
 
 // ── Types ──
 
@@ -51,6 +53,8 @@ interface ChatAssessmentState {
   referenceCard: ScenarioReference | null;
   /** How many reference card sections to reveal (progressive reveal during Beat 0). -1 = show all. */
   referenceRevealCount: number;
+  /** Pending reference update — held until TurnPlayer delivery completes, then merged into referenceCard. */
+  pendingReferenceUpdate: ReferenceUpdate | null;
   orbMode: OrbMode;
   /** @deprecated Legacy TTS trigger. TurnPlayer drives delivery via lastTurn. */
   displayEvent: number;
@@ -96,8 +100,13 @@ interface ChatAssessmentState {
   sendMessage: (content: string) => Promise<void>;
   sendElementResponse: (response: { elementType: string; value: string; itemId?: string; construct?: string; responseTimeMs?: number }) => Promise<void>;
   displayMessage: (content: string, act: string, isHistory: boolean) => void;
-  /** Handle a unified Turn response (Stage 3). Sets all display state from Turn fields. */
-  handleTurn: (turn: AssessmentTurnResponse) => void;
+  /** Handle a unified Turn response (Stage 3). Sets all display state from Turn fields.
+   * @param opts.messages — if provided, replaces messages in the same set() batch (avoids a second render)
+   * @param opts.clearActiveElement — if true, clears activeElement unless the Turn provides a new one
+   */
+  handleTurn: (turn: AssessmentTurnResponse, opts?: { messages?: ChatMessage[]; clearActiveElement?: boolean }) => void;
+  /** Apply the pending reference update — called by TurnPlayer on delivery complete. */
+  applyPendingReferenceUpdate: () => void;
   /** The last Turn received (for TurnPlayer rendering). */
   lastTurn: AssessmentTurnResponse | null;
 
@@ -157,6 +166,7 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
   currentSentenceIndex: 0,
   referenceCard: null,
   referenceRevealCount: -1,
+  pendingReferenceUpdate: null,
   orbMode: "idle",
   displayEvent: 0,
   displayIsHistory: false,
@@ -181,7 +191,15 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
   // ── Actions ──
 
   init: (token, assessmentId) => {
-    set({ token, assessmentId, error: null });
+    // Fix: PRO-23 — restore persisted input mode from sessionStorage
+    let restoredMode: InputMode | undefined;
+    if (typeof window !== "undefined") {
+      try {
+        const stored = sessionStorage.getItem("aci-inputMode");
+        if (stored === "voice" || stored === "text") restoredMode = stored;
+      } catch { /* ignore */ }
+    }
+    set({ token, assessmentId, error: null, ...(restoredMode ? { inputMode: restoredMode } : {}) });
   },
 
   loadHistory: (messages, state) => {
@@ -319,15 +337,15 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
    * Handle a unified AssessmentTurnResponse from the server.
    * Maps Turn fields → store state. Used when FEATURE_UNIFIED_TURNS is on.
    */
-  handleTurn: (turn: AssessmentTurnResponse) => {
+  handleTurn: (turn: AssessmentTurnResponse, opts?: { messages?: ChatMessage[]; clearActiveElement?: boolean }) => {
     const s = get();
     console.log(`[STORE] handleTurn() | format=${turn.signal.format} | beat=${turn.signal.beatIndex} | sentences=${turn.delivery.sentences.length} | hasRefCard=${!!turn.delivery.referenceCard} | hasElement=${!!turn.delivery.interactiveElement} | time=${Date.now()}`);
-    console.log(`[STORE-TRACE] handleTurn | format=${turn.signal.format} | sentences=${turn.delivery.sentences.length} | beat=${turn.signal.beatIndex}`);
-    console.log(`[REFCARD-TRACE] Turn has referenceCard: ${!!turn.delivery?.referenceCard}`);
-    console.log(`[REFCARD-TRACE] Turn has referenceUpdate: ${!!turn.delivery?.referenceUpdate}`);
+    __DEBUG && console.log(`[STORE-TRACE] handleTurn | format=${turn.signal.format} | sentences=${turn.delivery.sentences.length} | beat=${turn.signal.beatIndex}`);
+    __DEBUG && console.log(`[REFCARD-TRACE] Turn has referenceCard: ${!!turn.delivery?.referenceCard}`);
+    __DEBUG && console.log(`[REFCARD-TRACE] Turn has referenceUpdate: ${!!turn.delivery?.referenceUpdate}`);
     if (turn.delivery?.referenceCard) {
-      console.log(`[REFCARD-TRACE] Card sections: ${turn.delivery.referenceCard.sections?.length}`);
-      console.log(`[REFCARD-TRACE] Setting referenceRevealCount to 0`);
+      __DEBUG && console.log(`[REFCARD-TRACE] Card sections: ${turn.delivery.referenceCard.sections?.length}`);
+      __DEBUG && console.log(`[REFCARD-TRACE] Setting referenceRevealCount to 0`);
     }
 
     // Compute ALL state updates before calling set() — ONE re-render, ONE useEffect trigger.
@@ -342,7 +360,7 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
         ...(p.act2 !== undefined ? { act2: p.act2 } : {}),
         ...(p.act3 !== undefined ? { act3: p.act3 } : {}),
       };
-      console.log(`[STORE-TRACE] computed: progress act1=${p.act1}`);
+      __DEBUG && console.log(`[STORE-TRACE] computed: progress act1=${p.act1}`);
     }
 
     // Reference card — new card replaces existing
@@ -357,24 +375,19 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
         newInformation: [],
       };
       referenceRevealCount = 0; // progressive reveal
-      console.log(`[STORE-TRACE] computed: referenceCard | revealCount=0`);
+      __DEBUG && console.log(`[STORE-TRACE] computed: referenceCard | revealCount=0`);
     }
-    // Reference update — appends to the card (uses card from this turn or existing)
+    // Reference update — stored as pending until delivery completes (timing invariant).
+    // TurnPlayer calls applyPendingReferenceUpdate() on delivery complete so the card
+    // updates only after Aria has finished speaking the new information.
+    let pendingReferenceUpdate = s.pendingReferenceUpdate;
     if (turn.delivery.referenceUpdate) {
-      const base = referenceCard;
-      if (base) {
-        referenceCard = {
-          ...base,
-          newInformation: [...base.newInformation, ...(turn.delivery.referenceUpdate.newInformation || [])],
-          question: turn.delivery.referenceUpdate.question || base.question,
-        };
-        referenceRevealCount = -1;
-        console.log(`[STORE-TRACE] computed: referenceUpdate merged | revealCount=-1`);
-      }
+      pendingReferenceUpdate = turn.delivery.referenceUpdate;
+      __DEBUG && console.log(`[STORE-TRACE] computed: referenceUpdate stored as pending (will apply at delivery complete)`);
     }
 
-    // Interactive element
-    let activeElement = s.activeElement;
+    // Interactive element — if clearActiveElement, start from null (e.g. sendElementResponse)
+    let activeElement = opts?.clearActiveElement ? null : s.activeElement;
     if (turn.delivery.interactiveElement) {
       const el = turn.delivery.interactiveElement;
       activeElement = {
@@ -389,24 +402,26 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
         },
         responded: false,
       };
-      console.log(`[STORE-TRACE] computed: activeElement type=${el.elementType}`);
+      __DEBUG && console.log(`[STORE-TRACE] computed: activeElement type=${el.elementType}`);
     }
 
     const hasSentences = turn.delivery.sentences.length > 0;
 
     // SINGLE set() call — ONE React re-render — ONE TurnPlayer useEffect trigger
     set({
+      ...(opts?.messages !== undefined ? { messages: opts.messages } : {}),
       lastTurn: hasSentences ? turn : null,
       isLoading: false,
       actProgress,
       referenceCard,
       referenceRevealCount,
+      pendingReferenceUpdate,
       activeElement,
       ...(turn.meta.isComplete ? { isComplete: true } : {}),
       ...(turn.meta.transition ? { currentAct: turn.meta.transition.to } : {}),
       ...(!hasSentences ? { orbMode: "idle" } : {}),
     });
-    console.log(`[STORE-TRACE] set: single batch | lastTurn=${hasSentences} | isLoading=false | orbMode=${!hasSentences ? "idle" : "unchanged"}`);
+    __DEBUG && console.log(`[STORE-TRACE] set: single batch | lastTurn=${hasSentences} | isLoading=false | orbMode=${!hasSentences ? "idle" : "unchanged"}`);
   },
 
   sendMessage: async (content) => {
@@ -417,15 +432,16 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
       throw new Error("SEND_BLOCKED_LOADING");
     }
 
+    // Fix: PRO-40 — use crypto.randomUUID() instead of Date.now() to avoid ID collisions on rapid sends
     const userMessage: ChatMessage = {
-      id: `user-${Date.now()}`,
+      id: `user-${crypto.randomUUID()}`,
       role: "user",
       content,
       createdAt: new Date().toISOString(),
     };
 
     const assistantMessage: ChatMessage = {
-      id: `assistant-${Date.now()}`,
+      id: `assistant-${crypto.randomUUID()}`,
       role: "assistant",
       content: "",
     };
@@ -443,11 +459,23 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
         content: m.content,
       }));
 
+      // Fix: PRO-8 — Send sentinel messages via trusted `trigger` field, not as message content
+      const isSentinelMsg = /^\[.+\]$/.test(content.trim());
+
+      // Fix: PRO-31 — generate idempotency key per turn for deduplication
+      const idempotencyKey = crypto.randomUUID();
+
       const doFetch = async (attempt: number) => {
         const res = await fetch(`/api/assess/${token}/chat`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: allMessages }),
+          headers: {
+            "Content-Type": "application/json",
+            "X-Idempotency-Key": idempotencyKey,
+          },
+          body: JSON.stringify({
+            messages: allMessages,
+            ...(isSentinelMsg ? { trigger: "sentinel", sentinel: content.trim() } : {}),
+          }),
           signal: AbortSignal.timeout(30_000),
         });
 
@@ -488,12 +516,12 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
         if (data.type === "turn") {
           const agentContent = data.delivery?.sentences?.join(" ") || "";
           const msg: ChatMessage = {
-            id: `assistant-${Date.now()}`,
+            id: `assistant-${crypto.randomUUID()}`,
             role: "assistant",
             content: agentContent,
           };
-          set({ messages: [...currentMessages, msg] });
-          get().handleTurn(data as AssessmentTurnResponse);
+          // Pass messages into handleTurn so both updates land in ONE set() call — one render.
+          get().handleTurn(data as AssessmentTurnResponse, { messages: [...currentMessages, msg] });
           return;
         }
 
@@ -518,7 +546,7 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
 
         if (data.type === "transition" || data.type === "complete") {
           const transitionMsg: ChatMessage = {
-            id: `assistant-${Date.now()}`,
+            id: `assistant-${crypto.randomUUID()}`,
             role: "assistant",
             content: data.message,
           };
@@ -538,7 +566,7 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
         // Pre-generated content response (or generic JSON with message)
         if (data.message) {
           const msg: ChatMessage = {
-            id: `assistant-${Date.now()}`,
+            id: `assistant-${crypto.randomUUID()}`,
             role: "assistant",
             content: data.message,
           };
@@ -666,7 +694,7 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
     set({ isLoading: true, error: null, orbMode: "processing" });
 
     const userMsg: ChatMessage = {
-      id: `user-${Date.now()}`,
+      id: `user-${crypto.randomUUID()}`,
       role: "user",
       content: response.value,
     };
@@ -722,12 +750,12 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
         if (data.type === "turn") {
           const agentContent = data.delivery?.sentences?.join(" ") || "";
           const msg: ChatMessage = {
-            id: `assistant-${Date.now()}`,
+            id: `assistant-${crypto.randomUUID()}`,
             role: "assistant",
             content: agentContent,
           };
-          set({ messages: [...currentMessages, msg], activeElement: null });
-          get().handleTurn(data as AssessmentTurnResponse);
+          // Pass messages + clearActiveElement so both updates land in ONE set() call — one render.
+          get().handleTurn(data as AssessmentTurnResponse, { messages: [...currentMessages, msg], clearActiveElement: true });
           return;
         }
 
@@ -748,7 +776,7 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
 
         if (data.type === "transition" || data.type === "complete") {
           const transitionMsg: ChatMessage = {
-            id: `assistant-${Date.now()}`,
+            id: `assistant-${crypto.randomUUID()}`,
             role: "assistant",
             content: data.message,
           };
@@ -768,7 +796,7 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
 
         if (data.message) {
           const msg: ChatMessage = {
-            id: `assistant-${Date.now()}`,
+            id: `assistant-${crypto.randomUUID()}`,
             role: "assistant",
             content: data.message,
           };
@@ -791,7 +819,7 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
         }
 
         const assistantMsg: ChatMessage = {
-          id: `assistant-${Date.now()}`,
+          id: `assistant-${crypto.randomUUID()}`,
           role: "assistant",
           content: "",
         };
@@ -841,6 +869,37 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
     }
   },
 
+  applyPendingReferenceUpdate: () => {
+    const s = get();
+    const pending = s.pendingReferenceUpdate;
+    if (!pending) return;
+    const card = s.referenceCard;
+    if (card) {
+      set({
+        referenceCard: {
+          ...card,
+          newInformation: [...card.newInformation, ...(pending.newInformation || [])],
+          question: pending.question || card.question,
+        },
+        referenceRevealCount: -1,
+        pendingReferenceUpdate: null,
+      });
+    } else {
+      // No existing card — create minimal card from update data
+      set({
+        referenceCard: {
+          context: "Situation Update",
+          sections: [],
+          newInformation: pending.newInformation || [],
+          question: pending.question || "",
+        },
+        referenceRevealCount: -1,
+        pendingReferenceUpdate: null,
+      });
+    }
+    __DEBUG && console.log(`[STORE-TRACE] applyPendingReferenceUpdate: merged | revealCount=-1`);
+  },
+
   // ── Simple setters ──
   setActiveElement: (element) => set({ activeElement: element }),
   setOrbMode: (mode) => set({ orbMode: mode }),
@@ -851,7 +910,13 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
   setSubtitleRevealedWords: (count) => set({ subtitleRevealedWords: count }),
   setTTSPlaying: (playing) => set({ isTTSPlaying: playing }),
   setTTSFallback: (fallback) => set({ ttsFallbackActive: fallback }),
-  setInputMode: (mode) => set({ inputMode: mode }),
+  setInputMode: (mode) => {
+    set({ inputMode: mode });
+    // Fix: PRO-23 — persist input mode to sessionStorage for reload recovery
+    if (typeof window !== "undefined") {
+      try { sessionStorage.setItem("aci-inputMode", mode); } catch { /* quota */ }
+    }
+  },
   setCandidateTranscript: (text) => set({ candidateTranscript: text }),
   setShowTranscript: (show) => set({ showTranscript: show }),
   setTransitioning: (transitioning) => set({ isTransitioning: transitioning }),
@@ -888,6 +953,7 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
       currentSentenceIndex: 0,
       referenceCard: null,
       referenceRevealCount: -1,
+      pendingReferenceUpdate: null,
       orbMode: "idle",
       displayEvent: 0,
       displayIsHistory: false,

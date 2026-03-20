@@ -93,7 +93,7 @@ export function TransitionScreen({
       {onContinue && (
         <button
           onClick={onContinue}
-          className="stage-animate"
+          className="stage-animate hover:bg-[rgba(37,99,235,0.08)] hover:border-[rgba(37,99,235,0.4)] motion-safe:transition-all"
           style={{
             padding: "10px 28px",
             borderRadius: "8px",
@@ -111,14 +111,6 @@ export function TransitionScreen({
             alignItems: "center",
             gap: "8px",
             animation: "cardIn 0.8s ease 0.5s both",
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.background = "rgba(37,99,235,0.08)";
-            (e.currentTarget as HTMLElement).style.borderColor = "rgba(37,99,235,0.4)";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLElement).style.background = "transparent";
-            (e.currentTarget as HTMLElement).style.borderColor = "rgba(37,99,235,0.25)";
           }}
         >
           {ctaLabel}

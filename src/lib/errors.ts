@@ -20,13 +20,18 @@ export function mapApiError(err: unknown): string {
   // Guard: silent block from concurrent-send check
   if (raw === "SEND_BLOCKED_LOADING") return "";
 
-  // HTTP status codes embedded in error messages
-  if (raw.includes("500"))
-    return "Something went wrong on our end. Please try again in a moment.";
-  if (raw.includes("502"))
-    return "The AI service is temporarily unavailable. Please try again.";
+  // Fix: PRO-44 — Map all HTTP status codes to user-friendly messages
+  if (raw.includes("401") || raw.includes("Unauthorized"))
+    return "Your session has expired. Please refresh the page.";
+  if (raw.includes("403") || raw.includes("Forbidden"))
+    return "Your session has expired. Please refresh the page.";
   if (raw.includes("429"))
     return "Too many requests. Please wait a moment and try again.";
+  if (raw.includes("500"))
+    return "Something went wrong on our end. Please try again in a moment.";
+  if (raw.includes("502") || raw.includes("503") || raw.includes("504"))
+    return "The service is temporarily unavailable. Please try again.";
 
+  // Catch-all: never expose raw technical messages to candidates
   return "Something went wrong. Please try again.";
 }

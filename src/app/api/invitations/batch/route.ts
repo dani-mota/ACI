@@ -55,51 +55,59 @@ export async function POST(request: NextRequest) {
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 7);
 
-  let results;
-  try {
-    results = await prisma.$transaction(async (tx) => {
-      const created = [];
+  // Fix: PRO-26 — process rows individually with upsert to handle duplicates gracefully
+  const genericRole = roles.find((r) => r.isGeneric);
+  const results: { candidate: any; invitation: any; role: any }[] = [];
+  const skipped: { row: number; email: string; reason: string }[] = [];
 
-      // Find the generic role for this org (used as fallback when role_slug is empty)
-      const genericRole = roles.find((r) => r.isGeneric);
-
-      for (const row of validated) {
-        const role = row.role_slug
-          ? roleMap.get(row.role_slug)
-          : genericRole;
-        if (!role) {
-          throw new Error(`Role "${row.role_slug || "generic-aptitude"}" not found for this organization. Ensure the role exists before importing candidates.`);
-        }
-
-        const candidate = await tx.candidate.create({
-          data: {
-            firstName: row.first_name,
-            lastName: row.last_name,
-            email: row.email,
-            phone: row.phone || null,
-            orgId: session.user.orgId!,
-            primaryRoleId: role.id,
-            status: "INVITED",
-          },
-        });
-
-        const invitation = await tx.assessmentInvitation.create({
-          data: {
-            candidateId: candidate.id,
-            roleId: role.id,
-            invitedBy: session.user.id,
-            expiresAt,
-          },
-        });
-
-        created.push({ candidate, invitation, role });
+  for (let i = 0; i < validated.length; i++) {
+    const row = validated[i];
+    try {
+      const role = row.role_slug
+        ? roleMap.get(row.role_slug)
+        : genericRole;
+      if (!role) {
+        skipped.push({ row: i + 1, email: row.email, reason: `Role "${row.role_slug || "generic-aptitude"}" not found` });
+        continue;
       }
 
-      return created;
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Batch import failed";
-    return NextResponse.json({ error: message }, { status: 422 });
+      const candidate = await prisma.candidate.upsert({
+        where: {
+          email_orgId: {
+            email: row.email,
+            orgId: session.user.orgId!,
+          },
+        },
+        create: {
+          firstName: row.first_name,
+          lastName: row.last_name,
+          email: row.email,
+          phone: row.phone || null,
+          orgId: session.user.orgId!,
+          primaryRoleId: role.id,
+          status: "INVITED",
+        },
+        update: {
+          firstName: row.first_name,
+          lastName: row.last_name,
+          phone: row.phone || null,
+          primaryRoleId: role.id,
+        },
+      });
+
+      const invitation = await prisma.assessmentInvitation.create({
+        data: {
+          candidateId: candidate.id,
+          roleId: role.id,
+          invitedBy: session.user.id,
+          expiresAt,
+        },
+      });
+
+      results.push({ candidate, invitation, role });
+    } catch (err) {
+      skipped.push({ row: i + 1, email: row.email, reason: err instanceof Error ? err.message : "Unknown error" });
+    }
   }
 
   // Send emails (non-blocking — don't fail the batch if some emails fail)
@@ -127,9 +135,11 @@ export async function POST(request: NextRequest) {
   const failed = emailResults.filter((r) => r.status === "rejected").length;
 
   return NextResponse.json({
-    total: results.length,
+    imported: results.length,
+    skipped: skipped.length,
     emailsSent: sent,
     emailsFailed: failed,
+    errors: skipped,
     candidates: results.map((r) => ({
       id: r.candidate.id,
       firstName: r.candidate.firstName,

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { rawScoreToPercentile } from "../norm-tables";
 import { computeAdaptiveScore } from "../adaptive-loop";
+import { validateConsistency } from "../scoring/consistency";
 import type { ItemResult } from "../types";
 
 function makeResult(correct: boolean, difficulty: number): ItemResult {
@@ -115,5 +116,49 @@ describe("scoring integration", () => {
 
     const percentile = rawScoreToPercentile("SPATIAL_VISUALIZATION", score);
     expect(percentile).toBeGreaterThanOrEqual(90);
+  });
+});
+
+// Fix: PRO-17 — consistency threshold calibration tests
+describe("consistency threshold", () => {
+  it("single-indicator variation (delta=0.20) does NOT trigger LOW consistency", () => {
+    const results = validateConsistency([
+      { construct: "QUANTITATIVE_REASONING", act1Score: 0.80, act3Score: 0.60 },
+    ]);
+    expect(results[0].agreement).toBe("HIGH");
+  });
+
+  it("multi-indicator variation (delta=0.30) DOES trigger LOW consistency", () => {
+    const results = validateConsistency([
+      { construct: "QUANTITATIVE_REASONING", act1Score: 0.80, act3Score: 0.50 },
+    ]);
+    expect(results[0].agreement).toBe("LOW");
+  });
+});
+
+// Fix: PRO-64 — regression test: composite percentile must vary with input
+describe("composite percentile regression (PRO-64)", () => {
+  it("two distinct composite scores produce two distinct percentile values", () => {
+    const pctLow = rawScoreToPercentile("COMPOSITE", 40 / 100);
+    const pctHigh = rawScoreToPercentile("COMPOSITE", 80 / 100);
+    expect(pctLow).not.toBe(pctHigh);
+    expect(pctLow).toBeGreaterThanOrEqual(1);
+    expect(pctLow).toBeLessThanOrEqual(99);
+    expect(pctHigh).toBeGreaterThanOrEqual(1);
+    expect(pctHigh).toBeLessThanOrEqual(99);
+    // Higher composite → higher percentile
+    expect(pctHigh).toBeGreaterThan(pctLow);
+  });
+
+  it("composite=40 maps to a mid-range percentile, not 94", () => {
+    const pct = rawScoreToPercentile("COMPOSITE", 40 / 100);
+    expect(pct).toBeGreaterThanOrEqual(20);
+    expect(pct).toBeLessThanOrEqual(65);
+  });
+
+  it("composite=80 maps to a high percentile, not 94", () => {
+    const pct = rawScoreToPercentile("COMPOSITE", 80 / 100);
+    expect(pct).toBeGreaterThanOrEqual(65);
+    expect(pct).toBeLessThanOrEqual(95);
   });
 });

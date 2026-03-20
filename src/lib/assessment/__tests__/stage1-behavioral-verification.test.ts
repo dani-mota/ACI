@@ -128,7 +128,7 @@ describe("Group 1: Turn Contract — Real Format Examples", () => {
         itemId: "qr-item-014",
         constructId: "QUANTITATIVE_REASONING" as const,
         difficulty: 0.65,
-        phase: "PRECISION_NARROWING" as const,
+        phase: "BOUNDARY_MAPPING" as const,
       },
       meta: {
         progress: { act1: 1.0, act2: 0.35, act3: 0 },
@@ -477,10 +477,11 @@ describe("Group 5: Input Normalization — Candidate Edge Cases", () => {
     expect(result.isSentinel).toBe(false);
   });
 
-  it("5.8: The [NO_RESPONSE] sentinel itself is recognized", () => {
+  it("5.8: The [NO_RESPONSE] sentinel from candidate input is NOT recognized as sentinel (PRO-8 fix)", () => {
     const result = normalizeInput("[NO_RESPONSE]");
-    expect(result.content).toBe("[NO_RESPONSE]");
-    expect(result.isSentinel).toBe(true);
+    // Fix: PRO-8 — candidate input with sentinel pattern is stripped to literal text
+    expect(result.content).toBe("NO_RESPONSE");
+    expect(result.isSentinel).toBe(false);
   });
 });
 

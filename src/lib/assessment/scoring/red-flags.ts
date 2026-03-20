@@ -146,7 +146,8 @@ function checkOverconfidencePattern(scores: ConstructLayeredScore[]): RedFlagChe
   );
 
   return {
-    triggered: overconfident.length > 3,
+    // Fix: PRO-81 — lower threshold from > 3 to > 1 so it's reachable with 5 ACT2 constructs
+    triggered: overconfident.length > 1,
     severity: "WARNING",
     category: "Overconfidence Pattern",
     title: "Systematic overconfidence across multiple constructs",

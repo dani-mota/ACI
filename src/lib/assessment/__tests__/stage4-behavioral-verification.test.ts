@@ -86,7 +86,8 @@ describe("Group 1: TurnPlayer Voice Mode", () => {
     expect(turnPlayerSource).toContain('setOrbMode("idle")');
     expect(turnPlayerSource).toContain("setAudioAmplitude(0)");
     expect(turnPlayerSource).toContain("setTTSPlaying(false)");
-    expect(turnPlayerSource).toContain("onDeliveryComplete()");
+    // PRO-38: onDeliveryComplete now called via ref to prevent stale closure
+    expect(turnPlayerSource).toContain("onDeliveryCompleteRef.current()");
   });
 });
 
@@ -223,16 +224,12 @@ describe("Group 5: Nudge System Without VAD", () => {
     expect(stageSource).toContain("nudgeRef.current.stop()");
   });
 
-  it("5.3: FINDING — handleListeningChange does NOT stop nudge", () => {
-    // handleListeningChange (mic toggle) stops TTS but NOT the nudge timer
+  it("5.3: handleListeningChange stops nudge and cancels delivery when mic activates", () => {
+    // Fixed: handleListeningChange now stops nudge, increments cancelToken, and stops TTS
     const listeningHandler = stageSource.match(/handleListeningChange[\s\S]*?}, \[\]/)?.[0] || "";
     expect(listeningHandler).toContain("ttsRef.current?.stop()");
-    expect(listeningHandler).not.toContain("nudgeRef");
-    // CONSEQUENCE: If candidate taps mic at second 14 and starts speaking,
-    // the nudge at second 15 will still fire. Aria says "Take your time"
-    // WHILE the candidate is actively speaking into the mic.
-    // This only resolves when the final transcript fires handleVoiceTranscript.
-    // Impact: Medium — cosmetically annoying but not assessment-breaking.
+    expect(listeningHandler).toContain("nudgeRef.current.stop()");
+    expect(listeningHandler).toContain("setDeliveryCancelToken");
   });
 
   it("5.4: Nudge guards against interrupting TTS", () => {

@@ -256,7 +256,7 @@ enum CandidateStatus {
 model Assessment {
   id              String              @id @default(cuid())
   candidateId     String              @unique
-  candidate       Candidate           @relation(fields: [candidateId], references: [id])
+  candidate       Candidate           @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   startedAt       DateTime
   completedAt     DateTime?
   durationMinutes Int?
@@ -285,7 +285,7 @@ model Assessment {
 model SubtestResult {
   id                String          @id @default(cuid())
   assessmentId      String
-  assessment        Assessment      @relation(fields: [assessmentId], references: [id])
+  assessment        Assessment      @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
   construct         Construct
   layer             Layer
   rawScore          Float
@@ -337,7 +337,7 @@ enum Construct {
 model CompositeScore {
   id                  String     @id @default(cuid())
   assessmentId        String
-  assessment          Assessment @relation(fields: [assessmentId], references: [id])
+  assessment          Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
   roleSlug            String
   indexName            String
   score               Float
@@ -356,7 +356,7 @@ model CompositeScore {
 model AIInteraction {
   id                String     @id @default(cuid())
   assessmentId      String
-  assessment        Assessment @relation(fields: [assessmentId], references: [id])
+  assessment        Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
   construct         Construct
   sequenceOrder     Int
   triggerItemId     String?
@@ -379,7 +379,7 @@ model AIInteraction {
 model Prediction {
   id                  String           @id @default(cuid())
   assessmentId        String           @unique
-  assessment          Assessment       @relation(fields: [assessmentId], references: [id])
+  assessment          Assessment       @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
   rampTimeMonths      Float
   rampTimeLabel       String
   rampTimeFactors     Json
@@ -416,7 +416,7 @@ enum RiskLevel {
 model RedFlag {
   id           String       @id @default(cuid())
   assessmentId String
-  assessment   Assessment   @relation(fields: [assessmentId], references: [id])
+  assessment   Assessment   @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
   severity     FlagSeverity
   category     String
   title        String
@@ -438,7 +438,7 @@ enum FlagSeverity {
 model Note {
   id          String    @id @default(cuid())
   candidateId String
-  candidate   Candidate @relation(fields: [candidateId], references: [id])
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   authorId    String
   author      User      @relation(fields: [authorId], references: [id])
   content     String
@@ -463,7 +463,7 @@ model ActivityLog {
 model AssessmentInvitation {
   id            String           @id @default(cuid())
   candidateId   String
-  candidate     Candidate        @relation(fields: [candidateId], references: [id])
+  candidate     Candidate        @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   roleId        String
   role          Role             @relation(fields: [roleId], references: [id])
   invitedBy     String
@@ -474,8 +474,9 @@ model AssessmentInvitation {
   linkToken     String           @unique @default(cuid())
   emailSentAt   DateTime?
   linkOpenedAt  DateTime?
-  reminderCount Int              @default(0)
-  createdAt     DateTime         @default(now())
+  reminderCount    Int              @default(0)
+  sessionBindingId String?
+  createdAt        DateTime         @default(now())
 
   @@index([candidateId])
 }
@@ -494,7 +495,7 @@ enum InvitationStatus {
 model ItemResponse {
   id             String         @id @default(cuid())
   assessmentId   String
-  assessment     Assessment     @relation(fields: [assessmentId], references: [id])
+  assessment     Assessment     @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
   itemId         String
   itemType       ItemType
   response       String
@@ -503,7 +504,9 @@ model ItemResponse {
   rawScore       Float?
   // V2 fields
   act            AssessmentAct?
+  // Fix: PRO-83 — add FK constraint for messageId
   messageId      String?          // Links to ConversationMessage if from V2 chat
+  message        ConversationMessage? @relation(fields: [messageId], references: [id])
   createdAt      DateTime       @default(now())
 
   @@unique([assessmentId, itemId])
@@ -554,7 +557,7 @@ enum InteractionElementType {
 model PostAssessmentSurvey {
   id           String     @id @default(cuid())
   assessmentId String     @unique
-  assessment   Assessment @relation(fields: [assessmentId], references: [id])
+  assessment   Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
   difficulty   Int
   fairness     Int
   faceValidity Int
@@ -569,7 +572,7 @@ model PostAssessmentSurvey {
 model OutcomeRecord {
   id          String        @id @default(cuid())
   candidateId String
-  candidate   Candidate     @relation(fields: [candidateId], references: [id])
+  candidate   Candidate     @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   metricType  OutcomeMetric
   metricValue Float
   notes       String?
@@ -620,7 +623,7 @@ model ItemCalibration {
 model ConversationMessage {
   id              String                  @id @default(cuid())
   assessmentId    String
-  assessment      Assessment              @relation(fields: [assessmentId], references: [id])
+  assessment      Assessment              @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
   role            ConvoMessageRole
   content         String
   act             AssessmentAct
@@ -630,6 +633,9 @@ model ConversationMessage {
   candidateInput  String?                 // Candidate's structured response to an interactive element
   responseTimeMs  Int?
   sequenceOrder   Int
+  idempotencyKey  String?                 @unique // Fix: PRO-31 — deduplication key for client retries
+  // Fix: PRO-83 — back-relation for ItemResponse.messageId FK
+  itemResponses   ItemResponse[]
   createdAt       DateTime                @default(now())
 
   @@index([assessmentId, act])
@@ -640,7 +646,7 @@ model ConversationMessage {
 model AssessmentState {
   id                String        @id @default(cuid())
   assessmentId      String        @unique
-  assessment        Assessment    @relation(fields: [assessmentId], references: [id])
+  assessment        Assessment    @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
   currentAct        AssessmentAct @default(ACT_1)
   currentScenario   Int           @default(0)
   currentBeat       Int           @default(0)
@@ -665,7 +671,7 @@ model AssessmentState {
 model AIEvaluationRun {
   id              String     @id @default(cuid())
   assessmentId    String
-  assessment      Assessment @relation(fields: [assessmentId], references: [id])
+  assessment      Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
   messageId       String
   construct       Construct
   runIndex        Int
@@ -679,4 +685,15 @@ model AIEvaluationRun {
   @@index([assessmentId, construct])
   @@index([messageId])
   @@unique([assessmentId, messageId, construct, runIndex])
+}
+
+// ──────────────────────────────────────────────
+// ACT 2 ITEM ANSWERS (PRO-66)
+// ──────────────────────────────────────────────
+
+model Act2ItemAnswer {
+  id            String   @id @default(cuid())
+  itemId        String   @unique
+  correctAnswer String
+  createdAt     DateTime @default(now())
 }

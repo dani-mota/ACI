@@ -12,11 +12,43 @@ import { getItemsForConstruct, getAvailableItems } from "./item-bank";
 /**
  * Adaptive Investigation Loop for Act 2.
  *
- * Four phases per construct:
- * 1. CALIBRATION: 2-3 items at mixed difficulty → rough placement
- * 2. BOUNDARY_MAPPING: 3-5 items bracketing ability → find where accuracy drops
- * 3. PRESSURE_TEST: 2-3 items at boundary from different angle → confirm boundary
- * 4. DIAGNOSTIC_PROBE: 1-3 conversational exchanges → ceiling characterization
+ * NOTE: The PRD (§11.1-11.2) describes a step-based algorithm (±0.15/±0.10 difficulty steps).
+ * The implementation below uses binary search and fixed-tier calibration, which is more
+ * psychometrically efficient. This comment documents what the code ACTUALLY does.
+ *
+ * ── Phase 1: CALIBRATION ──────────────────────────────────────────────────────
+ * Purpose: Rough ability placement before search begins.
+ * Item selection: Three fixed difficulty tiers served in order:
+ *   - Item 1: easy      [0.15 – 0.35]
+ *   - Item 2: medium    [0.40 – 0.60]
+ *   - Item 3: hard      [0.65 – 0.85]
+ *   Items are picked randomly within each band from unserved items for the construct.
+ * Advancement trigger: After 3 items. Early exit after 2 items if an easy item
+ *   (difficulty < 0.30) is missed — indicates a low ceiling, start boundary search earlier.
+ *
+ * ── Phase 2: BOUNDARY_MAPPING ─────────────────────────────────────────────────
+ * Purpose: Locate the difficulty level where accuracy transitions from correct to incorrect.
+ * Item selection: Binary search — target difficulty = (maxCorrect + minIncorrect) / 2.
+ *   Items within ±0.1 of target are candidates; sorted by proximity, first is served.
+ *   SubType diversity preferred: expand candidates beyond already-tested subTypes first.
+ * Advancement trigger: Boundary confidence ≥ 0.7 (maxCorrect < minIncorrect - 0.1
+ *   with enough data to be confident), OR ≥ 5 items served without convergence.
+ * Boundary value: stored in `state.boundary` as the midpoint difficulty.
+ *
+ * ── Phase 3: PRESSURE_TEST ────────────────────────────────────────────────────
+ * Purpose: Validate the boundary from a different angle to rule out construct-specific noise.
+ * Item selection: Items within ±0.15 of the mapped boundary, prioritising subTypes not
+ *   yet tested (tests the same difficulty from a different cognitive angle).
+ * Advancement trigger: Boundary confirmed without contradiction (all results consistent
+ *   with mapped boundary), OR 2+ results collected and contradiction is resolved.
+ *
+ * ── Phase 4: DIAGNOSTIC_PROBE ─────────────────────────────────────────────────
+ * Purpose: Conversational characterisation of the ability ceiling — qualitative context
+ *   the structured items can't capture (strategies, confidence, metacognitive awareness).
+ * Item selection: getNextItem() returns null. Engine generates AGENT_MESSAGE.
+ *   buildDiagnosticProbe() calls Haiku with a performance summary (itemCount, correctCount,
+ *   avgResponseTimeMs) to generate a construct-specific reflection prompt.
+ * Up to 3 probe exchanges per construct. After 3, engine sets constructComplete=true.
  */
 
 /**
@@ -299,8 +331,10 @@ function evaluatePressureTest(state: AdaptiveLoopState): PressureTestResult {
   const boundary = state.boundary.estimatedBoundary;
 
   // Check if pressure test results are consistent with boundary
+  // Fix: PRO-18 — narrowed from ±0.2 to ±0.1 to avoid false contradictions
+  // from items well below boundary that candidates correctly answer
   const atBoundaryResults = state.pressureResults.filter(
-    (r) => Math.abs(r.difficulty - boundary) < 0.2,
+    (r) => Math.abs(r.difficulty - boundary) < 0.1,
   );
 
   if (atBoundaryResults.length === 0) {

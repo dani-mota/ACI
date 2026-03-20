@@ -6,6 +6,8 @@
  * responded within context-dependent thresholds.
  */
 
+const __DEBUG = process.env.NODE_ENV !== "production";
+
 export type NudgeContext =
   | "phase_0"
   | "act_1"
@@ -53,23 +55,23 @@ export class NudgeManager {
     this.pausedElapsed = 0;
     const t = THRESHOLDS[context];
 
-    console.log(`[NUDGE-TRACE] Timer started | context=${context} | thresholds: ${JSON.stringify(t)}`);
+    __DEBUG && console.log(`[NUDGE-TRACE] Timer started | context=${context} | thresholds: ${JSON.stringify(t)}`);
 
     const startedAt = Date.now();
     this.timers.push(
       setTimeout(() => {
         const elapsed = Math.round((Date.now() - startedAt) / 1000);
-        console.log(`[NUDGE-TRACE] Nudge 1 fired at ${elapsed}s | context=${context}`);
+        __DEBUG && console.log(`[NUDGE-TRACE] Nudge 1 fired at ${elapsed}s | context=${context}`);
         callbacks.onNudge("first");
       }, t.first * 1000),
       setTimeout(() => {
         const elapsed = Math.round((Date.now() - startedAt) / 1000);
-        console.log(`[NUDGE-TRACE] Nudge 2 fired at ${elapsed}s | context=${context}`);
+        __DEBUG && console.log(`[NUDGE-TRACE] Nudge 2 fired at ${elapsed}s | context=${context}`);
         callbacks.onNudge("second");
       }, t.second * 1000),
       setTimeout(() => {
         const elapsed = Math.round((Date.now() - startedAt) / 1000);
-        console.log(`[NUDGE-TRACE] Auto-advance fired at ${elapsed}s | context=${context}`);
+        __DEBUG && console.log(`[NUDGE-TRACE] Auto-advance fired at ${elapsed}s | context=${context}`);
         callbacks.onNudge("final");
       }, t.final * 1000),
     );

@@ -43,5 +43,8 @@ next-env.d.ts
 # prisma generated client (regenerate with `npx prisma generate`)
 /src/generated/
 
+# act 2 item answers (secrets — use answers.json.example as template)
+answers.json
+
 # claude code
 .claude/

@@ -36,7 +36,12 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  if (!candidate || !candidate.assessment) {
+  // Fix: PRO-72 — org-scope guard to prevent cross-org results email
+  if (!candidate || candidate.orgId !== session.user.orgId) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  if (!candidate.assessment) {
     return NextResponse.json({ error: "Candidate or assessment not found" }, { status: 404 });
   }
 
@@ -81,7 +86,8 @@ export async function POST(request: NextRequest) {
   // Mark results email as sent
   await prisma.candidate.update({
     where: { id: candidateId },
-    data: { updatedAt: new Date() },
+    // Fix: PRO-20 — set resultsEmailSentAt so cron doesn't re-send
+    data: { resultsEmailSentAt: new Date() },
   });
 
   return NextResponse.json({ success: true });

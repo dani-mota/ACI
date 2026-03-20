@@ -9,8 +9,8 @@ import { computeRoleFitRankings } from "../role-fit-rankings";
 import { scoreItem, aggregateLayerA } from "./layer-a";
 import { evaluateConstruct, getTokenUsage, resetTokenUsage } from "./layer-b";
 import { characterizeCeilings, getCeilingImplications } from "./layer-c";
-import { aggregateConstructScore, getConstructWeightingType } from "./aggregation";
-import { validateConsistency, countConsistencyFailures } from "./consistency";
+import { aggregateConstructScore } from "./aggregation";
+import { validateConsistency } from "./consistency";
 import { detectRedFlags } from "./red-flags";
 import { computeAdaptiveScore } from "../adaptive-loop";
 import { ITEM_BANK } from "../item-bank";
@@ -19,6 +19,17 @@ import type { AdaptiveLoopState, LayerBScore, ConsistencyResult, ConstructLayere
 import { createLogger } from "../logger";
 
 const log = createLogger("scoring-pipeline");
+
+/**
+ * Batch-load correct answers from the database for a set of item IDs.
+ * Returns a Map of itemId → correctAnswer.
+ */
+async function loadCorrectAnswers(itemIds: string[]): Promise<Map<string, string>> {
+  const records = await prisma.act2ItemAnswer.findMany({
+    where: { itemId: { in: itemIds } },
+  });
+  return new Map(records.map((r) => [r.itemId, r.correctAnswer]));
+}
 
 /**
  * V2 Scoring Pipeline: processes a completed conversational assessment.
@@ -66,6 +77,11 @@ export async function runScoringPipeline(assessmentId: string) {
 
   // ── 2. Layer A: Deterministic scoring ──────────────────────────
   const itemBankMap = new Map(ITEM_BANK.map((i) => [i.id, i]));
+
+  // Load correct answers from DB (PRO-66: answers no longer live in source code)
+  const allItemIds = ITEM_BANK.map((i) => i.id);
+  const correctAnswerMap = await loadCorrectAnswers(allItemIds);
+
   const layerAScores = [];
 
   // Score Act 2 structured items from item responses
@@ -74,12 +90,18 @@ export async function runScoringPipeline(assessmentId: string) {
     const item = itemBankMap.get(resp.itemId);
     if (!item) continue;
 
+    const correctAnswer = correctAnswerMap.get(resp.itemId);
+    if (!correctAnswer) {
+      log.warn(`No correct answer found in DB for item ${resp.itemId} — skipping`);
+      continue;
+    }
+
     layerAScores.push(
       scoreItem({
         itemId: resp.itemId,
         construct: item.construct,
         difficulty: item.difficulty,
-        correct: resp.response === item.correctAnswer,
+        correct: resp.response === correctAnswer,
         responseTimeMs: resp.responseTimeMs ?? undefined,
         act: resp.act,
       }),
@@ -112,9 +134,10 @@ export async function runScoringPipeline(assessmentId: string) {
           const item = itemBankMap.get(itemId);
           const resp = assessment.itemResponses.find((r) => r.itemId === itemId);
           if (item && resp) {
+            const answer = correctAnswerMap.get(itemId);
             confidencePairs.push({
               confidence: confValue,
-              isCorrect: resp.response === item.correctAnswer,
+              isCorrect: answer != null && resp.response === answer,
             });
           }
         }
@@ -375,13 +398,16 @@ export async function runScoringPipeline(assessmentId: string) {
   );
 
   // ── 9. Evaluate cutlines ───────────────────────────────────────
+  // Fix: PRO-48 — When cutline is null, use distance=999 sentinel to distinguish
+  // "no cutline configured" from a borderline pass (distance≈0).
+  const noCutlineConfigured = !cutline;
   const { passed, distance } = cutline
     ? evaluateCutline(subtestResults, {
         technicalAptitude: cutline.technicalAptitude,
         behavioralIntegrity: cutline.behavioralIntegrity,
         learningVelocity: cutline.learningVelocity,
       })
-    : { passed: true, distance: 0 };
+    : { passed: true, distance: 999 };
 
   // ── 10. Red flags V2 ───────────────────────────────────────────
   const redFlags = detectRedFlags({
@@ -400,9 +426,12 @@ export async function runScoringPipeline(assessmentId: string) {
   const predictions = generateAllPredictions(subtestResults, roleContext, ceilingCharacterizations);
 
   // ── 12. Status determination ───────────────────────────────────
-  // Check for insufficient data — >2 constructs with no data forces REVIEW_REQUIRED
+  // Fix: PRO-47 — Deduplicate "Incomplete Assessment" red flag.
+  // red-flags.ts already generates this via checkIncompleteAssessment();
+  // only add the INSUFFICIENT_DATA variant if red-flags.ts didn't already flag it.
   const insufficientCount = constructScores.filter((cs) => cs.insufficientData).length;
-  if (insufficientCount > 2) {
+  const alreadyHasIncompleteFlag = redFlags.some((rf) => rf.category === "Incomplete Assessment");
+  if (insufficientCount > 2 && !alreadyHasIncompleteFlag) {
     redFlags.push({
       triggered: true,
       severity: "CRITICAL",
@@ -515,6 +544,12 @@ export async function runScoringPipeline(assessmentId: string) {
       }
     }
 
+    // Fix: PRO-62 — percentile requires real norm data; use norm table lookup
+    // instead of duplicating the composite score. "COMPOSITE" key provides a
+    // population-referenced percentile once norm tables are populated.
+    // Fix: PRO-64 — composite is 0-100 integer; rawScoreToPercentile expects 0-1 input
+    const compositePercentile = rawScoreToPercentile("COMPOSITE", composite / 100);
+
     // CompositeScore (primary role)
     await tx.compositeScore.upsert({
       where: {
@@ -525,13 +560,13 @@ export async function runScoringPipeline(assessmentId: string) {
         roleSlug: role.slug,
         indexName: `${role.name} Index`,
         score: composite,
-        percentile: Math.round(composite),
+        percentile: compositePercentile,
         passed,
         distanceFromCutline: distance,
       },
       update: {
         score: composite,
-        percentile: Math.round(composite),
+        percentile: compositePercentile,
         passed,
         distanceFromCutline: distance,
       },
@@ -548,13 +583,15 @@ export async function runScoringPipeline(assessmentId: string) {
           roleSlug: ranking.roleSlug,
           indexName: `${ranking.roleName} Index`,
           score: ranking.compositeScore,
-          percentile: ranking.compositeScore,
+          // Fix: PRO-64 — normalize 0-100 composite to 0-1 for percentile lookup
+          percentile: rawScoreToPercentile("COMPOSITE", ranking.compositeScore / 100),
           passed: ranking.passed,
           distanceFromCutline: ranking.distanceFromCutline,
         },
         update: {
           score: ranking.compositeScore,
-          percentile: ranking.compositeScore,
+          // Fix: PRO-64 — normalize 0-100 composite to 0-1 for percentile lookup
+          percentile: rawScoreToPercentile("COMPOSITE", ranking.compositeScore / 100),
           passed: ranking.passed,
           distanceFromCutline: ranking.distanceFromCutline,
         },

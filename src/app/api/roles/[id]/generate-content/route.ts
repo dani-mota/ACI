@@ -83,6 +83,16 @@ export async function GET(
 
   const { id: roleId } = await params;
 
+  // Fix: PRO-70 — org-scope check to prevent IDOR on content library metadata
+  const role = await prisma.role.findUnique({
+    where: { id: roleId },
+    select: { id: true, orgId: true },
+  });
+
+  if (!role || role.orgId !== session.user.orgId) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const libraries = await prisma.contentLibrary.findMany({
     where: { roleId },
     orderBy: { version: "desc" },

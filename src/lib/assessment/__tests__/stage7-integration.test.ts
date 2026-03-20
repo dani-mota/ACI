@@ -78,7 +78,7 @@ describe("Group 3: Unified Turn Path", () => {
 
   it("3.2: Store detects Turn response and delegates to handleTurn", () => {
     expect(storeSource).toContain('data.type === "turn"');
-    expect(storeSource).toContain("handleTurn(data as AssessmentTurnResponse)");
+    expect(storeSource).toContain("handleTurn(data as AssessmentTurnResponse,");
   });
 
   it("3.3: TurnPlayer rendered when TURN_PLAYER flag on", () => {
@@ -159,7 +159,8 @@ describe("Group 5: Data Integrity", () => {
 
   it("5.2: normalizeInput wired in chat route (P-9)", () => {
     const src = readFile("src/app/api/assess/[token]/chat/route.ts");
-    expect(src).toContain("normalizeInput(rawLastMessage)");
+    // PRO-8 fix: normalizeInput now called with allowSentinels parameter
+    expect(src).toContain("normalizeInput(rawLastMessage");
   });
 
   it("5.3: Scoring formula correct — consistency on Layer B only (B-3)", () => {

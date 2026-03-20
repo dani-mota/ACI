@@ -1,5 +1,8 @@
 "use client";
 
+// Fix: PRO-41 — derive construct count from source of truth instead of hardcoding 12
+import { ALL_CONSTRUCTS } from "@/lib/types/constructs";
+
 interface CompletionScreenProps {
   elapsedMinutes?: number;
   constructCount?: number;
@@ -13,7 +16,7 @@ interface CompletionScreenProps {
  */
 export function CompletionScreen({
   elapsedMinutes = 0,
-  constructCount = 12,
+  constructCount = ALL_CONSTRUCTS.length, // Fix: PRO-41
   reviewMessage = "Your results will be reviewed within 2 business days.",
   visible,
 }: CompletionScreenProps) {
@@ -139,6 +142,24 @@ export function CompletionScreen({
           </div>
         ))}
       </div>
+
+      {/* Fix: PRO-42 — loading feedback during redirect wait */}
+      <p
+        className="stage-animate"
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: "11px",
+          fontWeight: 400,
+          color: "var(--s-t3, #3d5068)",
+          textTransform: "uppercase",
+          letterSpacing: "1.5px",
+          textAlign: "center",
+          margin: 0,
+          animation: "cardIn 0.8s ease 0.8s both, dotPulse 2s ease-in-out 1.6s infinite",
+        }}
+      >
+        Saving your results...
+      </p>
     </div>
   );
 }

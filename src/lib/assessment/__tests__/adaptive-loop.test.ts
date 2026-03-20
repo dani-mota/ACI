@@ -163,3 +163,36 @@ describe("computeAdaptiveScore", () => {
     expect(score).toBeLessThan(1);
   });
 });
+
+// Fix: PRO-18 — contradiction window calibration tests
+describe("pressure test contradiction window", () => {
+  it("correct answer at difficulty=0.55 with boundary=0.7 does NOT trigger contradiction", () => {
+    const state = {
+      ...initLoopState("QUANTITATIVE_REASONING" as any),
+      phase: "PRESSURE_TEST" as const,
+      boundary: { estimatedBoundary: 0.7, confirmedCeiling: 0.9, confirmedFloor: 0.3, confidence: 0.5, itemResults: [], construct: "QUANTITATIVE_REASONING" as any },
+      pressureResults: [] as ItemResult[],
+      calibrationResults: [makeResult("c1", true, 0.3)],
+      boundaryResults: [makeResult("b1", false, 0.7)],
+    };
+    // Difficulty 0.55 is 0.15 away from boundary 0.7 — outside ±0.1 window
+    const result = recordResult(state, makeResult("p1", true, 0.55));
+    // Should not loop back to BOUNDARY_MAPPING (contradiction)
+    expect(result.state.phase).not.toBe("BOUNDARY_MAPPING");
+  });
+
+  it("wrong answer at difficulty=0.75 with boundary=0.7 IS within contradiction window", () => {
+    const state = {
+      ...initLoopState("QUANTITATIVE_REASONING" as any),
+      phase: "PRESSURE_TEST" as const,
+      boundary: { estimatedBoundary: 0.7, confirmedCeiling: 0.9, confirmedFloor: 0.3, confidence: 0.5, itemResults: [], construct: "QUANTITATIVE_REASONING" as any },
+      pressureResults: [makeResult("p0", true, 0.65)] as ItemResult[],
+      calibrationResults: [makeResult("c1", true, 0.3)],
+      boundaryResults: [makeResult("b1", false, 0.7)],
+    };
+    // Difficulty 0.75 is 0.05 away from boundary 0.7 — inside ±0.1 window
+    const result = recordResult(state, makeResult("p1", true, 0.75));
+    // Two results at boundary with 100% correct rate → should flag contradiction
+    expect(result.state.phase).toBe("BOUNDARY_MAPPING");
+  });
+});

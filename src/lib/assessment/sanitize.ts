@@ -75,7 +75,7 @@ export function sanitizeAriaOutput(text: string): { cleaned: string; modified: b
   apply(/-{3,}\s*(?:REFERENCE[_\s]*UPDATE?|REFERENCE)?\s*-{0,}/g, "delimiter-lines");
 
   // JSON blocks embedded in speech
-  apply(/\{[\s\S]*?"(?:role|context|sections|newInformation)"[\s\S]*?\}/g, "embedded-json");
+  apply(/\{[\s\S]*?"(?:role|context|sections|newInformation|label|items|question)"[\s\S]*?\}/g, "embedded-json");
 
   // Collapse excessive whitespace
   result = result.replace(/\n{3,}/g, "\n\n").replace(/\s{2,}/g, " ").trim();

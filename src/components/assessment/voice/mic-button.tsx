@@ -6,16 +6,20 @@ interface MicButtonProps {
   onTranscript: (text: string) => void;
   onListeningChange: (listening: boolean) => void;
   disabled?: boolean;
+  /** Why the button is disabled — drives label text so candidates understand the state. */
+  reason?: "speaking" | "loading";
 }
 
 export const MicButton = forwardRef<HTMLButtonElement, MicButtonProps>(
-  function MicButton({ onTranscript, onListeningChange, disabled }, ref) {
+  function MicButton({ onTranscript, onListeningChange, disabled, reason }, ref) {
   const [listening, setListening] = useState(false);
   const [supported, setSupported] = useState(true);
   const [interim, setInterim] = useState("");
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const silenceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const transcriptRef = useRef("");
+  // Fix: PRO-39 — track unmount to prevent submitting partial transcript
+  const unmountedRef = useRef(false);
 
   // Stable callback refs
   const onTranscriptRef = useRef(onTranscript);
@@ -33,6 +37,7 @@ export const MicButton = forwardRef<HTMLButtonElement, MicButtonProps>(
   // Initialize speech recognition
   useEffect(() => {
     if (!supported) return;
+    unmountedRef.current = false; // Fix: reset on re-mount (React StrictMode)
 
     const SpeechRecognitionAPI =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -56,12 +61,12 @@ export const MicButton = forwardRef<HTMLButtonElement, MicButtonProps>(
       transcriptRef.current = fullTranscript;
       setInterim(interimText);
 
-      // Reset silence timer — auto-stop after 2s of silence following final results
+      // Fix: PRO-58 — auto-stop after 3.5s of silence following final results
       if (silenceTimer.current) clearTimeout(silenceTimer.current);
       if (fullTranscript) {
         silenceTimer.current = setTimeout(() => {
           recognition.stop();
-        }, 2000);
+        }, 3500);
       }
     };
 
@@ -86,6 +91,12 @@ export const MicButton = forwardRef<HTMLButtonElement, MicButtonProps>(
       setInterim("");
       onListeningChangeRef.current(false);
 
+      // Fix: PRO-39 — do not submit partial transcript if component has unmounted
+      if (unmountedRef.current) {
+        transcriptRef.current = "";
+        return;
+      }
+
       // Submit accumulated transcript
       const text = transcriptRef.current.trim();
       if (text) {
@@ -97,6 +108,9 @@ export const MicButton = forwardRef<HTMLButtonElement, MicButtonProps>(
     recognitionRef.current = recognition;
 
     return () => {
+      // Fix: PRO-39 — mark unmounted before aborting so onend doesn't submit partial
+      unmountedRef.current = true;
+      transcriptRef.current = "";
       if (silenceTimer.current) clearTimeout(silenceTimer.current);
       recognition.abort();
       recognitionRef.current = null;
@@ -127,7 +141,7 @@ export const MicButton = forwardRef<HTMLButtonElement, MicButtonProps>(
         <span
           style={{
             fontFamily: "var(--font-mono)",
-            fontSize: "9px",
+            fontSize: "11px", // Fix: PRO-53
             letterSpacing: "1.2px",
             textTransform: "uppercase",
             color: "rgba(255, 255, 255, 0.25)",
@@ -159,6 +173,7 @@ export const MicButton = forwardRef<HTMLButtonElement, MicButtonProps>(
             ? "rgba(5, 150, 105, 0.08)"
             : "rgba(255, 255, 255, 0.03)",
           cursor: disabled ? "default" : "pointer",
+          opacity: disabled ? 0.35 : 1,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -202,7 +217,7 @@ export const MicButton = forwardRef<HTMLButtonElement, MicButtonProps>(
       <span
         style={{
           fontFamily: "var(--font-mono)",
-          fontSize: "9px",
+          fontSize: "11px", // Fix: PRO-53
           letterSpacing: "1.2px",
           textTransform: "uppercase",
           color: listening
@@ -218,7 +233,11 @@ export const MicButton = forwardRef<HTMLButtonElement, MicButtonProps>(
           ? interim
             ? interim.slice(0, 40) + (interim.length > 40 ? "..." : "")
             : "Listening..."
-          : "Tap to speak"}
+          : disabled && reason === "speaking"
+            ? "Aria is speaking..."
+            : disabled && reason === "loading"
+              ? "Please wait..."
+              : "Tap to speak"}
       </span>
 
       {/* Keyframe for ripple */}

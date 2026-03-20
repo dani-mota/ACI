@@ -27,7 +27,10 @@ const log = createLogger("dispatcher");
 
 /** Circuit breaker state for Haiku failures. */
 let consecutiveHaikuFailures = 0;
+let circuitBreakerTripTime: number | null = null;
 const CIRCUIT_BREAKER_THRESHOLD = 3;
+/** After tripping, auto-reset after this cooldown and retry Haiku. */
+const CIRCUIT_BREAKER_COOLDOWN_MS = 2 * 60 * 1000; // 2 minutes
 
 /**
  * Dispatch an EngineAction to the appropriate TurnBuilder, run the post-build
@@ -36,6 +39,17 @@ const CIRCUIT_BREAKER_THRESHOLD = 3;
 export async function dispatch(ctx: TurnBuilderContext): Promise<AssessmentTurnResponse> {
   const startTime = Date.now();
   const { action } = ctx;
+
+  // Short-circuit immediately if breaker is tripped — avoids burning 15s per Haiku timeout
+  // on every turn for all concurrent sessions. isCircuitBreakerTripped() auto-resets after
+  // CIRCUIT_BREAKER_COOLDOWN_MS so the next call after cooldown retries Haiku normally.
+  if (isHaikuFormat(action) && isCircuitBreakerTripped()) {
+    log.warn("Circuit breaker active — returning safe fallback immediately", {
+      failures: consecutiveHaikuFailures,
+      tripAgeMs: circuitBreakerTripTime ? Date.now() - circuitBreakerTripTime : 0,
+    });
+    return buildSafeFallback(ctx);
+  }
 
   try {
     // Select and run the appropriate TurnBuilder
@@ -70,6 +84,7 @@ export async function dispatch(ctx: TurnBuilderContext): Promise<AssessmentTurnR
     // Reset circuit breaker on success
     if (isHaikuFormat(action)) {
       consecutiveHaikuFailures = 0;
+      circuitBreakerTripTime = null;
     }
 
     const latencyMs = Date.now() - startTime;
@@ -86,8 +101,12 @@ export async function dispatch(ctx: TurnBuilderContext): Promise<AssessmentTurnR
     if (isHaikuFormat(action)) {
       consecutiveHaikuFailures++;
       if (consecutiveHaikuFailures >= CIRCUIT_BREAKER_THRESHOLD) {
-        log.error("Circuit breaker tripped — disabling hybrid generation for remainder", {
+        if (circuitBreakerTripTime === null) {
+          circuitBreakerTripTime = Date.now(); // record when breaker first tripped
+        }
+        log.error("Circuit breaker tripped — disabling hybrid generation for cooldown", {
           failures: consecutiveHaikuFailures,
+          cooldownMs: CIRCUIT_BREAKER_COOLDOWN_MS,
         });
       }
     }
@@ -126,7 +145,7 @@ async function selectAndBuild(ctx: TurnBuilderContext): Promise<AssessmentTurnRe
       // Act 1
       if (act === "ACT_1") {
         // Beat 0 = Scenario Setup
-        if (beatIndex === 0 && ctx.isSentinel) return buildScenarioSetup(ctx);
+        if (beatIndex === 0) return buildScenarioSetup(ctx);
         // Beats 1-5 = Open Probe
         return buildOpenProbe(ctx);
       }
@@ -136,13 +155,10 @@ async function selectAndBuild(ctx: TurnBuilderContext): Promise<AssessmentTurnRe
 
       // Act 3
       if (act === "ACT_3") {
-        // Check if this is a parallel scenario or reflective
         const act3Progress = state.act3Progress as Record<string, unknown> | null;
-        const selfTurns = (act3Progress?.selfAssessmentTurns as number) ?? 0;
-        const parallelComplete = (act3Progress?.parallelScenariosComplete as boolean) ?? false;
+        const parallelComplete = !!(act3Progress?.parallelScenariosComplete);
 
         if (!parallelComplete) return buildParallelScenario(ctx);
-        if (selfTurns < 3) return buildReflective(ctx);
         return buildReflective(ctx);
       }
 
@@ -160,14 +176,27 @@ function isHaikuFormat(action: EngineAction): boolean {
   return action.type === "AGENT_MESSAGE";
 }
 
-/** Whether the circuit breaker has been tripped. */
+/**
+ * Whether the circuit breaker is currently tripped.
+ * Auto-resets after CIRCUIT_BREAKER_COOLDOWN_MS so the next dispatch()
+ * call after cooldown retries Haiku instead of permanently falling back.
+ */
 export function isCircuitBreakerTripped(): boolean {
-  return consecutiveHaikuFailures >= CIRCUIT_BREAKER_THRESHOLD;
+  if (consecutiveHaikuFailures < CIRCUIT_BREAKER_THRESHOLD) return false;
+  // Auto-reset after cooldown — allows recovery without a cold start
+  if (circuitBreakerTripTime !== null && Date.now() - circuitBreakerTripTime >= CIRCUIT_BREAKER_COOLDOWN_MS) {
+    consecutiveHaikuFailures = 0;
+    circuitBreakerTripTime = null;
+    log.info("Circuit breaker auto-reset after cooldown — retrying Haiku");
+    return false;
+  }
+  return true;
 }
 
-/** Reset circuit breaker (for testing or new assessment). */
+/** Reset circuit breaker (for testing or manual recovery). */
 export function resetCircuitBreaker(): void {
   consecutiveHaikuFailures = 0;
+  circuitBreakerTripTime = null;
 }
 
 /**

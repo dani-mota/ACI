@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
-import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { checkRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 import { createLogger } from "@/lib/assessment/logger";
+import { validateAssessSession } from "@/lib/session/assess-session";
 
 const log = createLogger("tts-route");
 
@@ -23,7 +24,8 @@ export async function POST(
   const { token } = await params;
 
   // Rate limit
-  const rl = checkRateLimit(`tts:${token}`, RATE_LIMITS.tts);
+  // Fix: PRO-9 — use Redis-backed rate limiter
+  const rl = await checkRateLimitAsync(`tts:${token}`, RATE_LIMITS.tts, "tts");
   if (!rl.allowed) {
     return new Response(JSON.stringify({ error: "Too many requests" }), {
       status: 429,
@@ -42,12 +44,30 @@ export async function POST(
   if (
     !invitation ||
     invitation.status === "EXPIRED" ||
+    invitation.status === "COMPLETED" || // Fix: PRO-69
     (invitation.expiresAt && new Date() > invitation.expiresAt)
   ) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
       headers: { "Content-Type": "application/json" },
     });
+  }
+
+  // Fix: PRO-67 — session validation, skip during Phase 0 (cookie not yet established)
+  const assessment = await prisma.assessment.findFirst({
+    where: { candidateId: invitation.candidateId },
+    include: { assessmentState: { select: { phase0Complete: true } } },
+    orderBy: { startedAt: "desc" },
+  });
+
+  if (assessment?.assessmentState?.phase0Complete) {
+    const sessionCheck = validateAssessSession(invitation, request);
+    if (!sessionCheck.valid) {
+      return new Response(JSON.stringify({ error: "Session required" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
   }
 
   // Check env vars
@@ -78,6 +98,30 @@ export async function POST(
       status: 400,
       headers: { "Content-Type": "application/json" },
     });
+  }
+
+  // Fix: PRO-24 — validate text matches a recent AI turn to prevent arbitrary TTS abuse
+  // Skip during Phase 0 (scripted text, not AGENT messages)
+  if (assessment?.assessmentState?.phase0Complete) {
+    const recentAgentMessages = await prisma.conversationMessage.findMany({
+      where: { assessmentId: assessment.id, role: "AGENT" },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      select: { content: true },
+    });
+
+    const normalizedText = text.trim().toLowerCase();
+    const isValidTurn = recentAgentMessages.some(
+      (msg) => msg.content.toLowerCase().includes(normalizedText) ||
+               normalizedText.includes(msg.content.toLowerCase().slice(0, 50)),
+    );
+
+    if (!isValidTurn) {
+      return new Response(JSON.stringify({ error: "Text does not match any recent assessment turn" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
   }
 
   try {

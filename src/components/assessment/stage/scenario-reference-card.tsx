@@ -134,7 +134,7 @@ function SectionDivider({ label }: { label: string }) {
       <span
         style={{
           fontFamily: "var(--font-mono)",
-          fontSize: "8px",
+          fontSize: "11px", // Fix: PRO-53
           fontWeight: 600,
           color: "var(--s-t3, #3d5068)",
           textTransform: "uppercase",
@@ -245,7 +245,7 @@ export function ScenarioReferenceCard({ reference, revealCount }: ScenarioRefere
           <span
             style={{
               fontFamily: "var(--font-mono)",
-              fontSize: "9px",
+              fontSize: "11px", // Fix: PRO-53
               fontWeight: 700,
               color: "var(--s-t3, #3d5068)",
               textTransform: "uppercase",
@@ -257,7 +257,7 @@ export function ScenarioReferenceCard({ reference, revealCount }: ScenarioRefere
           <span
             style={{
               fontFamily: "var(--font-mono)",
-              fontSize: "8px",
+              fontSize: "11px", // Fix: PRO-53
               fontWeight: 600,
               color: "rgba(96,165,250,0.5)",
               textTransform: "uppercase",
@@ -355,7 +355,7 @@ export function ScenarioReferenceCard({ reference, revealCount }: ScenarioRefere
                     <span
                       style={{
                         fontFamily: "var(--font-mono)",
-                        fontSize: "8px",
+                        fontSize: "11px", // Fix: PRO-53
                         fontWeight: 600,
                         color: colors.label,
                         textTransform: "uppercase",

@@ -78,7 +78,7 @@ export interface Act2Item {
   prompt: string;
   elementType: InteractionElementType;
   options?: string[];
-  correctAnswer: string;
+  correctAnswer?: string;
   distractorRationale?: Record<string, string>; // option -> what it reveals
   timingExpectations: { fast: number; typical: number; slow: number }; // in ms
   imageUrl?: string; // For spatial visualization items

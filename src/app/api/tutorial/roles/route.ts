@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getDemoOrgId } from "@/lib/data";
+import { checkRateLimitAsync } from "@/lib/rate-limit"; // Fix: PRO-71
 
 function generateSlug(name: string): string {
   return name
@@ -34,6 +35,16 @@ function getIndustryFromCookie(cookieHeader: string | null): string | null {
 }
 
 export async function POST(request: NextRequest) {
+  // Fix: PRO-71 — rate limit unauthenticated tutorial endpoint
+  const ip = request.headers.get("x-forwarded-for") ?? "unknown";
+  const rl = await checkRateLimitAsync(`tutorial-roles:${ip}`, { maxRequests: 5, windowMs: 60_000 });
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests" },
+      { status: 429, headers: { "Retry-After": String(Math.ceil(rl.retryAfterMs / 1000)) } },
+    );
+  }
+
   try {
     const industry = getIndustryFromCookie(request.headers.get("cookie"));
     const demoOrgId = await getDemoOrgId(industry);

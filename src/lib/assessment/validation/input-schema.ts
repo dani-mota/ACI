@@ -13,6 +13,7 @@ const MAX_INPUT_LENGTH = 3000;
 /** Known sentinel messages that bypass classification. */
 export const SENTINEL_MESSAGES = new Set([
   "[NO_RESPONSE]",
+  "[AUTO_ADVANCE]",
   "[BEGIN_ASSESSMENT]",
   "[BEGIN_ACT_2]",
   "[BEGIN_ACT_3]",
@@ -36,8 +37,13 @@ export interface NormalizedInput {
  * 2. Strip control characters (keep newlines and tabs)
  * 3. Empty → [NO_RESPONSE] sentinel
  * 4. Cap at MAX_INPUT_LENGTH with truncation flag
+ *
+ * Fix: PRO-8 — `allowSentinels` controls whether bracket-pattern text is
+ * recognized as a sentinel. When false (default, candidate input), bracket
+ * patterns are stripped to prevent sentinel injection. When true (system-
+ * generated triggers), sentinels are recognized.
  */
-export function normalizeInput(raw: string | null | undefined): NormalizedInput {
+export function normalizeInput(raw: string | null | undefined, allowSentinels = false): NormalizedInput {
   if (raw == null) {
     return { content: "[NO_RESPONSE]", isSentinel: true, inputTruncated: false };
   }
@@ -53,9 +59,15 @@ export function normalizeInput(raw: string | null | undefined): NormalizedInput 
     return { content: "[NO_RESPONSE]", isSentinel: true, inputTruncated: false };
   }
 
-  // Check if it's a known sentinel
-  if (SENTINEL_MESSAGES.has(cleaned)) {
+  // Fix: PRO-8 — Only recognize sentinels from trusted (system) sources.
+  // Candidate-submitted text that matches sentinel patterns is treated as literal text.
+  if (allowSentinels && SENTINEL_MESSAGES.has(cleaned)) {
     return { content: cleaned, isSentinel: true, inputTruncated: false };
+  }
+
+  // Fix: PRO-8 — Strip bracket patterns from candidate input to prevent injection
+  if (!allowSentinels) {
+    cleaned = cleaned.replace(/^\[([A-Z_]+)\]$/, "$1");
   }
 
   // Truncate if too long

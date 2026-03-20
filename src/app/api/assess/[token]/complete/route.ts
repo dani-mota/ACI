@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import prisma from "@/lib/prisma";
 import { runScoringPipeline } from "@/lib/assessment/scoring/pipeline";
-import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { checkRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 import { createLogger } from "@/lib/assessment/logger";
+import { validateAssessSession } from "@/lib/session/assess-session";
+import * as Sentry from "@sentry/nextjs"; // Fix: PRO-74
 
 export const maxDuration = 300;
 
@@ -16,7 +18,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   const { token } = await params;
 
   // Rate limit by token
-  const rl = checkRateLimit(`complete:${token}`, RATE_LIMITS.assessmentComplete);
+  // Fix: PRO-9 — use Redis-backed rate limiter
+  const rl = await checkRateLimitAsync(`complete:${token}`, RATE_LIMITS.assessmentComplete, "assessmentComplete");
   if (!rl.allowed) {
     return NextResponse.json(
       { error: "Too many requests" },
@@ -32,6 +35,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: "Invalid token" }, { status: 404 });
   }
 
+  // Fix: PRO-67 — always validate session, even if no binding exists yet.
+  // If sessionBindingId is null (candidate never started), reject completion.
+  const sessionCheck = validateAssessSession(invitation, request);
+  if (!sessionCheck.valid) {
+    return NextResponse.json({ error: "Session required" }, { status: 401 });
+  }
+
   const assessment = await prisma.assessment.findFirst({
     where: { candidateId: invitation.candidateId },
     orderBy: { startedAt: "desc" },
@@ -41,8 +51,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: "Assessment not found" }, { status: 404 });
   }
 
+  // Fix: PRO-5 — Idempotent response when already completed
   if (assessment.completedAt) {
-    return NextResponse.json({ message: "Already completed" });
+    return NextResponse.json({ status: "already_complete" });
   }
 
   const now = new Date();
@@ -80,8 +91,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     return true;
   });
 
+  // Fix: PRO-5 — Idempotent response for TOCTOU race
   if (!updated) {
-    return NextResponse.json({ message: "Already completed" });
+    return NextResponse.json({ status: "already_complete" });
   }
 
   // Run scoring pipeline after response is sent — ensures pipeline runs to completion
@@ -113,6 +125,8 @@ async function runPipelineWithRetry(
 
   // All retries exhausted — mark candidate as error state so dashboard shows it
   log.error("Pipeline exhausted all retries", { assessmentId });
+  // Fix: PRO-74 — report pipeline failure to Sentry
+  Sentry.captureException(new Error("Scoring pipeline exhausted all retries"), { extra: { assessmentId } });
   try {
     const assessment = await prisma.assessment.findUnique({
       where: { id: assessmentId },
@@ -130,7 +144,8 @@ async function runPipelineWithRetry(
 
   // Fire-and-forget webhook notification for admin alerting
   const webhookUrl = process.env.SCORING_FAILURE_WEBHOOK_URL;
-  if (webhookUrl) {
+  // Fix: PRO-78 — validate webhook URL to prevent SSRF
+  if (webhookUrl && !isPrivateUrl(webhookUrl)) {
     fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -141,5 +156,41 @@ async function runPipelineWithRetry(
         message: `Scoring pipeline exhausted all ${maxRetries} retries`,
       }),
     }).catch(() => {}); // Fire-and-forget
+  }
+}
+
+// Fix: PRO-78 — SSRF protection: reject private/internal URLs
+function isPrivateUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+
+    // Require HTTPS
+    if (parsed.protocol !== "https:") return true;
+
+    const hostname = parsed.hostname.toLowerCase();
+
+    // Reject localhost
+    if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") return true;
+
+    // Reject private IP ranges
+    const parts = hostname.split(".");
+    if (parts.length === 4 && parts.every((p) => /^\d+$/.test(p))) {
+      const octets = parts.map(Number);
+      // 10.0.0.0/8
+      if (octets[0] === 10) return true;
+      // 172.16.0.0/12
+      if (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) return true;
+      // 192.168.0.0/16
+      if (octets[0] === 192 && octets[1] === 168) return true;
+      // 127.0.0.0/8
+      if (octets[0] === 127) return true;
+      // 169.254.0.0/16 (link-local)
+      if (octets[0] === 169 && octets[1] === 254) return true;
+    }
+
+    return false;
+  } catch {
+    // Invalid URL — treat as private
+    return true;
   }
 }

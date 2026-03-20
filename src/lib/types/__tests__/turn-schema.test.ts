@@ -81,7 +81,7 @@ describe("AssessmentTurnResponseSchema", () => {
         constructId: "QUANTITATIVE_REASONING",
         itemId: "qr-003",
         difficulty: 0.6,
-        phase: "RAPID_CONVERGENCE",
+        phase: "CALIBRATION",
       },
       meta: {
         progress: { act1: 1, act2: 0.2, act3: 0 },

@@ -43,9 +43,9 @@ export type BeatType = (typeof BEAT_TYPES)[number];
 // ──────────────────────────────────────────────
 
 export const ADAPTIVE_PHASES = [
-  "RAPID_CONVERGENCE",
-  "PRECISION_NARROWING",
+  "CALIBRATION",
   "BOUNDARY_MAPPING",
+  "PRESSURE_TEST",
   "DIAGNOSTIC_PROBE",
 ] as const;
 

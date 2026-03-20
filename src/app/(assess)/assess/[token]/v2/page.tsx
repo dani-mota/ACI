@@ -2,6 +2,7 @@ import prisma from "@/lib/prisma";
 import { notFound, redirect } from "next/navigation";
 import { AssessmentStage } from "@/components/assessment/stage/assessment-stage";
 import { AssessmentErrorBoundary } from "@/components/assessment/error-boundary";
+import { getReadyLibrary, selectRandomVariants } from "@/lib/assessment/content-serving";
 
 interface PageProps {
   params: Promise<{ token: string }>;
@@ -19,6 +20,14 @@ export default async function AssessmentV2Page({ params }: PageProps) {
   });
 
   if (!invitation) notFound();
+
+  // Fix: PRO-63 — record when the candidate first opens the assessment link
+  if (!invitation.linkOpenedAt) {
+    prisma.assessmentInvitation.updateMany({
+      where: { linkToken: token, linkOpenedAt: null },
+      data: { linkOpenedAt: new Date() },
+    }).catch(() => {}); // non-blocking, fire-and-forget
+  }
 
   // Expired — redirect back to welcome (which shows expired screen)
   if (invitation.status === "EXPIRED" || new Date() > invitation.expiresAt) {
@@ -45,12 +54,22 @@ export default async function AssessmentV2Page({ params }: PageProps) {
   });
 
   if (!existingState) {
+    let contentLibraryId: string | undefined;
+    let variantSelections: Record<string, number> | undefined;
+
+    const readyLib = await getReadyLibrary(invitation.roleId);
+    if (readyLib) {
+      contentLibraryId = readyLib.id;
+      variantSelections = selectRandomVariants(readyLib.content as any);
+    }
+
     await prisma.assessmentState.create({
       data: {
         assessmentId: assessment.id,
         currentAct: "PHASE_0",
         currentScenario: 0,
         currentBeat: 0,
+        ...(contentLibraryId ? { contentLibraryId, variantSelections } : {}),
       },
     });
   }

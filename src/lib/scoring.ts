@@ -19,6 +19,7 @@ interface RedFlagData {
   severity: string;
 }
 
+// Fix: PRO-6 — Missing constructs treated as 0; denominator always uses total weight
 export function calculateComposite(
   subtestResults: SubtestScore[],
   weights: Weight[]
@@ -28,10 +29,9 @@ export function calculateComposite(
 
   for (const weight of weights) {
     const result = subtestResults.find(r => r.construct === weight.constructId);
-    if (result) {
-      weightedSum += result.percentile * weight.weight;
-      totalWeight += weight.weight;
-    }
+    // Always count weight in denominator — missing constructs contribute 0 to numerator
+    weightedSum += (result?.percentile ?? 0) * weight.weight;
+    totalWeight += weight.weight;
   }
 
   return totalWeight > 0 ? Math.round(weightedSum / totalWeight) : 0;

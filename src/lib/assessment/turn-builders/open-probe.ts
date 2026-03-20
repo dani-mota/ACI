@@ -4,7 +4,7 @@
  * Input type: voice-or-text.
  */
 import type { TurnBuilderContext } from "./context";
-import type { AssessmentTurnResponse, ReferenceUpdate } from "@/lib/types/turn";
+import type { AssessmentTurnResponse, ReferenceUpdate, ScenarioReferenceData } from "@/lib/types/turn";
 import type { ResponseClassification } from "../types";
 import { splitSentences, buildMeta, getSilenceThresholds } from "./helpers";
 import { lookupBeatContent } from "../content-serving";
@@ -30,6 +30,7 @@ export async function buildOpenProbe(ctx: TurnBuilderContext): Promise<Assessmen
   const classification: ResponseClassification = branchPath[branchPath.length - 1] ?? "ADEQUATE";
 
   let spokenText = "";
+  let referenceCard: ScenarioReferenceData | undefined;
   let referenceUpdate: ReferenceUpdate | undefined;
   let generationMethod: "pre-generated" | "hybrid" | "streamed" = "hybrid";
 
@@ -61,15 +62,21 @@ export async function buildOpenProbe(ctx: TurnBuilderContext): Promise<Assessmen
 
       if (forceStreaming && scenario && beat) {
         // Beats 1-2: 4-layer prompt (PRD §10) — includes candidate response + history
+        // Sentinels are normalized to "" so Haiku never tries to "acknowledge" text the
+        // candidate never said. AUTO_ADVANCE = opening turn (Beat 1 not yet asked);
+        // NO_RESPONSE = candidate was given time but said nothing. Different instructions apply.
+        const isNoResponse = ctx.lastCandidateMessage === "[NO_RESPONSE]";
+        const isOpeningTurn = ctx.isSentinel && !isNoResponse;
         const assembled = assembleOpenProbePrompt({
           candidateName: ctx.candidateName,
           roleContext: ctx.roleContext,
           scenario,
           scenarioIndex,
           beat,
-          candidateResponse: ctx.lastCandidateMessage ?? "",
+          candidateResponse: (ctx.isSentinel || !ctx.lastCandidateMessage) ? "" : ctx.lastCandidateMessage,
           classification,
           messages: ctx.messages,
+          isOpeningTurn,
         });
         systemPrompt = assembled.systemPrompt;
         userContext = assembled.userContext;
@@ -80,6 +87,11 @@ export async function buildOpenProbe(ctx: TurnBuilderContext): Promise<Assessmen
       }
 
       let response = await generateFromHaiku(systemPrompt, userContext);
+      // Extract ---REFERENCE--- / ---REFERENCE_UPDATE--- before sanitizing — prevents JSON leaking into TTS
+      const extracted = extractReferenceFromHaikuResponse(response);
+      response = extracted.spoken;
+      if (extracted.referenceCard) referenceCard = extracted.referenceCard;
+      if (extracted.referenceUpdate) referenceUpdate = extracted.referenceUpdate;
       const { cleaned } = sanitizeAriaOutput(response);
       response = cleaned;
 
@@ -91,8 +103,11 @@ export async function buildOpenProbe(ctx: TurnBuilderContext): Promise<Assessmen
           console.warn("[open-probe] Probe missing, retrying at temp 0.3");
           try {
             const retryPrompt = addProbeReinforcement(systemPrompt, probeConfig.primaryProbe);
-            const retryResponse = await generateFromHaiku(retryPrompt, userContext, 0.3);
-            const { cleaned: retryCleaned } = sanitizeAriaOutput(retryResponse);
+            const retryRaw = await generateFromHaiku(retryPrompt, userContext, 0.3);
+            const retryExtracted = extractReferenceFromHaikuResponse(retryRaw);
+            if (retryExtracted.referenceCard) referenceCard = retryExtracted.referenceCard;
+            if (retryExtracted.referenceUpdate) referenceUpdate = retryExtracted.referenceUpdate;
+            const { cleaned: retryCleaned } = sanitizeAriaOutput(retryExtracted.spoken);
             const retryCheck = verifyProbePresent(retryCleaned, probeConfig);
             if (retryCheck.found) {
               response = retryCleaned;
@@ -138,6 +153,7 @@ export async function buildOpenProbe(ctx: TurnBuilderContext): Promise<Assessmen
     type: "turn",
     delivery: {
       sentences: splitSentences(spokenText),
+      ...(referenceCard ? { referenceCard } : {}),
       ...(referenceUpdate ? { referenceUpdate } : {}),
     },
     input: {
@@ -182,6 +198,46 @@ function buildStreamingPrompt(
   }
 
   return systemPrompt;
+}
+
+/**
+ * Strip ---REFERENCE--- / ---REFERENCE_UPDATE--- delimiter blocks from a raw Haiku response
+ * and parse any embedded reference data. Returns the spoken-only text and any parsed data.
+ * Prevents reference card JSON from leaking into TTS speech.
+ */
+function extractReferenceFromHaikuResponse(raw: string): {
+  spoken: string;
+  referenceCard?: ScenarioReferenceData;
+  referenceUpdate?: ReferenceUpdate;
+} {
+  const UPDATE_DELIM = "---REFERENCE_UPDATE---";
+  const CARD_DELIM = "---REFERENCE---";
+
+  const updateIdx = raw.indexOf(UPDATE_DELIM);
+  if (updateIdx !== -1) {
+    const spoken = raw.slice(0, updateIdx).trim();
+    try {
+      const parsed = JSON.parse(raw.slice(updateIdx + UPDATE_DELIM.length).trim());
+      if (Array.isArray(parsed.newInformation) && typeof parsed.question === "string") {
+        return { spoken, referenceUpdate: parsed as ReferenceUpdate };
+      }
+    } catch { /* malformed JSON — skip */ }
+    return { spoken };
+  }
+
+  const cardIdx = raw.indexOf(CARD_DELIM);
+  if (cardIdx !== -1) {
+    const spoken = raw.slice(0, cardIdx).trim();
+    try {
+      const parsed = JSON.parse(raw.slice(cardIdx + CARD_DELIM.length).trim());
+      if (typeof parsed.role === "string" && Array.isArray(parsed.sections)) {
+        return { spoken, referenceCard: parsed as ScenarioReferenceData };
+      }
+    } catch { /* malformed JSON — skip */ }
+    return { spoken };
+  }
+
+  return { spoken: raw };
 }
 
 /** Call Haiku to generate a buffered response (per B-1: no server-side streaming on Vercel). */

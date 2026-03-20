@@ -25,6 +25,10 @@ export function StageChoiceCards({ prompt, options, onSelect, disabled }: StageC
     if (disabled || selected) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Fix: PRO-15 — skip keyboard shortcuts when text input is focused
+      const tag = document.activeElement?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || (document.activeElement as HTMLElement)?.isContentEditable) return;
+
       // Letter key shortcuts
       const key = e.key.toUpperCase();
       const letterIndex = key.charCodeAt(0) - 65;
@@ -110,7 +114,7 @@ export function StageChoiceCards({ prompt, options, onSelect, disabled }: StageC
                 onClick={() => handleSelect(option)}
                 onFocus={() => setFocusedIndex(i)}
                 disabled={disabled || !!selected}
-                className="stage-animate"
+                className="stage-animate hover:translate-x-[3px] hover:border-[rgba(37,99,235,0.25)] motion-safe:transition-transform"
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -135,18 +139,6 @@ export function StageChoiceCards({ prompt, options, onSelect, disabled }: StageC
                   fontFamily: "var(--font-display)",
                   fontSize: "13.5px",
                   fontWeight: 400,
-                }}
-                onMouseEnter={(e) => {
-                  if (!selected && !disabled) {
-                    (e.currentTarget as HTMLElement).style.transform = "translateX(3px)";
-                    (e.currentTarget as HTMLElement).style.borderColor = "rgba(37,99,235,0.25)";
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!selected && !disabled) {
-                    (e.currentTarget as HTMLElement).style.transform = "translateX(0)";
-                    (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.06)";
-                  }
                 }}
               >
                 {/* Letter badge — circle */}

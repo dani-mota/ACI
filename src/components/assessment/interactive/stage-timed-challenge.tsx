@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { StageChoiceCards } from "./stage-choice-cards";
 
 interface StageTimedChallengeProps {
@@ -28,9 +28,12 @@ export function StageTimedChallenge({
 }: StageTimedChallengeProps) {
   const [remaining, setRemaining] = useState(timeLimit);
   const [answered, setAnswered] = useState(false);
+  // Fix: PRO-36 — only update aria-live region every 5s to avoid 4Hz screen reader spam
+  const [ariaRemaining, setAriaRemaining] = useState(timeLimit);
   const elapsedRef = useRef(0);
   const lastTickRef = useRef(Date.now());
   const pausedRef = useRef(false);
+  const lastAriaUpdateRef = useRef(timeLimit);
 
   useEffect(() => {
     if (disabled || answered) return;
@@ -56,6 +59,16 @@ export function StageTimedChallenge({
 
       const newRemaining = Math.max(0, Math.round(timeLimit - elapsedRef.current));
       setRemaining(newRemaining);
+
+      // Fix: PRO-36 — throttle aria-live updates to every 5 seconds (or when critical <=10s)
+      if (
+        newRemaining <= 0 ||
+        newRemaining <= 10 ||
+        lastAriaUpdateRef.current - newRemaining >= 5
+      ) {
+        setAriaRemaining(newRemaining);
+        lastAriaUpdateRef.current = newRemaining;
+      }
 
       if (newRemaining <= 0) {
         clearInterval(interval);
@@ -111,10 +124,11 @@ export function StageTimedChallenge({
         >
           Time Remaining
         </span>
+        {/* Fix: PRO-36 — aria-live="polite" + throttled to avoid 4Hz announcements */}
         <span
           role="timer"
-          aria-live="assertive"
-          aria-label={`${remaining} seconds remaining`}
+          aria-live="polite"
+          aria-label={`${ariaRemaining} seconds remaining`}
           style={{
             fontFamily: "var(--font-mono)",
             fontSize: "clamp(24px, 5vw, 32px)",
@@ -150,6 +164,13 @@ export function StageTimedChallenge({
           }}
         />
       </div>
+
+      {/* Fix: PRO-82 — text label when timer is low (WCAG 1.4.1: not color alone) */}
+      {progress < 0.3 && (
+        <span style={{ color: "var(--s-red, #DC2626)", fontSize: "11px", fontWeight: 600 }}>
+          Hurry
+        </span>
+      )}
 
       {/* Choices */}
       <StageChoiceCards

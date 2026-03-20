@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkRateLimitAsync } from "@/lib/rate-limit";
+import { validateAssessSession } from "@/lib/session/assess-session"; // Fix: PRO-69
 
 /**
  * GET /api/assess/[token]/tts-config
@@ -21,7 +22,8 @@ export async function GET(
   const { token } = await params;
 
   // Rate limit: 1 per 60 minutes per token
-  const rl = checkRateLimit(`tts-config:${token}`, { maxRequests: 1, windowMs: 60 * 60 * 1000 });
+  // Fix: PRO-9 — use Redis-backed rate limiter
+  const rl = await checkRateLimitAsync(`tts-config:${token}`, { maxRequests: 1, windowMs: 60 * 60 * 1000 });
   if (!rl.allowed) {
     return new Response(JSON.stringify({ error: "Too many requests" }), {
       status: 429,
@@ -34,8 +36,18 @@ export async function GET(
     where: { linkToken: token },
   });
 
-  if (!invitation || invitation.status === "EXPIRED" || (invitation.expiresAt && new Date() > invitation.expiresAt)) {
+  // Fix: PRO-69 — reject COMPLETED tokens alongside EXPIRED
+  if (!invitation || invitation.status === "EXPIRED" || invitation.status === "COMPLETED" || (invitation.expiresAt && new Date() > invitation.expiresAt)) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // Fix: PRO-69 — session binding validation
+  const sessionCheck = validateAssessSession(invitation, request);
+  if (!sessionCheck.valid) {
+    return new Response(JSON.stringify({ error: "Session required" }), {
       status: 401,
       headers: { "Content-Type": "application/json" },
     });
@@ -62,7 +74,7 @@ export async function GET(
 
   return new Response(JSON.stringify({
     available: true,
-    voiceId,
+    // Fix: PRO-69 — removed voiceId from response body
     model: "eleven_flash_v2_5",
     validUntil,
     ttlMs: ttl,

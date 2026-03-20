@@ -37,7 +37,7 @@ export function ActLabel({ currentAct, visible }: ActLabelProps) {
       className="text-center stage-animate"
       style={{
         fontFamily: "var(--font-mono)",
-        fontSize: "9px",
+        fontSize: "11px", // Fix: PRO-53
         letterSpacing: "2.5px",
         textTransform: "uppercase",
         color: "color-mix(in srgb, var(--s-gold, #C9A84C) 60%, transparent)",

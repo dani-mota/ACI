@@ -39,6 +39,8 @@ import { TurnPlayer } from "./turn-player";
 import { ComponentErrorBoundary } from "@/components/assessment/error-boundary";
 import { FEATURE_FLAGS } from "@/lib/assessment/config";
 
+const __DEBUG = process.env.NODE_ENV !== "production";
+
 // ── Helpers ──
 
 const getStore = () => useChatAssessmentStore.getState();
@@ -91,13 +93,23 @@ export function AssessmentStage({
   const lastTurn = useChatAssessmentStore((s) => s.lastTurn);
 
   // ── Local state ──
+  const [deliveryCancelToken, setDeliveryCancelToken] = useState(0);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [initialized, setInitialized] = useState(false);
   const [phase0Ready, setPhase0Ready] = useState(false);
   const [textInput, setTextInput] = useState("");
   const [showElements, setShowElements] = useState(false);
   const [phase0MicCheck, setPhase0MicCheck] = useState(false);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  // Fix: PRO-23 — persist assessment start time to sessionStorage for reload recovery
+  const [elapsedSeconds, setElapsedSeconds] = useState(() => {
+    if (typeof window === "undefined") return 0;
+    const stored = sessionStorage.getItem(`aci-start-${token}`);
+    if (stored) {
+      return Math.floor((Date.now() - Number(stored)) / 1000);
+    }
+    sessionStorage.setItem(`aci-start-${token}`, String(Date.now()));
+    return 0;
+  });
   const [orbGliding, setOrbGliding] = useState(false);
   const [layoutOpacity, setLayoutOpacity] = useState(1);
   const [showCompletionScreen, setShowCompletionScreen] = useState(false);
@@ -116,6 +128,8 @@ export function AssessmentStage({
   const sequenceIdRef = useRef(0);
   const justTransitionedRef = useRef(false);
   const lastFailedMessageRef = useRef<string | null>(null);
+  // Fix: PRO-14 — store last failed element response for retry
+  const lastFailedElementRef = useRef<{ elementType: string; value: string; itemId?: string; construct?: string } | null>(null);
 
   // ── Detect speech recognition support — auto-switch to text if unavailable ──
   useEffect(() => {
@@ -451,20 +465,19 @@ export function AssessmentStage({
       onNudge: (level) => {
         const s = getStore();
         if (s.isLoading || s.isTTSPlaying) {
-          console.log(`[NUDGE-TRACE] Nudge ${level} DROPPED | isLoading=${s.isLoading} isTTSPlaying=${s.isTTSPlaying}`);
+          __DEBUG && console.log(`[NUDGE-TRACE] Nudge ${level} DROPPED | isLoading=${s.isLoading} isTTSPlaying=${s.isTTSPlaying}`);
           return;
         }
         if (transitionInProgress.current) {
-          console.log(`[NUDGE-TRACE] Nudge ${level} DROPPED | transitionInProgress=true`);
+          __DEBUG && console.log(`[NUDGE-TRACE] Nudge ${level} DROPPED | transitionInProgress=true`);
           return;
         }
         if (level === "first") {
           playSegmentTTS(NUDGE_FIRST[ctx]);
         } else if (level === "second") {
-          s.setInputMode("text");
           playSegmentTTS(NUDGE_SECOND[ctx]);
         } else {
-          console.log(`[NUDGE-TRACE] Sending [NO_RESPONSE] | ctx=${ctx}`);
+          __DEBUG && console.log(`[NUDGE-TRACE] Sending [NO_RESPONSE] | ctx=${ctx}`);
           playSegmentTTS(NUDGE_FINAL[ctx]).then(() => {
             getStore().setOrbMode("processing");
             getStore().sendMessage("[NO_RESPONSE]");
@@ -581,7 +594,13 @@ export function AssessmentStage({
     });
 
     await playTransitionScript(lines);
-    getStore().sendMessage("[BEGIN_ACT_2]");
+    // Fix: PRO-12 — await sendMessage and handle failure with error toast + retry
+    try {
+      await getStore().sendMessage("[BEGIN_ACT_2]");
+    } catch {
+      lastFailedMessageRef.current = "[BEGIN_ACT_2]";
+      useChatAssessmentStore.setState({ error: "Connection issue — tap to retry" });
+    }
   }, [playTransitionScript]);
 
   const handleTransition2to3 = useCallback(async () => {
@@ -611,7 +630,13 @@ export function AssessmentStage({
     });
 
     await playTransitionScript(lines);
-    getStore().sendMessage("[BEGIN_ACT_3]");
+    // Fix: PRO-12 — await sendMessage and handle failure with error toast + retry
+    try {
+      await getStore().sendMessage("[BEGIN_ACT_3]");
+    } catch {
+      lastFailedMessageRef.current = "[BEGIN_ACT_3]";
+      useChatAssessmentStore.setState({ error: "Connection issue — tap to retry" });
+    }
   }, [playTransitionScript]);
 
   const handleCompletion = useCallback(async () => {
@@ -629,11 +654,22 @@ export function AssessmentStage({
         getStore().setSubtitleText("");
         setShowCompletionScreen(true);
       },
-      onComplete: () => {
-        fetch(`/api/assess/${token}/complete`, { method: "POST" }).catch(() => {});
-        setTimeout(() => {
-          window.location.href = `/assess/${token}/survey`;
-        }, 4000);
+      onComplete: async () => {
+        // Fix: PRO-13 — retry completion POST with error handling instead of fire-and-forget
+        let succeeded = false;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const res = await fetch(`/api/assess/${token}/complete`, { method: "POST" });
+            if (res.ok) { succeeded = true; break; }
+          } catch { /* retry */ }
+          if (attempt < 2) await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        }
+        if (succeeded) {
+          setTimeout(() => { window.location.href = `/assess/${token}/survey`; }, 4000);
+        } else {
+          useChatAssessmentStore.setState({ error: "Something went wrong — tap to try again" });
+          lastFailedMessageRef.current = "__COMPLETE__";
+        }
       },
     }, candidateName);
 
@@ -729,6 +765,30 @@ export function AssessmentStage({
       });
   }, [token, assessmentId, initialized, audioUnlocked]);
 
+  // Safety reset: if isLoading gets stuck (network hang, double-lock), force-clear after 75s.
+  // Max legitimate duration: 2×30s attempts + 2s delay = 62s; 75s gives sufficient headroom.
+  useEffect(() => {
+    if (!isLoading) return;
+    const id = setTimeout(() => {
+      const s = getStore();
+      if (s.isLoading) {
+        console.warn("[SAFETY] isLoading stuck for 75s — force reset");
+        const msgs = s.messages;
+        const trimmed =
+          msgs.length > 0 && msgs[msgs.length - 1].role === "assistant" && !msgs[msgs.length - 1].content
+            ? msgs.slice(0, -1)
+            : msgs;
+        useChatAssessmentStore.setState({
+          isLoading: false,
+          orbMode: "idle",
+          error: "Request timed out. Please try again.",
+          messages: trimmed,
+        });
+      }
+    }, 75_000);
+    return () => clearTimeout(id);
+  }, [isLoading]);
+
   // ══════════════════════════════════════════════
   // Phase 0 Orchestration
   // ══════════════════════════════════════════════
@@ -769,7 +829,6 @@ export function AssessmentStage({
 
         micNudgeTimers.current.t30 = setTimeout(async () => {
           if (phase0Ref.current !== "mic_check") return;
-          getStore().setInputMode("text");
           await playSegmentTTS(MIC_NUDGE_30S);
         }, 30000);
       } catch (err) {
@@ -791,22 +850,17 @@ export function AssessmentStage({
 
   // ══════════════════════════════════════════════
   // TTS Trigger — watches displayEvent (not messages)
+  // Only active when TurnPlayer is OFF (FEATURE_FLAGS.TURN_PLAYER = false).
+  // When TurnPlayer is ON, the dep array is [] — React runs this once on mount
+  // (where displayEvent === 0, so it returns immediately) and never again.
+  // This structural prevention is stronger than an early-return guard: the effect
+  // is never scheduled, never invoked, and produces no log noise per turn.
   // ══════════════════════════════════════════════
 
   useEffect(() => {
     if (displayEvent === 0) return;
     if (displayIsHistory) return;
     if (transitionInProgress.current) return;
-
-    // When TurnPlayer is active, it drives word reveal — skip legacy TTS trigger entirely.
-    // FEATURE_FLAGS.TURN_PLAYER is always true in browser (Stage 7 default ON).
-    // We skip regardless of lastTurn state to prevent any race between handleTurn
-    // setting lastTurn and displayEvent firing.
-    if (FEATURE_FLAGS.TURN_PLAYER) {
-      console.log(`[LEGACY] displayEvent=${displayEvent} → SKIPPED (TURN_PLAYER on) | time=${Date.now()}`);
-      return;
-    }
-    console.log(`[LEGACY] displayEvent=${displayEvent} → PROCEEDING (TURN_PLAYER off) | time=${Date.now()}`);
 
     // During Phase 0, orchestration owns TTS — ignore displayEvent entirely
     if (orchestratorPhase === "PHASE_0" || orchestratorPhase === "TRANSITION_0_1") return;
@@ -824,7 +878,9 @@ export function AssessmentStage({
     } else if (subtitleText) {
       playSubtitleWithTTS(subtitleText).then(() => startNudgeForCurrentAct());
     }
-  }, [displayEvent]); // eslint-disable-line react-hooks/exhaustive-deps
+  // When TURN_PLAYER is on (the constant is true), pass [] so React never re-schedules
+  // this effect. When off, subscribe to displayEvent as before.
+  }, FEATURE_FLAGS.TURN_PLAYER ? [] : [displayEvent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ══════════════════════════════════════════════
   // Act Transition Detection
@@ -886,19 +942,6 @@ export function AssessmentStage({
     }
   }, [orchestratorPhase, activeElement]);
 
-  // ── Spacebar toggle for mic ──
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code !== "Space") return;
-      if (e.repeat) return;
-      if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) return;
-      if (!showInput || !isVoiceMode || isComplete || isTTSPlaying || isLoading) return;
-      e.preventDefault();
-      micButtonRef.current?.click();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isComplete, isTTSPlaying, isLoading]); // showInput and isVoiceMode checked inline
 
   // ══════════════════════════════════════════════
   // Handlers
@@ -939,7 +982,7 @@ export function AssessmentStage({
     [handlePhase0Response],
   );
 
-  const handleElementResponse = useCallback((value: string) => {
+  const handleElementResponse = useCallback(async (value: string) => {
     const s = getStore();
     const el = s.activeElement;
     if (!el) return;
@@ -947,12 +990,20 @@ export function AssessmentStage({
     ttsRef.current?.stop();
     nudgeRef.current.stop();
 
-    s.sendElementResponse({
+    const payload = {
       elementType: el.elementType,
       value,
       itemId: el.elementData.itemId as string | undefined,
       construct: el.elementData.construct as string | undefined,
-    });
+    };
+    // Fix: PRO-14 — store payload for retry on failure
+    lastFailedElementRef.current = payload;
+    try {
+      await s.sendElementResponse(payload);
+      lastFailedElementRef.current = null;
+    } catch {
+      // Error is already set in store by sendElementResponse's catch block
+    }
   }, []);
 
   const handleTextSend = useCallback(() => {
@@ -985,6 +1036,8 @@ export function AssessmentStage({
     const s = getStore();
     s.setVoiceListening(listening);
     if (listening) {
+      nudgeRef.current.stop();
+      setDeliveryCancelToken(t => t + 1);
       ttsRef.current?.stop();
       s.setOrbMode("listening");
     } else if (!s.isLoading) {
@@ -1039,11 +1092,12 @@ export function AssessmentStage({
 
   // LAYOUT-TRACE: log whenever any layout-relevant state changes
   useEffect(() => {
-    console.log(`[LAYOUT-TRACE] orchestratorPhase: ${orchestratorPhase}`);
-    console.log(`[LAYOUT-TRACE] format resolved: ${format}`);
-    console.log(`[LAYOUT-TRACE] layoutKey: ${layoutKey}`);
-    console.log(`[LAYOUT-TRACE] referenceCard exists: ${!!referenceCard}`);
-    console.log(`[LAYOUT-TRACE] referenceRevealCount: ${referenceRevealCount}`);
+    // Fix: PRO-75 — guard layout trace logs behind __DEBUG
+    __DEBUG && console.log(`[LAYOUT-TRACE] orchestratorPhase: ${orchestratorPhase}`);
+    __DEBUG && console.log(`[LAYOUT-TRACE] format resolved: ${format}`);
+    __DEBUG && console.log(`[LAYOUT-TRACE] layoutKey: ${layoutKey}`);
+    __DEBUG && console.log(`[LAYOUT-TRACE] referenceCard exists: ${!!referenceCard}`);
+    __DEBUG && console.log(`[LAYOUT-TRACE] referenceRevealCount: ${referenceRevealCount}`);
   }, [orchestratorPhase, format, layoutKey, referenceCard, referenceRevealCount]);
 
   // ── Input area ──
@@ -1066,6 +1120,7 @@ export function AssessmentStage({
             onTranscript={handleVoiceTranscript}
             onListeningChange={handleListeningChange}
             disabled={isLoading || isTTSPlaying}
+            reason={isTTSPlaying ? "speaking" : isLoading ? "loading" : undefined}
           />
         ) : (
           <div className="flex gap-2 w-full max-w-md">
@@ -1080,7 +1135,7 @@ export function AssessmentStage({
               }}
               placeholder="Type your response..."
               aria-label="Type your response"
-              disabled={isLoading}
+              disabled={isLoading || isTTSPlaying}
               rows={1}
               className="flex-1 resize-none px-4 py-3 text-sm outline-none"
               style={{
@@ -1100,7 +1155,7 @@ export function AssessmentStage({
             />
             <button
               onClick={handleTextSend}
-              disabled={!textInput.trim() || isLoading}
+              disabled={!textInput.trim() || isLoading || isTTSPlaying}
               aria-label="Send message"
               style={{
                 width: "44px",
@@ -1135,6 +1190,45 @@ export function AssessmentStage({
   // Render
   // ══════════════════════════════════════════════
 
+  // Fix: PRO-43 — show loading state during initial assessment fetch
+  if (!initialized) {
+    return (
+      <div
+        className="stage-root fixed inset-0 z-50 overflow-hidden flex items-center justify-center"
+        style={{ background: "var(--s-bg, #080e1a)" }}
+      >
+        <ComponentErrorBoundary componentName="living-background">
+          <LivingBackground />
+        </ComponentErrorBoundary>
+        <div className="relative z-10 flex flex-col items-center gap-4">
+          <div
+            style={{
+              width: "40px",
+              height: "40px",
+              borderRadius: "50%",
+              border: "2px solid rgba(255,255,255,0.08)",
+              borderTopColor: "var(--s-gold, #C9A84C)",
+              animation: "spin 1s linear infinite",
+            }}
+          />
+          <span
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "11px",
+              fontWeight: 400,
+              color: "var(--s-t3, #3d5068)",
+              textTransform: "uppercase",
+              letterSpacing: "1.5px",
+            }}
+          >
+            Preparing assessment...
+          </span>
+        </div>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+
   return (
     <div
       className="stage-root fixed inset-0 z-50 overflow-hidden"
@@ -1154,6 +1248,12 @@ export function AssessmentStage({
             getStore().setOrbMode("idle");
             startNudgeForCurrentAct();
           }}
+          onAutoAdvance={() => {
+            nudgeRef.current.stop();
+            getStore().setOrbMode("processing");
+            getStore().sendMessage("[AUTO_ADVANCE]");
+          }}
+          cancelToken={deliveryCancelToken}
           onInputReceived={(value, meta) => {
             if (meta?.elementType) {
               getStore().sendElementResponse({
@@ -1374,9 +1474,11 @@ export function AssessmentStage({
                     {format === 8 && (
                       <TransitionScreen
                         heading={
+                          // Fix: PRO-45 — render appropriate text during COMPLETING phase
                           orchestratorPhase === "TRANSITION_0_1" ? "Let's Begin" :
                           orchestratorPhase === "TRANSITION_1_2" ? "Problem Solving" :
                           orchestratorPhase === "TRANSITION_2_3" ? "Reflection" :
+                          orchestratorPhase === "COMPLETING" ? "Wrapping Up" :
                           ""
                         }
                         visible={true}
@@ -1420,7 +1522,7 @@ export function AssessmentStage({
         style={{ pointerEvents: "none" }}
       >
         <span
-          className="flex items-center gap-1.5 text-[9px] uppercase tracking-[1.5px]"
+          className="flex items-center gap-1.5 text-[11px] uppercase tracking-[1.5px]" /* Fix: PRO-53 */
           style={{
             fontFamily: "var(--font-mono)",
             color: "rgba(184, 196, 214, 0.25)",
@@ -1433,7 +1535,7 @@ export function AssessmentStage({
           Encrypted Session
         </span>
         <span
-          className="text-[9px]"
+          className="text-[11px]" /* Fix: PRO-53 */
           style={{
             fontFamily: "var(--font-mono)",
             color: "rgba(184, 196, 214, 0.2)",
@@ -1457,12 +1559,37 @@ export function AssessmentStage({
           }}
         >
           <span>{error}</span>
-          {lastFailedMessageRef.current && (
+          {(lastFailedMessageRef.current || lastFailedElementRef.current) && (
             <button
-              onClick={() => {
+              onClick={async () => {
+                // Fix: PRO-14 — handle element response retry
+                const elPayload = lastFailedElementRef.current;
+                if (elPayload) {
+                  useChatAssessmentStore.setState({ error: null });
+                  try {
+                    await getStore().sendElementResponse(elPayload);
+                    lastFailedElementRef.current = null;
+                  } catch {
+                    // Error re-set by store
+                  }
+                  return;
+                }
                 const msg = lastFailedMessageRef.current;
                 if (!msg) return;
                 useChatAssessmentStore.setState({ error: null });
+                // Fix: PRO-13 — handle completion retry separately
+                if (msg === "__COMPLETE__") {
+                  try {
+                    const res = await fetch(`/api/assess/${token}/complete`, { method: "POST" });
+                    if (res.ok) {
+                      lastFailedMessageRef.current = null;
+                      setTimeout(() => { window.location.href = `/assess/${token}/survey`; }, 2000);
+                    } else { throw new Error("retry failed"); }
+                  } catch {
+                    useChatAssessmentStore.setState({ error: "Something went wrong — tap to try again" });
+                  }
+                  return;
+                }
                 const s = getStore();
                 s.setOrbMode("processing");
                 lastFailedMessageRef.current = msg;

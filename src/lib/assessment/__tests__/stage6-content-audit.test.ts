@@ -145,8 +145,9 @@ describe("Group 3: Item Bank", () => {
     expect(frItems).toBeGreaterThanOrEqual(15);
   });
 
-  it("3.3: Items have correctAnswer field (for server-side scoring)", () => {
-    expect(itemBankSource).toContain("correctAnswer:");
+  // PRO-66: correctAnswer moved to database (Act2ItemAnswer model) — no longer in source
+  it("3.3: Items do NOT have correctAnswer in source (PRO-66 — answers in DB)", () => {
+    expect(itemBankSource).not.toContain("correctAnswer:");
   });
 
   it("3.4: Items have difficulty parameter", () => {

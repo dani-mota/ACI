@@ -268,10 +268,12 @@ describe("Group 4: Architecture Completeness", () => {
     expect(src).toContain("_TURN_PLAYER && _UNIFIED_TURNS");
   });
 
-  it("4.3: Legacy TTS guard unconditionally blocks when TURN_PLAYER on", () => {
+  it("4.3: Legacy TTS effect structurally prevented when TURN_PLAYER on (conditional dep array)", () => {
     const src = readFile("src/components/assessment/stage/assessment-stage.tsx");
-    expect(src).toContain("if (FEATURE_FLAGS.TURN_PLAYER)");
-    expect(src).toContain("SKIPPED (TURN_PLAYER on)");
+    // Conditional dep array — React never schedules the effect when TURN_PLAYER is on
+    expect(src).toContain("FEATURE_FLAGS.TURN_PLAYER ? []");
+    // Old early-return guard and its log noise must be gone
+    expect(src).not.toContain("SKIPPED (TURN_PLAYER on)");
   });
 
   it("4.4: Session recovery returns recovery flag + lastReferenceCard", () => {

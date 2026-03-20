@@ -75,8 +75,10 @@ export const ASSESSMENT_STRUCTURE = {
   act3ConfidenceItems: 3,
   /** Number of parallel scenarios in Act 3 */
   act3ParallelScenarios: 2,
-  /** Consistency threshold for Act 1 vs Act 3 comparison */
-  consistencyThreshold: 0.15,
+  /** Consistency threshold for Act 1 vs Act 3 comparison.
+   * Fix: PRO-17 — minimum Layer B step for 5-indicator rubric is 0.20;
+   * threshold must exceed this to avoid false LOWs on single-indicator variation. */
+  consistencyThreshold: 0.25,
   /** Layer A scoring weight (deterministic items) */
   defaultLayerAWeight: 0.55,
   /** Layer B scoring weight (AI-evaluated responses) */

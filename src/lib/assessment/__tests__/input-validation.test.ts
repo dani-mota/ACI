@@ -38,11 +38,22 @@ describe("normalizeInput", () => {
     expect(result.isSentinel).toBe(true);
   });
 
-  it("recognizes known sentinel messages", () => {
-    expect(normalizeInput("[BEGIN_ASSESSMENT]").isSentinel).toBe(true);
-    expect(normalizeInput("[BEGIN_ACT_2]").isSentinel).toBe(true);
-    expect(normalizeInput("[BEGIN_ACT_3]").isSentinel).toBe(true);
-    expect(normalizeInput("[NO_RESPONSE]").isSentinel).toBe(true);
+  // Fix: PRO-8 — Sentinels are no longer recognized from candidate input (default)
+  it("does NOT recognize sentinels from candidate input (default allowSentinels=false)", () => {
+    expect(normalizeInput("[BEGIN_ASSESSMENT]").isSentinel).toBe(false);
+    expect(normalizeInput("[BEGIN_ACT_2]").isSentinel).toBe(false);
+    expect(normalizeInput("[BEGIN_ACT_3]").isSentinel).toBe(false);
+    expect(normalizeInput("[NO_RESPONSE]").isSentinel).toBe(false);
+    // Bracket content is stripped — passed as literal text
+    expect(normalizeInput("[NO_RESPONSE]").content).toBe("NO_RESPONSE");
+  });
+
+  it("recognizes sentinels when allowSentinels=true (trusted system source)", () => {
+    expect(normalizeInput("[BEGIN_ASSESSMENT]", true).isSentinel).toBe(true);
+    expect(normalizeInput("[BEGIN_ACT_2]", true).isSentinel).toBe(true);
+    expect(normalizeInput("[BEGIN_ACT_3]", true).isSentinel).toBe(true);
+    expect(normalizeInput("[NO_RESPONSE]", true).isSentinel).toBe(true);
+    expect(normalizeInput("[AUTO_ADVANCE]", true).isSentinel).toBe(true);
   });
 
   it("truncates input beyond 3000 characters", () => {

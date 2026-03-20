@@ -94,7 +94,7 @@ export function AriaSidebar({
         <span
           style={{
             fontFamily: "var(--font-mono)",
-            fontSize: "9px",
+            fontSize: "11px", // Fix: PRO-53
             letterSpacing: "2px",
             textTransform: "uppercase",
             color: "var(--s-t3, #3d5068)",
@@ -155,6 +155,7 @@ export function AriaSidebar({
               onTranscript={onVoiceTranscript}
               onListeningChange={onListeningChange}
               disabled={isLoading || isTTSPlaying}
+              reason={isTTSPlaying ? "speaking" : isLoading ? "loading" : undefined}
             />
           ) : (
             <div className="flex gap-2 w-full">
@@ -169,7 +170,7 @@ export function AriaSidebar({
                 }}
                 aria-label="Type your response"
                 placeholder="Type your response..."
-                disabled={isLoading}
+                disabled={isLoading || isTTSPlaying}
                 rows={1}
                 className="flex-1 resize-none px-3 py-2 text-xs outline-none"
                 style={{
@@ -189,11 +190,11 @@ export function AriaSidebar({
               />
               <button
                 onClick={handleTextSubmit}
-                disabled={isLoading || !textInput.trim()}
+                disabled={isLoading || isTTSPlaying || !textInput.trim()}
                 aria-label="Send message"
                 style={{
-                  width: "36px",
-                  height: "36px",
+                  width: "44px", // Fix: PRO-60 — WCAG 44px minimum touch target
+                  height: "44px",
                   borderRadius: "8px",
                   border: "1px solid rgba(255,255,255,0.07)",
                   background: textInput.trim()
