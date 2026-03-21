@@ -21,7 +21,8 @@ import { escapeXml } from "@/lib/assessment/prompts/prompt-assembly";
 import { normalizeInput } from "@/lib/assessment/validation/input-schema";
 import { validateCandidateMetadata, validateAgentMetadata } from "@/lib/assessment/validation/metadata-schema";
 import type { TurnBuilderContext } from "@/lib/assessment/turn-builders/context";
-import { validateAssessSession, bindAssessSession } from "@/lib/session/assess-session";
+// Session binding disabled — re-enable behind feature flag when architecture is stable
+// import { validateAssessSession, bindAssessSession } from "@/lib/session/assess-session";
 
 // Vercel serverless: ensure enough time for streaming + onFinish DB writes
 export const maxDuration = 60;
@@ -77,18 +78,7 @@ export async function POST(
     });
   }
 
-  // PRO-57: Session binding — prevent URL sharing / proxy test-taking
-  // Session is bound on GET (first page load). POST only validates.
-  // If no binding exists yet (edge case: POST arrives before GET), allow but don't bind here.
-  if (invitation.sessionBindingId) {
-    const sessionCheck = validateAssessSession(invitation, request);
-    if (!sessionCheck.valid) {
-      return new Response(JSON.stringify({ error: "Session mismatch" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-  }
+  // Session binding disabled for pre-pilot — token auth only
   const sessionCookieHeader: string | null = null;
 
   /** Attach the session-binding cookie to a Response (first request only). */
@@ -439,7 +429,7 @@ export async function POST(
   if (
     state.currentAct === "ACT_1" && lastUserMessage && !isSentinel
     && FEATURE_FLAGS.CONTENT_LIBRARY_ENABLED && state.contentLibraryId
-    && state.currentBeat > 2 // beats 0-2 don't use separate acknowledgment (0=intro, 1-2=streamed)
+    && state.currentBeat >= 1 // beat 0=intro (no response to ack); beats 1-5 all follow a candidate response
   ) {
     const preScenario = SCENARIOS[state.currentScenario];
     const preBeat = preScenario?.beats[state.currentBeat];
@@ -1132,22 +1122,8 @@ export async function GET(
     }
 
     // PRO-57: Session binding validation (GET — session recovery)
-    let sessionCookieHeader: string | null = null;
-    if (invitation.sessionBindingId) {
-      const sessionCheck = validateAssessSession(invitation, request);
-      if (!sessionCheck.valid) {
-        return new Response(JSON.stringify({ error: "Session mismatch" }), {
-          status: 401,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-    }
-
-    // If no session bound yet, bind on GET (first visit)
-    if (!invitation.sessionBindingId) {
-      const binding = await bindAssessSession(invitation.id);
-      sessionCookieHeader = binding.setCookieHeader;
-    }
+    // Session binding disabled for pre-pilot — token auth only
+    const sessionCookieHeader: string | null = null;
 
     const assessment = await prisma.assessment.findUnique({
       where: { candidateId: invitation.candidateId },

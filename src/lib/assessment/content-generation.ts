@@ -1,13 +1,14 @@
 import { AI_CONFIG } from "./config";
 import { SCENARIOS } from "./scenarios";
 import { getRoleContext, type RoleContext } from "./role-context";
-import type {
-  ContentLibraryData,
-  Act1ScenarioContent,
-  Act1Variant,
-  Act1BeatContent,
-  ScenarioReferenceData,
-  BranchContent,
+import {
+  CONTENT_FORMAT_VERSION,
+  type ContentLibraryData,
+  type Act1ScenarioContent,
+  type Act1Variant,
+  type Act1BeatContent,
+  type ScenarioReferenceData,
+  type BranchContent,
 } from "./content-types";
 import type { ScenarioShell, BeatTemplate, ResponseClassification } from "./types";
 import prisma from "@/lib/prisma";
@@ -46,6 +47,7 @@ export async function generateContentLibrary(roleId: string): Promise<string> {
 
     const contentData: ContentLibraryData = {
       version: existingCount + 1,
+      formatVersion: CONTENT_FORMAT_VERSION,
       generatedAt: new Date().toISOString(),
       modelId: AI_CONFIG.generationModel,
       roleContext: roleContext.isGeneric
@@ -186,7 +188,7 @@ Instructions: ${beat.agentPromptTemplate}
 
 Generate ${VARIANTS_PER_SCENARIO} VARIANTS of this opening beat. Each variant must have:
 1. Different surface details (names, specifics) but the same structural demands
-2. A spoken text of EXACTLY 4-5 short sentences (each under 20 words). Plain English, no markdown.
+2. A spoken text of EXACTLY 4 short sentences (each under 20 words). Plain English, no markdown.
 3. A reference card with compressed shorthand items (each under 60 chars)
 
 Rules for spoken text:
@@ -194,7 +196,7 @@ Rules for spoken text:
 - Sentence 2: How the system normally works (one sentence)
 - Sentence 3: What went wrong
 - Sentence 4: What makes it tricky
-- Sentence 5: The question
+- Do NOT include a question. Beat 0 is pure scene-setting narration. The first question comes from Beat 1.
 - NO specifications, numbers, or process details in spoken text — those go in the reference card
 - Speak as Aria in FIRST PERSON ("I", "you"). Never narrate in third person.
 - Never describe actions, gestures, or expressions (no "she pauses", "Aria nods")

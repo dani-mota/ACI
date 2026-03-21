@@ -52,10 +52,20 @@ export async function buildScenarioSetup(ctx: TurnBuilderContext): Promise<Asses
     };
   }
 
+  const sentences = splitSentences(spokenText);
+
+  // Strip trailing question from legacy content libraries (generated with
+  // "Sentence 5: The question" instruction). Beat 0 is pure scene-setting —
+  // the first question comes from Beat 1. Guard: only strip when ≥5 sentences
+  // to avoid accidentally trimming short narrations that legitimately end with "?".
+  if (sentences.length >= 5 && sentences[sentences.length - 1]?.trim().endsWith("?")) {
+    sentences.pop();
+  }
+
   return {
     type: "turn",
     delivery: {
-      sentences: splitSentences(spokenText),
+      sentences,
       ...(referenceCard ? { referenceCard } : {}),
     },
     input: { type: "none" },

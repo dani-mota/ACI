@@ -22,6 +22,9 @@ import { buildConfidenceRating } from "./turn-builders/confidence-rating";
 import { buildParallelScenario } from "./turn-builders/parallel-scenario";
 import { buildReflective } from "./turn-builders/reflective";
 import { buildTransition } from "./turn-builders/transition";
+import { getProbeConfig } from "./scenario-probes";
+import { SCENARIOS } from "./scenarios";
+import { applyContentPolicy } from "./content-policy";
 
 const log = createLogger("dispatcher");
 
@@ -48,7 +51,7 @@ export async function dispatch(ctx: TurnBuilderContext): Promise<AssessmentTurnR
       failures: consecutiveHaikuFailures,
       tripAgeMs: circuitBreakerTripTime ? Date.now() - circuitBreakerTripTime : 0,
     });
-    return buildSafeFallback(ctx);
+    return applyContentPolicy(buildSafeFallback(ctx), ctx);
   }
 
   try {
@@ -68,17 +71,20 @@ export async function dispatch(ctx: TurnBuilderContext): Promise<AssessmentTurnR
         format: processed.signal.format,
         act: processed.signal.act,
       });
-      return buildSafeFallback(ctx, processed);
+      return applyContentPolicy(buildSafeFallback(ctx, processed), ctx);
     }
 
+    // Apply content delivery policy (question enforcement, dedup, acknowledgment, etc.)
+    const policied = applyContentPolicy(processed, ctx);
+
     // Validate the Turn against Zod schema
-    const validation = validateTurn(processed);
+    const validation = validateTurn(policied);
     if (!validation.success) {
       log.error("Turn validation failed", {
         format: action.type,
         errors: validation.error.issues.map((i) => i.message),
       });
-      return buildSafeFallback(ctx, processed);
+      return applyContentPolicy(buildSafeFallback(ctx, processed), ctx);
     }
 
     // Reset circuit breaker on success
@@ -88,9 +94,9 @@ export async function dispatch(ctx: TurnBuilderContext): Promise<AssessmentTurnR
     }
 
     const latencyMs = Date.now() - startTime;
-    processed.meta.systemLatencyMs = latencyMs;
+    policied.meta.systemLatencyMs = latencyMs;
 
-    return processed;
+    return policied;
   } catch (err) {
     log.error("TurnBuilder threw", {
       actionType: action.type,
@@ -111,7 +117,7 @@ export async function dispatch(ctx: TurnBuilderContext): Promise<AssessmentTurnR
       }
     }
 
-    return buildSafeFallback(ctx);
+    return applyContentPolicy(buildSafeFallback(ctx), ctx);
   }
 }
 
@@ -203,6 +209,18 @@ export function resetCircuitBreaker(): void {
  * Build a safe fallback Turn when the builder or validation fails.
  * Uses generic safe content that won't leak internals.
  */
+/**
+ * Beat-type-aware prefixes for fallback content.
+ * Each prefix provides scenario context so the fallback doesn't feel generic.
+ */
+const BEAT_TYPE_PREFIXES: Record<string, string> = {
+  INITIAL_RESPONSE: "I'd like to hear your take on this.",
+  COMPLICATION: "Given this new development —",
+  SOCIAL_PRESSURE: "That's a lot of pressure coming from different directions.",
+  CONSEQUENCE_REVEAL: "Now that you've seen how that played out —",
+  REFLECTIVE_SYNTHESIS: "Stepping back from the whole situation —",
+};
+
 function buildSafeFallback(
   ctx: TurnBuilderContext,
   partial?: AssessmentTurnResponse,
@@ -211,12 +229,30 @@ function buildSafeFallback(
   const format = partial?.signal?.format ?? "OPEN_PROBE";
   const act = partial?.signal?.act ?? state.currentAct;
 
+  // Try to build beat-aware fallback content
+  let fallbackText = "Tell me more about how you'd approach this situation.";
+  const probeConfig = getProbeConfig(state.currentScenario, state.currentBeat);
+  const scenario = SCENARIOS[state.currentScenario];
+  const beat = scenario?.beats[state.currentBeat];
+
+  if (probeConfig?.primaryProbe) {
+    const prefix = beat?.type ? (BEAT_TYPE_PREFIXES[beat.type] ?? "") : "";
+    fallbackText = `${prefix} ${probeConfig.primaryProbe}`.trim();
+    log.info("buildSafeFallback: using beat-aware probe", {
+      beatType: beat?.type,
+      probe: probeConfig.primaryProbe,
+    });
+  }
+
+  // Prepend acknowledgment if available
+  if (ctx.acknowledgment) {
+    fallbackText = `${ctx.acknowledgment} ${fallbackText}`.trim();
+  }
+
   return {
     type: "turn",
     delivery: {
-      sentences: splitSentences(
-        "Let me rephrase that. Tell me more about how you'd approach this situation."
-      ),
+      sentences: splitSentences(fallbackText),
     },
     input: {
       type: "voice-or-text",
@@ -226,6 +262,9 @@ function buildSafeFallback(
       act: act as any,
       primaryConstructs: partial?.signal?.primaryConstructs ?? [],
       secondaryConstructs: [],
+      ...(beat?.type ? { beatType: beat.type } : {}),
+      scenarioIndex: state.currentScenario,
+      beatIndex: state.currentBeat,
     },
     meta: buildMeta(state, "pre-generated"),
   };

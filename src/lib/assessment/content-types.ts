@@ -4,8 +4,13 @@ import type { ResponseClassification } from "./types";
 // Content Library: Pre-generated assessment content
 // ──────────────────────────────────────────────
 
+/** Content format version. v1: Beat 0 has 5 sentences (trailing question). v2: Beat 0 has 4 sentences (no trailing question). */
+export const CONTENT_FORMAT_VERSION = 2;
+
 export interface ContentLibraryData {
   version: number;
+  /** Content format version — distinguishes old (v1) vs new (v2) Beat 0 structure. */
+  formatVersion?: number;
   generatedAt: string;
   modelId: string;
   roleContext: {

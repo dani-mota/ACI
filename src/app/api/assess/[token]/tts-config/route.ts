@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { checkRateLimitAsync } from "@/lib/rate-limit";
-import { validateAssessSession } from "@/lib/session/assess-session"; // Fix: PRO-69
+// Session binding disabled — re-enable behind feature flag when architecture is stable
+// import { validateAssessSession } from "@/lib/session/assess-session";
 
 /**
  * GET /api/assess/[token]/tts-config
@@ -44,14 +45,7 @@ export async function GET(
     });
   }
 
-  // Fix: PRO-69 — session binding validation
-  const sessionCheck = validateAssessSession(invitation, request);
-  if (!sessionCheck.valid) {
-    return new Response(JSON.stringify({ error: "Session required" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
+  // Session binding disabled for pre-pilot — token auth only
 
   // Check TTS configuration
   const apiKey = process.env.ELEVENLABS_API_KEY;

@@ -339,7 +339,6 @@ export const useChatAssessmentStore = create<ChatAssessmentState>((set, get) => 
    */
   handleTurn: (turn: AssessmentTurnResponse, opts?: { messages?: ChatMessage[]; clearActiveElement?: boolean }) => {
     const s = get();
-    console.log(`[STORE] handleTurn() | format=${turn.signal.format} | beat=${turn.signal.beatIndex} | sentences=${turn.delivery.sentences.length} | hasRefCard=${!!turn.delivery.referenceCard} | hasElement=${!!turn.delivery.interactiveElement} | time=${Date.now()}`);
     __DEBUG && console.log(`[STORE-TRACE] handleTurn | format=${turn.signal.format} | sentences=${turn.delivery.sentences.length} | beat=${turn.signal.beatIndex}`);
     __DEBUG && console.log(`[REFCARD-TRACE] Turn has referenceCard: ${!!turn.delivery?.referenceCard}`);
     __DEBUG && console.log(`[REFCARD-TRACE] Turn has referenceUpdate: ${!!turn.delivery?.referenceUpdate}`);

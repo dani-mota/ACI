@@ -191,7 +191,7 @@ function buildAct1SystemPrompt(scenario: typeof SCENARIOS[number], beatIndex: nu
 OUTPUT FORMAT (you MUST follow this exactly):
 
 PART 1 — SPOKEN TEXT:
-Write EXACTLY 4-5 short sentences. You are speaking out loud — the candidate HEARS these words.
+Write EXACTLY 4 short sentences. You are speaking out loud — the candidate HEARS these words.
 
 Rules:
 - Each sentence must be under 20 words
@@ -199,7 +199,7 @@ Rules:
 - Sentence 2: How the system normally works (ONE sentence summary, not a process walkthrough)
 - Sentence 3: What went wrong (the problem, with the key number)
 - Sentence 4: What makes it tricky (the constraint or twist)
-- Sentence 5: The question
+- Do NOT include a question. Beat 0 is pure scene-setting. The first question comes from Beat 1.
 - DO NOT verbally list specifications, process steps, temperatures, tolerances, or cycle times. Those go in the reference card JSON. The candidate will see them on screen.
 - Think: briefing a colleague in 30 seconds over coffee. Not reading a technical report.
 - No markdown, no headers, no bracket tags, no structural markers. Plain English only.
@@ -242,7 +242,7 @@ If this beat reveals no new factual information (e.g., you're just asking a foll
   return persona + `You are conducting a structured workplace scenario investigation. Present realistic situations, respond to the candidate's choices, and adapt based on their responses.
 
 SCENARIO: ${scenario.name}
-DESCRIPTION: ${scenario.description}
+${beatIndex === 0 ? `DESCRIPTION: ${scenario.description}` : "DESCRIPTION: (already presented to candidate — do not re-narrate)"}
 CURRENT BEAT: ${beatIndex + 1} of 6
 
 RULES:

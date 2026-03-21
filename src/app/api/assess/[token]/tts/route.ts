@@ -2,7 +2,8 @@ import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { checkRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 import { createLogger } from "@/lib/assessment/logger";
-import { validateAssessSession } from "@/lib/session/assess-session";
+// Session binding disabled — re-enable behind feature flag when architecture is stable
+// import { validateAssessSession } from "@/lib/session/assess-session";
 
 const log = createLogger("tts-route");
 
@@ -53,22 +54,10 @@ export async function POST(
     });
   }
 
-  // Fix: PRO-67 — session validation, skip during Phase 0 (cookie not yet established)
-  const assessment = await prisma.assessment.findFirst({
-    where: { candidateId: invitation.candidateId },
-    include: { assessmentState: { select: { phase0Complete: true } } },
-    orderBy: { startedAt: "desc" },
-  });
-
-  if (assessment?.assessmentState?.phase0Complete) {
-    const sessionCheck = validateAssessSession(invitation, request);
-    if (!sessionCheck.valid) {
-      return new Response(JSON.stringify({ error: "Session required" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-  }
+  // Session binding disabled for pre-pilot — token auth only
+  // PRO-24 text validation disabled — was causing legitimate TTS to fail when
+  // Aria's response diverged from stored content (acknowledgment prepending,
+  // sentence splitting). Token auth is sufficient for pre-pilot.
 
   // Check env vars
   const apiKey = process.env.ELEVENLABS_API_KEY;
@@ -98,30 +87,6 @@ export async function POST(
       status: 400,
       headers: { "Content-Type": "application/json" },
     });
-  }
-
-  // Fix: PRO-24 — validate text matches a recent AI turn to prevent arbitrary TTS abuse
-  // Skip during Phase 0 (scripted text, not AGENT messages)
-  if (assessment?.assessmentState?.phase0Complete) {
-    const recentAgentMessages = await prisma.conversationMessage.findMany({
-      where: { assessmentId: assessment.id, role: "AGENT" },
-      orderBy: { createdAt: "desc" },
-      take: 10,
-      select: { content: true },
-    });
-
-    const normalizedText = text.trim().toLowerCase();
-    const isValidTurn = recentAgentMessages.some(
-      (msg) => msg.content.toLowerCase().includes(normalizedText) ||
-               normalizedText.includes(msg.content.toLowerCase().slice(0, 50)),
-    );
-
-    if (!isValidTurn) {
-      return new Response(JSON.stringify({ error: "Text does not match any recent assessment turn" }), {
-        status: 403,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
   }
 
   try {
