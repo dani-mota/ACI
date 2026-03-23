@@ -39,7 +39,7 @@ export function SubtitleDisplay({ text, revealedWords, isRevealing, compact }: S
   useEffect(() => {
     if (prevTextRef.current && !text) {
       // Text was cleared — fade out, then remove
-      setFadingOut(true);
+      requestAnimationFrame(() => setFadingOut(true));
       const timer = setTimeout(() => {
         setFadingOut(false);
         setDisplayText("");
@@ -49,7 +49,7 @@ export function SubtitleDisplay({ text, revealedWords, isRevealing, compact }: S
     }
     if (prevTextRef.current && text && text !== prevTextRef.current) {
       // Sentence changed — crossfade: fade out old, swap, fade in new
-      setFadingOut(true);
+      requestAnimationFrame(() => setFadingOut(true));
       const timer = setTimeout(() => {
         setDisplayText(text);
         setFadingOut(false);
@@ -58,8 +58,10 @@ export function SubtitleDisplay({ text, revealedWords, isRevealing, compact }: S
       return () => clearTimeout(timer);
     }
     // First text or same text
-    setFadingOut(false);
-    setDisplayText(text);
+    requestAnimationFrame(() => {
+      setFadingOut(false);
+      setDisplayText(text);
+    });
     prevTextRef.current = text;
   }, [text]);
 

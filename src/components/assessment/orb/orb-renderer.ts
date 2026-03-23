@@ -359,8 +359,8 @@ export class OrbRenderer {
 
     // ── Update particles ──
     for (const p of this.particles) {
-      let ddx = Math.sin(t * p.driftFX + p.driftPX) * p.driftR;
-      let ddy = Math.cos(t * p.driftFY + p.driftPY) * p.driftR;
+      const ddx = Math.sin(t * p.driftFX + p.driftPX) * p.driftR;
+      const ddy = Math.cos(t * p.driftFY + p.driftPY) * p.driftR;
       let tx = p.bx + ddx;
       let ty = p.by + ddy;
       if (this.orientAmount > 0.001) {

@@ -83,7 +83,7 @@ function ScanRevealBlock({
       const timer = setTimeout(() => setRevealed(true), 100);
       return () => clearTimeout(timer);
     }
-    if (show) setRevealed(true);
+    if (show) requestAnimationFrame(() => setRevealed(true));
   }, [show, isActive]);
 
   return (
@@ -162,11 +162,11 @@ export function ScenarioReferenceCard({ reference, revealCount }: ScenarioRefere
 
   useEffect(() => {
     if (reference) {
-      setDisplayRef(reference);
+      requestAnimationFrame(() => setDisplayRef(reference));
       const timer = setTimeout(() => setVisible(true), 300);
       return () => clearTimeout(timer);
     } else {
-      setVisible(false);
+      requestAnimationFrame(() => setVisible(false));
       const timer = setTimeout(() => setDisplayRef(null), 500);
       return () => clearTimeout(timer);
     }
@@ -175,7 +175,7 @@ export function ScenarioReferenceCard({ reference, revealCount }: ScenarioRefere
   // Update displayRef when reference content changes (new info accumulates)
   useEffect(() => {
     if (reference && displayRef) {
-      setDisplayRef(reference);
+      requestAnimationFrame(() => setDisplayRef(reference));
     }
   }, [reference?.newInformation?.length, reference?.question]); // eslint-disable-line react-hooks/exhaustive-deps
 

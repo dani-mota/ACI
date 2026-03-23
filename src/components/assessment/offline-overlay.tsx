@@ -9,8 +9,8 @@ export function OfflineOverlay() {
     const goOffline = () => setIsOffline(true);
     const goOnline = () => setIsOffline(false);
 
-    // Check initial state
-    if (!navigator.onLine) setIsOffline(true);
+    // Check initial state — use callback form to avoid synchronous setState in effect
+    if (!navigator.onLine) requestAnimationFrame(() => setIsOffline(true));
 
     window.addEventListener("offline", goOffline);
     window.addEventListener("online", goOnline);

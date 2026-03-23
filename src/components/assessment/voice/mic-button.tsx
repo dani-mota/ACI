@@ -21,17 +21,17 @@ export const MicButton = forwardRef<HTMLButtonElement, MicButtonProps>(
   // Fix: PRO-39 — track unmount to prevent submitting partial transcript
   const unmountedRef = useRef(false);
 
-  // Stable callback refs
+  // Stable callback refs — update in effects to avoid ref writes during render
   const onTranscriptRef = useRef(onTranscript);
-  onTranscriptRef.current = onTranscript;
   const onListeningChangeRef = useRef(onListeningChange);
-  onListeningChangeRef.current = onListeningChange;
+  useEffect(() => { onTranscriptRef.current = onTranscript; }, [onTranscript]);
+  useEffect(() => { onListeningChangeRef.current = onListeningChange; }, [onListeningChange]);
 
   useEffect(() => {
     const hasSpeech =
       typeof window !== "undefined" &&
       ("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
-    setSupported(hasSpeech);
+    requestAnimationFrame(() => setSupported(hasSpeech));
   }, []);
 
   // Initialize speech recognition

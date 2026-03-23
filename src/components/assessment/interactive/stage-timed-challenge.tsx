@@ -31,12 +31,13 @@ export function StageTimedChallenge({
   // Fix: PRO-36 — only update aria-live region every 5s to avoid 4Hz screen reader spam
   const [ariaRemaining, setAriaRemaining] = useState(timeLimit);
   const elapsedRef = useRef(0);
-  const lastTickRef = useRef(Date.now());
+  const lastTickRef = useRef(0);
   const pausedRef = useRef(false);
   const lastAriaUpdateRef = useRef(timeLimit);
 
   useEffect(() => {
     if (disabled || answered) return;
+    if (!lastTickRef.current) lastTickRef.current = Date.now();
 
     // Pause timer when tab is hidden
     const handleVisibility = () => {

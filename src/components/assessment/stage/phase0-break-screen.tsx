@@ -38,7 +38,7 @@ export function Phase0BreakScreen({
   useEffect(() => {
     if (!visible) return;
     calledRef.current = false;
-    setRemaining(duration);
+    requestAnimationFrame(() => setRemaining(duration));
 
     intervalRef.current = setInterval(() => {
       setRemaining((prev) => {

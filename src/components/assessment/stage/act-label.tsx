@@ -24,7 +24,7 @@ export function ActLabel({ currentAct, visible }: ActLabelProps) {
     prevLabelRef.current = label;
 
     // Crossfade: fade out old label, swap, fade in new
-    setCrossfading(true);
+    requestAnimationFrame(() => setCrossfading(true));
     const timer = setTimeout(() => {
       setDisplayLabel(label);
       setCrossfading(false);

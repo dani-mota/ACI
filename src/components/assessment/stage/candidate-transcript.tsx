@@ -19,7 +19,7 @@ export function CandidateTranscript({ text, visible }: CandidateTranscriptProps)
       const timer = setTimeout(() => setOpacity(0), 2000);
       return () => clearTimeout(timer);
     } else {
-      setOpacity(0);
+      requestAnimationFrame(() => setOpacity(0));
     }
   }, [visible, text]);
 

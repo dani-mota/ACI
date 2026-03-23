@@ -674,7 +674,7 @@ export function AssessmentStage({
     }, candidateName);
 
     await playTransitionScript(lines);
-  }, [token, playTransitionScript]);
+  }, [token, playTransitionScript, candidateName]);
 
   // ══════════════════════════════════════════════
   // Initialization
@@ -763,7 +763,7 @@ export function AssessmentStage({
       .catch(() => {
         getStore().setOrbMode("idle");
       });
-  }, [token, assessmentId, initialized, audioUnlocked]);
+  }, [token, assessmentId, initialized, audioUnlocked]); // eslint-disable-line react-hooks/exhaustive-deps -- phase0Ref is a stable ref
 
   // Safety reset: if isLoading gets stuck (network hang, double-lock), force-clear after 75s.
   // Max legitimate duration: 2×30s attempts + 2s delay = 62s; 75s gives sufficient headroom.
@@ -846,7 +846,7 @@ export function AssessmentStage({
       clearMicNudgeTimers();
       ttsRef.current?.stop();
     };
-  }, [phase0Ready, orchestratorPhase, playSegmentTTS, persistPhase0Msg, clearMicNudgeTimers, handlePhase0Complete, phase0Segments]);
+  }, [phase0Ready, orchestratorPhase, playSegmentTTS, persistPhase0Msg, clearMicNudgeTimers, handlePhase0Complete, phase0Segments]); // eslint-disable-line react-hooks/exhaustive-deps -- phase0Ref, micNudgeTimers are stable refs
 
   // ══════════════════════════════════════════════
   // TTS Trigger — watches displayEvent (not messages)
@@ -979,7 +979,7 @@ export function AssessmentStage({
         s.sendMessage(text).then(() => { lastFailedMessageRef.current = null; }).catch(() => {});
       }
     },
-    [handlePhase0Response],
+    [handlePhase0Response], // eslint-disable-line react-hooks/exhaustive-deps -- phase0Ref is a stable ref
   );
 
   const handleElementResponse = useCallback(async (value: string) => {
@@ -1030,7 +1030,7 @@ export function AssessmentStage({
       lastFailedMessageRef.current = text;
       s.sendMessage(text).then(() => { lastFailedMessageRef.current = null; }).catch(() => {});
     }
-  }, [textInput, handlePhase0Response]);
+  }, [textInput, handlePhase0Response]); // eslint-disable-line react-hooks/exhaustive-deps -- phase0Ref is a stable ref
 
   const handleListeningChange = useCallback((listening: boolean) => {
     const s = getStore();

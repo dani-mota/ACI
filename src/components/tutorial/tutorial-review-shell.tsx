@@ -15,12 +15,12 @@ export function TutorialReviewShell() {
     try {
       const raw = sessionStorage.getItem("roleBuilderResult");
       if (!raw) {
-        setError(true);
+        requestAnimationFrame(() => setError(true));
         return;
       }
-      setResult(JSON.parse(raw));
+      requestAnimationFrame(() => setResult(JSON.parse(raw)));
     } catch {
-      setError(true);
+      requestAnimationFrame(() => setError(true));
     }
   }, []);
 
