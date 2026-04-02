@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { LayoutDashboard, Grid3X3, GitCompareArrows, Sparkles, ArrowLeft, Sun, Moon, Shield, Settings } from "lucide-react";
+import { LayoutDashboard, Grid3X3, GitCompareArrows, Sparkles, ArrowLeft, Sun, Moon, Shield, Settings, Users } from "lucide-react";
 import { UserMenu } from "./user-menu";
 import { NotificationBell } from "./notification-bell";
 import { useTheme } from "@/components/theme-provider";
@@ -31,6 +31,7 @@ function LiveNotificationBell() {
 const BASE_NAV_ITEMS = [
   { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard, internal: false },
   { path: "/roles", label: "Roles", icon: Grid3X3, internal: true },
+  { path: "/teams", label: "Teams", icon: Users, internal: true },
   { path: "/compare", label: "Compare", icon: GitCompareArrows, internal: true },
 ];
 
