@@ -3,6 +3,8 @@ import prisma from "@/lib/prisma";
 import { sendEmail } from "@/lib/email/resend";
 import { buildResultsEmail } from "@/lib/email/templates/results";
 
+export const maxDuration = 300;
+
 /**
  * GET /api/cron/send-results
  * Vercel cron job: finds completed assessments older than 7 days

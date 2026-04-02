@@ -6,14 +6,14 @@ import { type AppUserRole, filterCandidateForRole } from "@/lib/rbac";
  * Each function accepts an optional orgId to scope queries.
  */
 
-export async function getDashboardData(orgId?: string, opts?: { userId?: string; role?: AppUserRole }) {
+export async function getDashboardData(orgId: string, opts?: { userId?: string; role?: AppUserRole }) {
   const isEC = opts?.role === "EXTERNAL_COLLABORATOR" && opts?.userId;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const where: any = orgId ? { orgId } : {};
+  const where: any = { orgId };
   if (isEC) {
     where.assignments = { some: { userId: opts.userId } };
   }
-  const roleWhere = orgId ? { orgId } : {};
+  const roleWhere = { orgId };
 
   const [candidates, roles] = await Promise.all([
     prisma.candidate.findMany({
@@ -77,7 +77,7 @@ export async function getDashboardData(orgId?: string, opts?: { userId?: string;
   };
 }
 
-export async function getCandidateData(id: string, orgId?: string, opts?: { userId?: string; role?: AppUserRole }) {
+export async function getCandidateData(id: string, orgId: string, opts?: { userId?: string; role?: AppUserRole }) {
   const candidate = await prisma.candidate.findUnique({
     where: { id },
     include: {
@@ -103,8 +103,8 @@ export async function getCandidateData(id: string, orgId?: string, opts?: { user
 
   if (!candidate) return null;
 
-  // If orgId provided, verify candidate belongs to that org
-  if (orgId && candidate.orgId !== orgId) return null;
+  // Verify candidate belongs to the requesting org
+  if (candidate.orgId !== orgId) return null;
 
   // External collaborators can only view candidates assigned to them
   if (opts?.role === "EXTERNAL_COLLABORATOR" && opts?.userId) {
@@ -114,14 +114,13 @@ export async function getCandidateData(id: string, orgId?: string, opts?: { user
     if (!assignment) return null;
   }
 
-  const roleWhere = orgId ? { orgId } : {};
   const allRoles = await prisma.role.findMany({
-    where: roleWhere,
+    where: { orgId },
     include: { compositeWeights: true },
   });
 
   const cutlines = await prisma.cutline.findMany({
-    where: orgId ? { orgId } : {},
+    where: { orgId },
   });
 
   const serialized = JSON.parse(JSON.stringify(candidate));
@@ -136,8 +135,8 @@ export async function getCandidateData(id: string, orgId?: string, opts?: { user
   };
 }
 
-export async function getRolesData(orgId?: string) {
-  const where = orgId ? { orgId } : {};
+export async function getRolesData(orgId: string) {
+  const where = { orgId };
 
   const roles = await prisma.role.findMany({
     where,
@@ -161,11 +160,11 @@ export async function getRolesData(orgId?: string) {
   return JSON.parse(JSON.stringify(roles));
 }
 
-export async function getCompareData(ids: string[], orgId?: string) {
+export async function getCompareData(ids: string[], orgId: string) {
   const candidates = await prisma.candidate.findMany({
     where: {
       id: { in: ids },
-      ...(orgId ? { orgId } : {}),
+      orgId,
     },
     include: {
       primaryRole: true,
@@ -180,9 +179,8 @@ export async function getCompareData(ids: string[], orgId?: string) {
     },
   });
 
-  const roleWhere = orgId ? { orgId } : {};
   const roles = await prisma.role.findMany({
-    where: roleWhere,
+    where: { orgId },
     include: { compositeWeights: true },
   });
 
@@ -192,8 +190,8 @@ export async function getCompareData(ids: string[], orgId?: string) {
   };
 }
 
-export async function getHeatmapData(orgId?: string) {
-  const where = orgId ? { orgId } : {};
+export async function getHeatmapData(orgId: string) {
+  const where = { orgId };
 
   const [candidates, roles, weights, cutlines] = await Promise.all([
     prisma.candidate.findMany({
@@ -210,9 +208,9 @@ export async function getHeatmapData(orgId?: string) {
     }),
     prisma.role.findMany({ where }),
     prisma.compositeWeight.findMany({
-      where: orgId ? { role: { orgId } } : {},
+      where: { role: { orgId } },
     }),
-    prisma.cutline.findMany({ where: orgId ? { orgId } : {} }),
+    prisma.cutline.findMany({ where: { orgId } }),
   ]);
 
   return {

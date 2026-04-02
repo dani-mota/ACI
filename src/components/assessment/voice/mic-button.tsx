@@ -16,12 +16,22 @@ export const MicButton = forwardRef<HTMLButtonElement, MicButtonProps>(
   const [supported, setSupported] = useState(true);
   const [interim, setInterim] = useState("");
   const recognitionRef = useRef<SpeechRecognition | null>(null);
-  const silenceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const transcriptRef = useRef("");
   // Fix: PRO-39 — track unmount to prevent submitting partial transcript
   const unmountedRef = useRef(false);
 
-  // Stable callback refs — update in effects to avoid ref writes during render
+  // Toggle mode: distinguish user-initiated stop from browser-initiated stop
+  const userRequestedStop = useRef(false);
+  // Auto-restart circuit breaker: prevent infinite restart loops
+  const restartCountRef = useRef(0);
+  const restartWindowRef = useRef(0);
+  const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastErrorRef = useRef<string | null>(null);
+  const MAX_RESTARTS = 3;
+  const RESTART_WINDOW_MS = 5000;
+  const RESTART_DELAY_MS = 150;
+
+  // Stable callback refs
   const onTranscriptRef = useRef(onTranscript);
   const onListeningChangeRef = useRef(onListeningChange);
   useEffect(() => { onTranscriptRef.current = onTranscript; }, [onTranscript]);
@@ -61,48 +71,102 @@ export const MicButton = forwardRef<HTMLButtonElement, MicButtonProps>(
       transcriptRef.current = fullTranscript;
       setInterim(interimText);
 
-      // Fix: PRO-58 — auto-stop after 3.5s of silence following final results
-      if (silenceTimer.current) clearTimeout(silenceTimer.current);
-      if (fullTranscript) {
-        silenceTimer.current = setTimeout(() => {
-          recognition.stop();
-        }, 3500);
-      }
+      // Reset restart counter on successful speech — recognition is working
+      restartCountRef.current = 0;
+      lastErrorRef.current = null;
     };
 
     recognition.onspeechend = () => {
-      // Speech stopped — give a brief window for any final results
-      if (silenceTimer.current) clearTimeout(silenceTimer.current);
-      silenceTimer.current = setTimeout(() => {
-        recognition.stop();
-      }, 1500);
+      // Toggle mode — do not auto-stop on speech end.
+      // The user controls when the mic turns off by clicking again.
     };
 
     recognition.onerror = (event: any) => {
+      console.warn("[MIC] SpeechRecognition error:", event.error);
       if (event.error === "aborted") return;
+      // Store the error type so onend can distinguish no-speech from real failures
+      lastErrorRef.current = event.error;
+      // "no-speech" is expected in toggle mode — user may click mic before speaking
+      if (event.error === "no-speech") return;
+      // Real errors (not-allowed, network, audio-capture, service-not-allowed) — kill the mic
       setListening(false);
       setInterim("");
       onListeningChangeRef.current(false);
     };
 
     recognition.onend = () => {
-      if (silenceTimer.current) clearTimeout(silenceTimer.current);
-      setListening(false);
-      setInterim("");
-      onListeningChangeRef.current(false);
+      // If the user explicitly clicked off, submit transcript and stop
+      if (userRequestedStop.current) {
+        if (restartTimerRef.current) { clearTimeout(restartTimerRef.current); restartTimerRef.current = null; }
+        setListening(false);
+        setInterim("");
+        onListeningChangeRef.current(false);
 
-      // Fix: PRO-39 — do not submit partial transcript if component has unmounted
-      if (unmountedRef.current) {
-        transcriptRef.current = "";
+        if (unmountedRef.current) {
+          transcriptRef.current = "";
+          return;
+        }
+
+        const text = transcriptRef.current.trim();
+        if (text) {
+          onTranscriptRef.current(text);
+          transcriptRef.current = "";
+        }
         return;
       }
 
-      // Submit accumulated transcript
-      const text = transcriptRef.current.trim();
-      if (text) {
-        onTranscriptRef.current(text);
-        transcriptRef.current = "";
+      // Determine if this was a no-speech cycle (expected) or a real failure
+      const wasNoSpeech = lastErrorRef.current === "no-speech";
+      lastErrorRef.current = null;
+
+      // Only count real failures against the circuit breaker — not no-speech
+      if (!wasNoSpeech) {
+        const now = Date.now();
+        if (now - restartWindowRef.current > RESTART_WINDOW_MS) {
+          restartCountRef.current = 0;
+          restartWindowRef.current = now;
+        }
+        restartCountRef.current++;
+
+        if (restartCountRef.current > MAX_RESTARTS) {
+          // Circuit breaker tripped — too many real failures, give up
+          console.warn("[MIC] Auto-restart circuit breaker tripped, stopping mic");
+          try { recognition.abort(); } catch { /* already stopped */ }
+          setListening(false);
+          setInterim("");
+          onListeningChangeRef.current(false);
+
+          if (!unmountedRef.current) {
+            const text = transcriptRef.current.trim();
+            if (text) {
+              onTranscriptRef.current(text);
+              transcriptRef.current = "";
+            }
+          }
+          return;
+        }
       }
+
+      // Auto-restart with delay — keep green on, keep transcript
+      const label = wasNoSpeech
+        ? "[MIC] Restarting after no-speech (expected in toggle mode)"
+        : "[MIC] Browser ended recognition unexpectedly, restarting...";
+      console.info(label);
+
+      restartTimerRef.current = setTimeout(() => {
+        restartTimerRef.current = null;
+        if (userRequestedStop.current || unmountedRef.current) return;
+        try {
+          recognition.start();
+        } catch (err) {
+          // start() failed — force-abort to reset state, then give up
+          console.warn("[MIC] Auto-restart failed, aborting to reset:", err);
+          try { recognition.abort(); } catch { /* already stopped */ }
+          setListening(false);
+          setInterim("");
+          onListeningChangeRef.current(false);
+        }
+      }, RESTART_DELAY_MS);
     };
 
     recognitionRef.current = recognition;
@@ -110,8 +174,9 @@ export const MicButton = forwardRef<HTMLButtonElement, MicButtonProps>(
     return () => {
       // Fix: PRO-39 — mark unmounted before aborting so onend doesn't submit partial
       unmountedRef.current = true;
+      userRequestedStop.current = true; // Prevent auto-restart during cleanup
+      if (restartTimerRef.current) { clearTimeout(restartTimerRef.current); restartTimerRef.current = null; }
       transcriptRef.current = "";
-      if (silenceTimer.current) clearTimeout(silenceTimer.current);
       recognition.abort();
       recognitionRef.current = null;
     };
@@ -121,16 +186,28 @@ export const MicButton = forwardRef<HTMLButtonElement, MicButtonProps>(
     if (disabled || !recognitionRef.current) return;
 
     if (listening) {
+      // User explicitly clicked off — cancel any pending restart and set flag
+      if (restartTimerRef.current) { clearTimeout(restartTimerRef.current); restartTimerRef.current = null; }
+      userRequestedStop.current = true;
       recognitionRef.current.stop();
     } else {
+      // Force-abort any zombie recognition state before starting fresh
+      try { recognitionRef.current.abort(); } catch { /* already stopped */ }
+
       try {
+        userRequestedStop.current = false;
+        lastErrorRef.current = null;
+        restartCountRef.current = 0;
+        restartWindowRef.current = Date.now();
         transcriptRef.current = "";
         setInterim("");
         recognitionRef.current.start();
         setListening(true);
         onListeningChangeRef.current(true);
-      } catch {
-        // Already started
+      } catch (err) {
+        // start() failed — force-abort to ensure clean state for next click
+        console.warn("[MIC] start() failed, aborting to reset state:", err);
+        try { recognitionRef.current.abort(); } catch { /* already stopped */ }
       }
     }
   }, [listening, disabled]);

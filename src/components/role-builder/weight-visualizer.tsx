@@ -45,15 +45,41 @@ export function WeightVisualizer({ weights, recommendations, onChange }: WeightV
         const each = Math.max(2, Math.floor(budget / unlockedIds.length));
         for (const id of unlockedIds) next[id] = each;
       } else {
-        // Proportional rebalance
-        for (const id of unlockedIds) {
-          const proportion = weights[id] / unlockedSum;
-          next[id] = Math.max(2, Math.round(proportion * budget));
+        // Largest-remainder rebalance
+        const raw = unlockedIds.map((id) => ({
+          id,
+          exact: Math.max(2, (weights[id] / unlockedSum) * budget),
+        }));
+        // Floor each value (respecting min 2)
+        const floored = raw.map((r) => ({
+          ...r,
+          floor: Math.max(2, Math.floor(r.exact)),
+          remainder: r.exact - Math.floor(r.exact),
+        }));
+        // Assign floored values
+        for (const entry of floored) {
+          next[entry.id] = Math.min(25, entry.floor);
         }
-        // Fix rounding drift: adjust the first unlocked construct
-        const drift =
-          100 - Object.values(next).reduce((s, v) => s + v, 0);
-        if (drift !== 0 && unlockedIds[0]) next[unlockedIds[0]] = Math.max(2, next[unlockedIds[0]] + drift);
+        // Distribute remaining units by largest remainder
+        let remaining = 100 - Object.values(next).reduce((s, v) => s + v, 0);
+        const sorted = [...floored].sort((a, b) => b.remainder - a.remainder);
+        let idx = 0;
+        while (remaining > 0 && idx < sorted.length) {
+          if (next[sorted[idx].id] < 25) {
+            next[sorted[idx].id] += 1;
+            remaining -= 1;
+          }
+          idx++;
+        }
+        // If remaining is negative (over 100), subtract from smallest remainders
+        idx = sorted.length - 1;
+        while (remaining < 0 && idx >= 0) {
+          if (next[sorted[idx].id] > 2) {
+            next[sorted[idx].id] -= 1;
+            remaining += 1;
+          }
+          idx--;
+        }
       }
 
       onChange(next);

@@ -79,7 +79,11 @@ export async function buildOpenProbe(ctx: TurnBuilderContext): Promise<Assessmen
           isOpeningTurn,
         });
         systemPrompt = assembled.systemPrompt;
-        userContext = assembled.userContext;
+        // Reinforce the engine's userContext when available (e.g., "Do NOT re-explain the scenario")
+        const engineUserContext = "userContext" in action ? (action as any).userContext as string : "";
+        userContext = engineUserContext
+          ? `${assembled.userContext}\n\nADDITIONAL INSTRUCTIONS: ${engineUserContext}`
+          : assembled.userContext;
       } else {
         // Beat 0 fallback or missing scenario: legacy inline prompt
         systemPrompt = buildStreamingPrompt(ctx, scenarioIndex, beatIndex, classification);

@@ -6,7 +6,9 @@
  * Set ASSESSMENT_TEST_MODE=true in .env.local to run entirely on Haiku
  * with a single evaluation pass — ~20× cheaper, for local UX testing.
  */
-const TEST_MODE = process.env.ASSESSMENT_TEST_MODE === "true";
+import { env } from "@/lib/env";
+
+const TEST_MODE = env.ASSESSMENT_TEST_MODE;
 
 export const AI_CONFIG = {
   /** Model for real-time assessment interactions (low latency) */
@@ -46,7 +48,7 @@ if (_TURN_PLAYER && !_UNIFIED_TURNS) {
 
 export const FEATURE_FLAGS = {
   /** Enable pre-generated content libraries instead of live AI generation */
-  CONTENT_LIBRARY_ENABLED: process.env.FEATURE_CONTENT_LIBRARY !== "false", // default ON
+  CONTENT_LIBRARY_ENABLED: env.FEATURE_CONTENT_LIBRARY,
   /** Enable few-shot examples in classification prompts (default: true) */
   CLASSIFICATION_FEW_SHOT: process.env.FEATURE_CLASSIFICATION_FEW_SHOT !== "false",
   /** Enable unified Turn architecture. When ON, chat route returns AssessmentTurnResponse JSON. */

@@ -34,16 +34,15 @@ export function buildAssessmentContext(opts: {
   scenarioIndex: number;
   messages: ConversationMessage[];
 }): string {
-  const { candidateName, roleContext, scenario, scenarioIndex, messages } = opts;
+  const { roleContext, scenario, scenarioIndex, messages } = opts;
   const recentMessages = messages
     .filter((m) => m.act !== "PHASE_0" && m.role !== "SYSTEM")
     .slice(-6)
-    // Fix: PRO-68 — escape message content before interpolation to prevent two-turn prompt injection
-    .map((m) => `${m.role === "AGENT" ? "Aria" : candidateName || "Candidate"}: ${escapeXml(m.content.slice(0, 300))}`)
+    .map((m) => `${m.role === "AGENT" ? "Aria" : "Candidate"}: ${escapeXml(m.content.slice(0, 300))}`)
     .join("\n");
 
   let ctx = "";
-  if (candidateName) ctx += `CANDIDATE NAME: ${candidateName} (address them by name once in this response if it flows naturally — skip if in doubt)\n`;
+  ctx += "CANDIDATE: the candidate\n";
   if (roleContext && !roleContext.isGeneric) {
     ctx += `ROLE: ${roleContext.roleName} | DOMAIN: ${roleContext.environment}\n`;
   }
@@ -87,7 +86,7 @@ export function buildBeatInstruction(opts: {
   const acknowledgeInstruction = hasResponse
     ? `1. Acknowledge something SPECIFIC from the candidate's response (1-2 sentences)`
     : isOpeningTurn
-      ? `1. Open this beat naturally — introduce the scenario element or probe for this beat as if meeting the candidate fresh. Do NOT reference any prior response. Do NOT invent or assume anything the candidate said.`
+      ? `1. Ask the candidate what they would do in this situation. Do NOT re-explain the scenario — the candidate already heard it and has the reference card visible. Ask one open-ended question in 1 sentence. Do NOT reference any prior response. Do NOT invent or assume anything the candidate said.`
       : `1. The candidate did not respond. In ONE short sentence, note this naturally (e.g. "Let me move us forward." or "Let's continue.") — do NOT invent or assume what they said.`;
 
   return `BEAT: ${beat.type} (Beat ${beat.beatNumber + 1} of 6)

@@ -431,17 +431,39 @@ function normalizeWeights(weights: Record<string, number>): Record<string, numbe
     clamped[c] = Math.max(2, Math.min(25, Math.round(weights[c] ?? 8)));
   });
 
-  // Scale to sum = 100
+  // Scale to sum = 100 using largest-remainder method
   const total = Object.values(clamped).reduce((s, v) => s + v, 0);
-  const normalized: Record<string, number> = {};
-  constructs.forEach((c) => {
-    normalized[c] = Math.round((clamped[c] / total) * 100);
+  const entries = constructs.map((c) => {
+    const exact = (clamped[c] / total) * 100;
+    const floor = Math.max(2, Math.floor(exact));
+    return { id: c, exact, floor, remainder: exact - Math.floor(exact) };
   });
 
-  // Fix rounding drift
-  const sum = Object.values(normalized).reduce((s, v) => s + v, 0);
-  const diff = 100 - sum;
-  if (diff !== 0) normalized["FLUID_REASONING"] = Math.max(2, normalized["FLUID_REASONING"] + diff);
+  const normalized: Record<string, number> = {};
+  for (const entry of entries) {
+    normalized[entry.id] = Math.min(25, entry.floor);
+  }
+
+  // Distribute remaining units by largest fractional remainder
+  let remaining = 100 - Object.values(normalized).reduce((s, v) => s + v, 0);
+  const sorted = [...entries].sort((a, b) => b.remainder - a.remainder);
+  let idx = 0;
+  while (remaining > 0 && idx < sorted.length) {
+    if (normalized[sorted[idx].id] < 25) {
+      normalized[sorted[idx].id] += 1;
+      remaining -= 1;
+    }
+    idx++;
+  }
+  // If over 100, subtract from constructs with smallest remainders
+  idx = sorted.length - 1;
+  while (remaining < 0 && idx >= 0) {
+    if (normalized[sorted[idx].id] > 2) {
+      normalized[sorted[idx].id] -= 1;
+      remaining += 1;
+    }
+    idx--;
+  }
 
   return normalized;
 }

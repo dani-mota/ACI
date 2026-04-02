@@ -4,6 +4,8 @@ import { runScoringPipeline } from "@/lib/assessment/scoring/pipeline";
 import { createLogger } from "@/lib/assessment/logger";
 import * as Sentry from "@sentry/nextjs"; // Fix: PRO-74
 
+export const maxDuration = 300;
+
 const log = createLogger("recover-stuck-assessments");
 
 /**

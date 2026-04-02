@@ -471,7 +471,7 @@ export class TTSEngine {
     this.stopAmplitudeLoop();
     this.onStateChange(false);
 
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+    if (this.fallbackActive && typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
     }
   }

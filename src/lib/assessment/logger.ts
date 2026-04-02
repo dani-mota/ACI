@@ -12,6 +12,8 @@ interface LogEntry {
   module: string;
   message: string;
   requestId?: string;
+  orgId?: string;
+  environment?: string;
   assessmentId?: string;
   construct?: string;
   act?: string;
@@ -57,8 +59,12 @@ function emit(entry: LogEntry) {
  * @param module - Identifies the source (e.g. "chat-route", "pipeline")
  * @param requestId - Optional correlation ID auto-included in every log entry
  */
-export function createLogger(module: string, requestId?: string) {
-  const base: Partial<LogEntry> = requestId ? { requestId } : {};
+export function createLogger(module: string, requestId?: string, orgId?: string) {
+  const base: Partial<LogEntry> = {
+    ...(requestId ? { requestId } : {}),
+    ...(orgId ? { orgId } : {}),
+    environment: process.env.NODE_ENV ?? "unknown",
+  };
   return {
     info: (message: string, data?: Partial<LogEntry>) =>
       emit({ level: "info", module, message, ...base, ...data }),

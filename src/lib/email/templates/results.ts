@@ -8,6 +8,15 @@ interface ResultsEmailParams {
   narrative: string;
 }
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export function buildResultsEmail({
   candidateName,
   roleName,
@@ -18,6 +27,10 @@ export function buildResultsEmail({
   narrative,
 }: ResultsEmailParams): { subject: string; html: string } {
   const subject = `Your Assessment Results — ${roleName} at ${companyName}`;
+  const safeCandidateName = escapeHtml(candidateName);
+  const safeRoleName = escapeHtml(roleName);
+  const safeCompanyName = escapeHtml(companyName);
+  const safeNarrative = escapeHtml(narrative);
 
   function barHtml(label: string, percentile: number, color: string) {
     return `
@@ -62,10 +75,10 @@ export function buildResultsEmail({
           <tr>
             <td style="padding: 32px;">
               <h1 style="margin: 0 0 8px; font-size: 18px; color: #0a1628; font-weight: 700;">
-                Hello ${candidateName},
+                Hello ${safeCandidateName},
               </h1>
               <p style="margin: 0 0 24px; font-size: 14px; color: #52525b; line-height: 1.6;">
-                Thank you for completing the assessment for <strong>${roleName}</strong> at <strong>${companyName}</strong>. Here is a summary of your performance across the three assessment layers.
+                Thank you for completing the assessment for <strong>${safeRoleName}</strong> at <strong>${safeCompanyName}</strong>. Here is a summary of your performance across the three assessment layers.
               </p>
 
               <!-- Scores -->
@@ -81,7 +94,7 @@ export function buildResultsEmail({
               </table>
 
               <p style="margin: 0 0 24px; font-size: 13px; color: #52525b; line-height: 1.7;">
-                ${narrative}
+                ${safeNarrative}
               </p>
 
               <p style="margin: 0; font-size: 11px; color: #a1a1aa; line-height: 1.6;">

@@ -4,16 +4,21 @@ import { renderToBuffer } from "@react-pdf/renderer";
 import { PDFOnePager, type PDFOnePagerProps } from "@/components/profile/pdf-one-pager";
 import { generateAllPanels } from "@/lib/intelligence";
 import { getSession } from "@/lib/auth";
+import { withApiHandler } from "@/lib/api-handler";
+import { canView } from "@/lib/rbac";
 
 interface RouteParams {
   params: Promise<{ candidateId: string }>;
 }
 
 export async function GET(_request: NextRequest, { params }: RouteParams) {
-  try {
+  return withApiHandler(async () => {
     const session = await getSession();
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (!canView(session.user.role, "pdfExport")) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const { candidateId } = await params;
@@ -32,8 +37,8 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
       },
     });
 
-    if (!candidate) {
-      return NextResponse.json({ error: "Candidate not found" }, { status: 404 });
+    if (!candidate || candidate.orgId !== session.user.orgId) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
     if (!candidate.assessment) {
@@ -101,14 +106,5 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
         "Cache-Control": "private, no-cache, no-store, must-revalidate",
       },
     });
-  } catch (error) {
-    console.error("[PDF Export] Failed to generate one-pager:", error);
-    return NextResponse.json(
-      {
-        error: "Failed to generate PDF one-pager",
-        details: process.env.NODE_ENV === "development" && error instanceof Error ? error.message : undefined,
-      },
-      { status: 500 }
-    );
-  }
+  }, { module: "export/pdf/[candidateId]/one-pager" })(_request, { params });
 }

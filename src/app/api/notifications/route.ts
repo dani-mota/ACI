@@ -75,14 +75,23 @@ export async function GET() {
   const started = await prisma.assessmentInvitation.findMany({
     where: {
       status: "STARTED",
-      invitedAt: { gte: threeDaysAgo },
-      candidate: { orgId },
+      candidate: {
+        orgId,
+        assessment: { startedAt: { gte: threeDaysAgo } },
+      },
     },
     include: {
-      candidate: { select: { id: true, firstName: true, lastName: true } },
+      candidate: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          assessment: { select: { startedAt: true } },
+        },
+      },
       role: { select: { name: true } },
     },
-    orderBy: { invitedAt: "desc" },
+    orderBy: { candidate: { assessment: { startedAt: "desc" } } },
     take: 3,
   });
 
@@ -92,7 +101,7 @@ export async function GET() {
       type: "NEW_CANDIDATE",
       title: "Assessment Started",
       message: `${inv.candidate.firstName} ${inv.candidate.lastName} started their ${inv.role.name} assessment.`,
-      timestamp: inv.invitedAt,
+      timestamp: inv.candidate.assessment?.startedAt ?? new Date(),
       read: true,
       candidateId: inv.candidate.id,
     });
