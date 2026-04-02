@@ -16,7 +16,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: "npm"
 
       - name: Install dependencies
@@ -28,7 +28,7 @@ jobs:
           DATABASE_URL: "postgresql://placeholder:placeholder@localhost:5432/placeholder"
 
       - name: Lint (ESLint)
-        run: npx next lint --dir .
+        run: npx eslint .
 
       - name: Type check (TypeScript)
         run: npx tsc --noEmit
