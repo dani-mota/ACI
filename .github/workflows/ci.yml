@@ -28,7 +28,7 @@ jobs:
           DATABASE_URL: "postgresql://placeholder:placeholder@localhost:5432/placeholder"
 
       - name: Lint (ESLint)
-        run: npx next lint
+        run: npx next lint --dir .
 
       - name: Type check (TypeScript)
         run: npx tsc --noEmit
