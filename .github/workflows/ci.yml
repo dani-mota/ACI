@@ -42,6 +42,7 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: "placeholder"
           SUPABASE_SERVICE_ROLE_KEY: "placeholder"
           NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+          CRON_SECRET: "ci-placeholder-value-must-be-at-least-32-chars"
 
       - name: Security audit
         run: npm audit --audit-level=high
