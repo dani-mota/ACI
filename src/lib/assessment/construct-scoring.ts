@@ -1,4 +1,4 @@
-import { rawScoreToPercentile } from "./norm-tables";
+import { rawScoreToScaledScore } from "./norm-tables";
 
 interface ScoredItem {
   itemId: string;
@@ -52,7 +52,7 @@ export function scoreConstructs(scoredItems: ScoredItem[]): ConstructScore[] {
       ? Math.round(times.reduce((a, b) => a + b, 0) / times.length)
       : 0;
 
-    const percentile = rawScoreToPercentile(construct, rawScore);
+    const percentile = rawScoreToScaledScore(construct, rawScore);
 
     results.push({
       construct,

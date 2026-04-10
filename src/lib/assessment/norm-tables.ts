@@ -48,7 +48,12 @@ const DIFFICULTY_OFFSETS: Record<string, number> = {
   ETHICAL_JUDGMENT: 0.05,
 };
 
-export function rawScoreToPercentile(construct: string, rawScore: number): number {
+/**
+ * Convert a raw score (0-1) to a scaled score (1-99) using a provisional
+ * synthetic sigmoid curve. These are NOT empirical percentiles — the curves
+ * are placeholders pending norming data from 200+ assessments.
+ */
+export function rawScoreToScaledScore(construct: string, rawScore: number): number {
   const offset = DIFFICULTY_OFFSETS[construct] || 0;
   const adjusted = Math.max(0, Math.min(1, rawScore - offset));
   return defaultMapping(adjusted);

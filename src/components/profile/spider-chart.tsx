@@ -403,10 +403,10 @@ export function SpiderChart({ subtestResults, roleWeights, cutline, roleSlug, ro
             <p className="font-semibold text-xs text-foreground uppercase tracking-wider">{hoveredData.fullName}</p>
           </div>
           <p className="text-lg font-bold font-mono mb-1" style={{ color: hoveredData.layerColor }}>
-            {hoveredData.percentile}<span className="text-[10px] font-normal text-muted-foreground ml-0.5">th percentile</span>
+            {hoveredData.percentile}<span className="text-[10px] font-normal text-muted-foreground ml-0.5">scaled score</span>
           </p>
           <p className="text-[10px] text-muted-foreground font-mono mb-2">
-            Benchmark: {hoveredData.benchmark}th
+            Benchmark: {hoveredData.benchmark}
             {hoveredData.percentile >= hoveredData.benchmark
               ? <span className="text-aci-green ml-1">(+{hoveredData.percentile - hoveredData.benchmark} above)</span>
               : <span className="text-aci-red ml-1">({hoveredData.percentile - hoveredData.benchmark} below)</span>

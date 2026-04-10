@@ -20,7 +20,7 @@ export function CutlineExplainer() {
       {open && (
         <div className="px-4 pb-4 border-t border-border pt-3 space-y-2">
           <p className="text-sm text-muted-foreground leading-relaxed">
-            Cutline thresholds define the minimum percentile a candidate must reach in each assessment
+            Cutline thresholds define the minimum scaled score a candidate must reach in each assessment
             layer to be considered for the role. A candidate scoring below any cutline is flagged as
             not meeting the minimum standard, regardless of their performance in other areas.
           </p>

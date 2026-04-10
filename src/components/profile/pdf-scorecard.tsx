@@ -134,14 +134,7 @@ function getStatusColor(status: string): string {
 }
 
 function formatPercentile(n: number): string {
-  if (n <= 0) return "0th";
-  const lastTwo = n % 100;
-  const lastOne = n % 10;
-  if (lastTwo >= 11 && lastTwo <= 13) return `${n}th`;
-  if (lastOne === 1) return `${n}st`;
-  if (lastOne === 2) return `${n}nd`;
-  if (lastOne === 3) return `${n}rd`;
-  return `${n}th`;
+  return String(n);
 }
 
 function getConstructName(constructKey: string): string {
@@ -470,13 +463,13 @@ function ExecutiveSummaryPage({
   // Narrative generation
   let narrative: string;
   if (percentile >= 85) {
-    narrative = `${firstName} is an exceptional candidate for the ${primaryRole.name} role, scoring at the ${formatPercentile(percentile)} percentile overall. Their strongest dimensions — ${top3.map((t) => `${getConstructName(t.construct)} (${formatPercentile(t.percentile)})`).join(", ")} — indicate both the cognitive foundation and practical aptitude for immediate high-level contribution.`;
+    narrative = `${firstName} is an exceptional candidate for the ${primaryRole.name} role, with a scaled score of ${percentile} overall. Their strongest dimensions — ${top3.map((t) => `${getConstructName(t.construct)} (${t.percentile})`).join(", ")} — indicate both the cognitive foundation and practical aptitude for immediate high-level contribution.`;
   } else if (percentile >= 65) {
-    narrative = `${firstName} presents a solid profile for the ${primaryRole.name} role at the ${formatPercentile(percentile)} percentile. Strengths in ${top3.slice(0, 2).map((t) => `${getConstructName(t.construct)} (${formatPercentile(t.percentile)})`).join(" and ")} align well with role demands. ${bottom2[0].percentile < 40 ? `Development area in ${getConstructName(bottom2[0].construct)} (${formatPercentile(bottom2[0].percentile)}) warrants attention during onboarding.` : "No significant gaps that would impede standard onboarding."}`;
+    narrative = `${firstName} presents a solid profile for the ${primaryRole.name} role with a scaled score of ${percentile}. Strengths in ${top3.slice(0, 2).map((t) => `${getConstructName(t.construct)} (${t.percentile})`).join(" and ")} align well with role demands. ${bottom2[0].percentile < 40 ? `Development area in ${getConstructName(bottom2[0].construct)} (${bottom2[0].percentile}) warrants attention during onboarding.` : "No significant gaps that would impede standard onboarding."}`;
   } else if (percentile >= 45) {
-    narrative = `${firstName} shows a mixed profile for the ${primaryRole.name} role at the ${formatPercentile(percentile)} percentile. While ${getConstructName(top3[0].construct)} (${formatPercentile(top3[0].percentile)}) is a relative strength, development areas in ${bottom2.map((d) => `${getConstructName(d.construct)} (${formatPercentile(d.percentile)})`).join(" and ")} should be weighed against role requirements.`;
+    narrative = `${firstName} shows a mixed profile for the ${primaryRole.name} role with a scaled score of ${percentile}. While ${getConstructName(top3[0].construct)} (${top3[0].percentile}) is a relative strength, development areas in ${bottom2.map((d) => `${getConstructName(d.construct)} (${d.percentile})`).join(" and ")} should be weighed against role requirements.`;
   } else {
-    narrative = `${firstName} scored at the ${formatPercentile(percentile)} percentile for the ${primaryRole.name} role, which falls below the typical hiring threshold. Limitations in ${bottom2.map((d) => `${getConstructName(d.construct)} (${formatPercentile(d.percentile)})`).join(" and ")} are likely to impact performance without significant intervention.`;
+    narrative = `${firstName} achieved a scaled score of ${percentile} for the ${primaryRole.name} role, which falls below the typical hiring threshold. Limitations in ${bottom2.map((d) => `${getConstructName(d.construct)} (${d.percentile})`).join(" and ")} are likely to impact performance without significant intervention.`;
   }
 
   return (
@@ -612,7 +605,7 @@ function ConstructScoresPage({
         <Text
           style={[s.tableHeaderCell, { width: "18%", textAlign: "center" }]}
         >
-          Percentile
+          Scaled Score
         </Text>
         <Text
           style={[s.tableHeaderCell, { width: "24%", textAlign: "center" }]}
@@ -665,7 +658,7 @@ function ConstructScoresPage({
         <Text
           style={[s.tableHeaderCell, { width: "20%", textAlign: "center" }]}
         >
-          Percentile
+          Scaled Score
         </Text>
         <Text
           style={[s.tableHeaderCell, { width: "20%", textAlign: "center" }]}

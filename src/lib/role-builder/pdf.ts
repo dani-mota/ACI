@@ -130,19 +130,19 @@ function RoleBriefDocument({ roleName, complexityLevel, closestTemplate, rationa
           View,
           { style: styles.cutlineRow },
           React.createElement(Text, { style: styles.cutlineLabel }, "Technical Aptitude (Layer 2 Avg)"),
-          React.createElement(Text, { style: styles.cutlineValue }, `≥ ${weights.cutlines.technicalAptitude}th percentile`)
+          React.createElement(Text, { style: styles.cutlineValue }, `≥ Scaled Score ${weights.cutlines.technicalAptitude}`)
         ),
         React.createElement(
           View,
           { style: styles.cutlineRow },
           React.createElement(Text, { style: styles.cutlineLabel }, "Behavioral Integrity (Layer 3 Avg)"),
-          React.createElement(Text, { style: styles.cutlineValue }, `≥ ${weights.cutlines.behavioralIntegrity}th percentile`)
+          React.createElement(Text, { style: styles.cutlineValue }, `≥ Scaled Score ${weights.cutlines.behavioralIntegrity}`)
         ),
         React.createElement(
           View,
           { style: styles.cutlineRow },
           React.createElement(Text, { style: styles.cutlineLabel }, "Learning Velocity"),
-          React.createElement(Text, { style: styles.cutlineValue }, `≥ ${weights.cutlines.learningVelocity}th percentile`)
+          React.createElement(Text, { style: styles.cutlineValue }, `≥ Scaled Score ${weights.cutlines.learningVelocity}`)
         ),
         React.createElement(Text, { style: { ...styles.bodyText, marginTop: 8 } }, rationale.cutlineRationale)
       ),

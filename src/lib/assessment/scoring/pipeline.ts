@@ -5,7 +5,7 @@ import { checkOrgRateLimit } from "@/lib/rate-limit";
 import { generateAllPredictions } from "@/lib/predictions";
 import { getRoleContext } from "../role-context";
 import { CONSTRUCT_LAYERS } from "../construct-scoring";
-import { rawScoreToPercentile } from "../norm-tables";
+import { rawScoreToScaledScore } from "../norm-tables";
 import { computeRoleFitRankings } from "../role-fit-rankings";
 import { scoreItem, aggregateLayerA } from "./layer-a";
 import { evaluateConstruct, getTokenUsage, resetTokenUsage } from "./layer-b";
@@ -557,8 +557,8 @@ export async function runScoringPipeline(assessmentId: string, orgId?: string) {
     // Fix: PRO-62 — percentile requires real norm data; use norm table lookup
     // instead of duplicating the composite score. "COMPOSITE" key provides a
     // population-referenced percentile once norm tables are populated.
-    // Fix: PRO-64 — composite is 0-100 integer; rawScoreToPercentile expects 0-1 input
-    const compositePercentile = rawScoreToPercentile("COMPOSITE", composite / 100);
+    // Fix: PRO-64 — composite is 0-100 integer; rawScoreToScaledScore expects 0-1 input
+    const compositePercentile = rawScoreToScaledScore("COMPOSITE", composite / 100);
 
     // CompositeScore (primary role)
     await tx.compositeScore.upsert({
@@ -594,14 +594,14 @@ export async function runScoringPipeline(assessmentId: string, orgId?: string) {
           indexName: `${ranking.roleName} Index`,
           score: ranking.compositeScore,
           // Fix: PRO-64 — normalize 0-100 composite to 0-1 for percentile lookup
-          percentile: rawScoreToPercentile("COMPOSITE", ranking.compositeScore / 100),
+          percentile: rawScoreToScaledScore("COMPOSITE", ranking.compositeScore / 100),
           passed: ranking.passed,
           distanceFromCutline: ranking.distanceFromCutline,
         },
         update: {
           score: ranking.compositeScore,
           // Fix: PRO-64 — normalize 0-100 composite to 0-1 for percentile lookup
-          percentile: rawScoreToPercentile("COMPOSITE", ranking.compositeScore / 100),
+          percentile: rawScoreToScaledScore("COMPOSITE", ranking.compositeScore / 100),
           passed: ranking.passed,
           distanceFromCutline: ranking.distanceFromCutline,
         },

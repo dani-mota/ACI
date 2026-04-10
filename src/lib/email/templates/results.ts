@@ -44,7 +44,7 @@ export function buildResultsEmail({
                   <div style="background-color: ${color}; height: 8px; width: ${percentile}%;"></div>
                 </div>
               </td>
-              <td style="font-size: 12px; color: #0a1628; font-weight: 600; width: 50px; text-align: right; font-family: monospace;">${percentile}th</td>
+              <td style="font-size: 12px; color: #0a1628; font-weight: 600; width: 50px; text-align: right; font-family: monospace;">${percentile}</td>
             </tr>
           </table>
         </td>

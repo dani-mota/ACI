@@ -65,13 +65,13 @@ function generateExecutiveSummary(
   // Overall narrative
   let overviewNarrative: string;
   if (percentile >= 85) {
-    overviewNarrative = `${firstName} is an exceptional candidate for the ${roleName} role, scoring at the ${percentile}th percentile overall. This places them in the top tier of assessed candidates — the kind of hire that elevates team capability. Their strongest dimensions are ${strengths[0].name} (${strengths[0].percentile}th) and ${strengths[1].name} (${strengths[1].percentile}th), indicating both the cognitive foundation and practical aptitude for immediate high-level contribution. Recommend fast-tracking through the interview process.`;
+    overviewNarrative = `${firstName} is an exceptional candidate for the ${roleName} role, with a scaled score of ${percentile} overall. This places them in the top tier of assessed candidates — the kind of hire that elevates team capability. Their strongest dimensions are ${strengths[0].name} (${strengths[0].percentile}) and ${strengths[1].name} (${strengths[1].percentile}), indicating both the cognitive foundation and practical aptitude for immediate high-level contribution. Recommend fast-tracking through the interview process.`;
   } else if (percentile >= 65) {
-    overviewNarrative = `${firstName} presents a solid profile for the ${roleName} role at the ${percentile}th percentile composite. They demonstrate clear strengths in ${strengths[0].name} (${strengths[0].percentile}th) and ${strengths[1].name} (${strengths[1].percentile}th), which align well with role demands. ${devAreas[0].percentile < 40 ? `Development area in ${devAreas[0].name} (${devAreas[0].percentile}th) warrants attention during onboarding — assess whether this construct is critical for the specific position or can be compensated through team structure.` : "No significant gaps were identified that would impede standard onboarding."} Overall, this is a candidate worth advancing with standard due diligence.`;
+    overviewNarrative = `${firstName} presents a solid profile for the ${roleName} role with a scaled score of ${percentile}. They demonstrate clear strengths in ${strengths[0].name} (${strengths[0].percentile}) and ${strengths[1].name} (${strengths[1].percentile}), which align well with role demands. ${devAreas[0].percentile < 40 ? `Development area in ${devAreas[0].name} (${devAreas[0].percentile}) warrants attention during onboarding — assess whether this construct is critical for the specific position or can be compensated through team structure.` : "No significant gaps were identified that would impede standard onboarding."} Overall, this is a candidate worth advancing with standard due diligence.`;
   } else if (percentile >= 45) {
-    overviewNarrative = `${firstName} shows a mixed profile for the ${roleName} role at the ${percentile}th percentile composite. While ${strengths[0].name} (${strengths[0].percentile}th) is a relative strength, the overall assessment suggests they may require above-average support during onboarding and extended ramp time. Key development areas in ${devAreas.map((d) => `${d.name} (${d.percentile}th)`).join(" and ")} should be weighed against role requirements. The hiring decision should consider whether these gaps are trainable and whether the team can provide adequate support during the ramp period.`;
+    overviewNarrative = `${firstName} shows a mixed profile for the ${roleName} role with a scaled score of ${percentile}. While ${strengths[0].name} (${strengths[0].percentile}) is a relative strength, the overall assessment suggests they may require above-average support during onboarding and extended ramp time. Key development areas in ${devAreas.map((d) => `${d.name} (${d.percentile})`).join(" and ")} should be weighed against role requirements. The hiring decision should consider whether these gaps are trainable and whether the team can provide adequate support during the ramp period.`;
   } else {
-    overviewNarrative = `${firstName} scored at the ${percentile}th percentile for the ${roleName} role, which falls below the typical hiring threshold. The assessment revealed limitations in ${devAreas.map((d) => `${d.name} (${d.percentile}th)`).join(" and ")}, which are likely to impact job performance without significant intervention. ${strengths[0].percentile >= 60 ? `Their relative strength in ${strengths[0].name} (${strengths[0].percentile}th) may be valuable in specialized contexts, but the overall profile does not support advancement for this role.` : "No standout strengths were identified to compensate for the development areas."} If advancing, budget for extended onboarding and close supervision.`;
+    overviewNarrative = `${firstName} achieved a scaled score of ${percentile} for the ${roleName} role, which falls below the typical hiring threshold. The assessment revealed limitations in ${devAreas.map((d) => `${d.name} (${d.percentile})`).join(" and ")}, which are likely to impact job performance without significant intervention. ${strengths[0].percentile >= 60 ? `Their relative strength in ${strengths[0].name} (${strengths[0].percentile}) may be valuable in specialized contexts, but the overall profile does not support advancement for this role.` : "No standout strengths were identified to compensate for the development areas."} If advancing, budget for extended onboarding and close supervision.`;
   }
 
   // Key insight
@@ -91,7 +91,7 @@ function generateExecutiveSummary(
   } else if (behAvg >= 75 && cogAvg < 50 && techAvg < 50) {
     keyInsight = "Exceptional behavioral foundation with developing cognitive and technical capabilities. This candidate will follow procedures reliably and make ethical decisions — qualities that are harder to train than technical skills. Consider whether the role has adequate training support to develop their technical capabilities while leveraging their integrity.";
   } else {
-    keyInsight = `Profile shows the strongest performance in ${layers.sort((a, b) => b.avg - a.avg)[0].name} (avg ${layers.sort((a, b) => b.avg - a.avg)[0].avg}th percentile) with room for growth in ${layers.sort((a, b) => a.avg - b.avg)[0].name} (avg ${layers.sort((a, b) => a.avg - b.avg)[0].avg}th percentile). Hiring decision should weigh whether the strongest layer aligns with the most critical demands of the specific role.`;
+    keyInsight = `Profile shows the strongest performance in ${layers.sort((a, b) => b.avg - a.avg)[0].name} (avg scaled score ${layers.sort((a, b) => b.avg - a.avg)[0].avg}) with room for growth in ${layers.sort((a, b) => a.avg - b.avg)[0].name} (avg scaled score ${layers.sort((a, b) => a.avg - b.avg)[0].avg}). Hiring decision should weigh whether the strongest layer aligns with the most critical demands of the specific role.`;
   }
 
   return {
@@ -293,7 +293,7 @@ export function ProfileClient({ candidate, allRoles, cutlines, userRole }: Profi
                         <span className="text-[10px] font-mono font-semibold w-5" style={{ color: LAYER_INFO[s.layer].color }}>{s.abbr}</span>
                         <span className="text-[11px] text-foreground">{s.name}</span>
                       </div>
-                      <span className="text-[11px] font-mono font-semibold" style={{ color: LAYER_INFO[s.layer].color }}>{s.percentile}th</span>
+                      <span className="text-[11px] font-mono font-semibold" style={{ color: LAYER_INFO[s.layer].color }}>{s.percentile}</span>
                     </div>
                   ))}
                 </div>
@@ -310,7 +310,7 @@ export function ProfileClient({ candidate, allRoles, cutlines, userRole }: Profi
                         <span className="text-[10px] font-mono font-semibold w-5" style={{ color: LAYER_INFO[d.layer].color }}>{d.abbr}</span>
                         <span className="text-[11px] text-foreground">{d.name}</span>
                       </div>
-                      <span className="text-[11px] font-mono font-semibold" style={{ color: LAYER_INFO[d.layer].color }}>{d.percentile}th</span>
+                      <span className="text-[11px] font-mono font-semibold" style={{ color: LAYER_INFO[d.layer].color }}>{d.percentile}</span>
                     </div>
                   ))}
                 </div>

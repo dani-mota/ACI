@@ -118,7 +118,7 @@ function ConstructSection({
         <Target className={`w-3 h-3 text-${colorClass} mt-0.5 shrink-0`} />
         <div className="flex-1 min-w-0">
           <p className="text-[10px] font-medium text-foreground font-mono">
-            {meta?.name} ({result.percentile}th)
+            {meta?.name} (Scaled Score: {result.percentile})
           </p>
           {!expanded && (
             <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed truncate">

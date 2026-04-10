@@ -48,7 +48,7 @@ export function CutlineThresholds({ cutline }: CutlineThresholdsProps) {
                   <span className="text-[9px] text-muted-foreground uppercase tracking-wider">{sublabel}</span>
                 </div>
                 <span className="text-xs font-mono font-bold" style={{ color }}>
-                  {value}th percentile
+                  Scaled Score: {value}
                 </span>
               </div>
 

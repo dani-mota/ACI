@@ -81,10 +81,18 @@ export const ASSESSMENT_STRUCTURE = {
    * Fix: PRO-17 — minimum Layer B step for 5-indicator rubric is 0.20;
    * threshold must exceed this to avoid false LOWs on single-indicator variation. */
   consistencyThreshold: 0.25,
-  /** Layer A scoring weight (deterministic items) */
-  defaultLayerAWeight: 0.55,
-  /** Layer B scoring weight (AI-evaluated responses) */
-  defaultLayerBWeight: 0.45,
+  /** Layer A scoring weight (deterministic items) — override via SCORING_WEIGHT_LAYER_A env var */
+  defaultLayerAWeight: parseFloat(process.env.SCORING_WEIGHT_LAYER_A ?? "0.55"),
+  /** Layer B scoring weight (AI-evaluated responses) — override via SCORING_WEIGHT_LAYER_B env var */
+  defaultLayerBWeight: parseFloat(process.env.SCORING_WEIGHT_LAYER_B ?? "0.45"),
   /** Downweight factor applied to low-consistency constructs */
   consistencyDownweightFactor: 0.75,
 } as const;
+
+// PRO-92: Validate Layer A/B weights sum to 1.0 at startup
+const weightSum = ASSESSMENT_STRUCTURE.defaultLayerAWeight + ASSESSMENT_STRUCTURE.defaultLayerBWeight;
+if (Math.abs(weightSum - 1.0) > 0.001) {
+  throw new Error(
+    `SCORING_WEIGHT_LAYER_A (${ASSESSMENT_STRUCTURE.defaultLayerAWeight}) + SCORING_WEIGHT_LAYER_B (${ASSESSMENT_STRUCTURE.defaultLayerBWeight}) = ${weightSum}, must sum to 1.0`,
+  );
+}
