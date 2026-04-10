@@ -8,7 +8,7 @@ const EXPORT_TYPES = [
   {
     id: "constructs",
     label: "Construct Scores",
-    description: "Per-candidate construct-level raw scores and percentiles",
+    description: "Per-candidate construct-level raw scores and scaled scores",
   },
   {
     id: "items",

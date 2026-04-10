@@ -552,7 +552,7 @@ async function generateHiringIntelligence(
       `Generate hiring intelligence for this role.
 
 Role: ${extracted.title}
-Cutlines: Technical Aptitude ≥${weights.cutlines.technicalAptitude}th percentile, Behavioral Integrity ≥${weights.cutlines.behavioralIntegrity}th percentile, Learning Velocity ≥${weights.cutlines.learningVelocity}th percentile
+Cutlines: Technical Aptitude ≥ scaled score ${weights.cutlines.technicalAptitude}, Behavioral Integrity ≥ scaled score ${weights.cutlines.behavioralIntegrity}, Learning Velocity ≥ scaled score ${weights.cutlines.learningVelocity}
 Top 3 weighted constructs: ${Object.entries(weights.weights).sort(([,a],[,b]) => b-a).slice(0,3).map(([k,v]) => `${k} (${v}%)`).join(", ")}
 Complexity: ${weights.complexityLevel}
 Closest template: ${weights.closestTemplate}

@@ -303,7 +303,7 @@ export function PDFInterviewKit({ candidate }: PDFInterviewKitProps) {
                   {getConstructName(r.construct)} ({getConstructAbbr(r.construct)})
                 </Text>
                 <Text style={[s.percentileText, { color: getTierColor(r.percentile) }]}>
-                  {r.percentile}th percentile
+                  Scaled Score: {r.percentile}
                 </Text>
               </View>
               {questions?.questions.map((q, i) => (
@@ -330,7 +330,7 @@ export function PDFInterviewKit({ candidate }: PDFInterviewKitProps) {
                   {getConstructName(r.construct)} ({getConstructAbbr(r.construct)})
                 </Text>
                 <Text style={[s.percentileText, { color: getTierColor(r.percentile) }]}>
-                  {r.percentile}th percentile
+                  Scaled Score: {r.percentile}
                 </Text>
               </View>
               {questions?.questions.slice(0, 1).map((q, i) => (

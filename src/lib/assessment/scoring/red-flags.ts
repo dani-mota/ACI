@@ -46,7 +46,7 @@ function checkExtremelyLowScores(scores: ConstructLayeredScore[]): RedFlagCheck 
     severity: "CRITICAL",
     category: "Extreme Low Score",
     title: "Critical performance deficit detected",
-    description: `Constructs below 10th percentile: ${low.map((s) => s.construct).join(", ")}`,
+    description: `Constructs below scaled score of 10: ${low.map((s) => s.construct).join(", ")}`,
     constructs: low.map((s) => s.construct as string),
   };
 }

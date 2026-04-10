@@ -84,6 +84,7 @@ const RUBRIC_VOCABULARY = [
   "construct target",
   "downweight",
   "percentile",
+  "scaled score",
   "composite score",
   "cutline",
   "red flag",

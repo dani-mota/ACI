@@ -569,7 +569,7 @@ export function PDFOnePager({ candidate, panels }: PDFOnePagerProps) {
                 <View style={s.interviewAccent} />
                 <View style={s.interviewContent}>
                   <Text style={s.interviewConstruct}>
-                    {getConstructName(r.construct)} ({getConstructAbbr(r.construct)}) — {r.percentile}th
+                    {getConstructName(r.construct)} ({getConstructAbbr(r.construct)}) — Scaled Score: {r.percentile}
                   </Text>
                   <Text style={s.interviewQuestion}>
                     {INTERVIEW_QUESTIONS[r.construct] ?? "Explore how the candidate approaches situations requiring this capability."}

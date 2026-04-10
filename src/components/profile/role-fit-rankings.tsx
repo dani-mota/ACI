@@ -68,7 +68,7 @@ export function RoleFitRankings({ compositeScores, roles }: RoleFitRankingsProps
                     <XCircle className="w-3 h-3 text-aci-red/60" />
                   )}
                   <span className="text-[11px] font-mono font-semibold text-foreground">
-                    {r.percentile}th
+                    {r.percentile}
                   </span>
                 </div>
               </div>

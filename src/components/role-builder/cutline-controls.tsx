@@ -64,7 +64,7 @@ export function CutlineControls({ cutlines, recommendations, onChange }: Cutline
                   </span>
                 )}
                 <span className="text-xs font-mono font-bold" style={{ color }}>
-                  {value}th %ile
+                  {value}
                 </span>
               </div>
             </div>
@@ -74,7 +74,7 @@ export function CutlineControls({ cutlines, recommendations, onChange }: Cutline
               <div
                 className="absolute -top-2 text-aci-gold text-[8px] -translate-x-1/2 pointer-events-none select-none"
                 style={{ left: `${rec}%` }}
-                title={`ACI recommendation: ${rec}th percentile`}
+                title={`ACI recommendation: scaled score ${rec}`}
               >
                 ◆
               </div>

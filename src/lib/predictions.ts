@@ -47,7 +47,7 @@ export function predictRampTime(results: SubtestScore[], roleContext?: RoleConte
     weeks,
     confidence: Math.round(confidence),
     label,
-    description: `Estimated ${weeks} weeks to full productivity based on learning velocity (${lv}th percentile), executive control (${ec}th), and systems diagnostics (${sd}th).${
+    description: `Estimated ${weeks} weeks to full productivity based on learning velocity (scaled score: ${lv}), executive control (${ec}), and systems diagnostics (${sd}).${
       roleContext && !roleContext.isGeneric
         ? ` In the ${roleContext.environment.toLowerCase()} environment for ${roleContext.roleName}, this accounts for domain-specific onboarding requirements.`
         : ""
@@ -98,7 +98,7 @@ export function predictSupervision(
 
   const confidence = Math.min(95, 55 + Math.abs(composite - 50) * 0.6);
 
-  let description = `Based on metacognitive calibration (${mc}th), procedural reliability (${prl}th), ethical judgment (${ej}th), and executive control (${ec}th).`;
+  let description = `Based on metacognitive calibration (${mc}), procedural reliability (${prl}), ethical judgment (${ej}), and executive control (${ec}).`;
   if (roleContext && !roleContext.isGeneric) {
     description += ` Given ${roleContext.roleName} responsibilities, this reflects expected autonomy in day-to-day operations.`;
   }
@@ -165,7 +165,7 @@ export function predictCeiling(
     confidence = Math.min(95, confidence + 5);
   }
 
-  let description = `Growth trajectory based on fluid reasoning (${fr}th), learning velocity (${lv}th), systems diagnostics (${sd}th), and self-awareness (${mc}th).`;
+  let description = `Growth trajectory based on fluid reasoning (${fr}), learning velocity (${lv}), systems diagnostics (${sd}), and self-awareness (${mc}).`;
   if (roleContext && !roleContext.isGeneric) {
     description += ` Relative to the ${roleContext.roleName} growth trajectory within ${roleContext.domain.toLowerCase()}.`;
   }

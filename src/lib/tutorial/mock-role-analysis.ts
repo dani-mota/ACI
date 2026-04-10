@@ -153,7 +153,7 @@ export async function generateMockRoleAnalysis(
       { construct: "SYSTEMS_DIAGNOSTICS", rationale: "The role requires diagnosing multi-component system failures efficiently." },
       { construct: "QUANTITATIVE_REASONING", rationale: "Numerical precision is non-negotiable in measurement, analysis, and reporting." },
     ],
-    cutlineRationale: "55th percentile on technical aptitude reflects the minimum viable proficiency for independent contributions. Behavioral cutline at 50th ensures procedural reliability under normal operating conditions.",
+    cutlineRationale: "A scaled score of 55 on technical aptitude reflects the minimum viable proficiency for independent contributions. Behavioral cutline at 50 ensures procedural reliability under normal operating conditions.",
     templateComparison: "Closest template: General Engineering. This role's profile aligns well with the technical construct emphasis while requiring slightly elevated behavioral reliability.",
     complianceNote: "All weights derived from O*NET task importance data and ACI role construct mapping. No demographic proxies were used.",
   };
