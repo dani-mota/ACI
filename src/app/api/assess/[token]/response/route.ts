@@ -84,6 +84,21 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       }
     }
 
+    // PRO-114: Compute server-side response time from questionDeliveredAt
+    let serverSideResponseTimeMs: number | null = null;
+    const linkedMessage = await prisma.conversationMessage.findFirst({
+      where: {
+        assessmentId: assessment.id,
+        elementType: { not: null },
+        questionDeliveredAt: { not: null },
+      },
+      orderBy: { sequenceOrder: "desc" },
+      select: { questionDeliveredAt: true },
+    });
+    if (linkedMessage?.questionDeliveredAt) {
+      serverSideResponseTimeMs = Math.round(Date.now() - linkedMessage.questionDeliveredAt.getTime());
+    }
+
     // Upsert the response (idempotent within retry window)
     const itemResponse = await prisma.itemResponse.upsert({
       where: {
@@ -97,13 +112,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         itemId,
         itemType: itemType || "MULTIPLE_CHOICE",
         response,
-        responseTimeMs: responseTimeMs || null,
+        clientResponseTimeMs: responseTimeMs || null,
+        serverSideResponseTimeMs,
         confidence: confidence || null,
         act: act || null,
       },
       update: {
         response,
-        responseTimeMs: responseTimeMs || null,
+        clientResponseTimeMs: responseTimeMs || null,
+        serverSideResponseTimeMs,
         confidence: confidence || null,
         act: act || null,
       },

@@ -102,7 +102,7 @@ export async function runScoringPipeline(assessmentId: string) {
         construct: item.construct,
         difficulty: item.difficulty,
         correct: resp.response === correctAnswer,
-        responseTimeMs: resp.responseTimeMs ?? undefined,
+        responseTimeMs: resp.clientResponseTimeMs ?? undefined,
         act: resp.act,
       }),
     );
@@ -415,6 +415,7 @@ export async function runScoringPipeline(assessmentId: string) {
     messages: assessment.messages,
     consistencyResults,
     layerBScores: allLayerBScores,
+    itemResponses: assessment.itemResponses,
   });
 
   // ── 11. Predictions ────────────────────────────────────────────

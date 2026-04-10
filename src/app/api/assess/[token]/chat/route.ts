@@ -356,13 +356,13 @@ export async function POST(
           itemId: elementResponse.itemId,
           itemType: elementResponse.elementType || "MULTIPLE_CHOICE",
           response: elementResponse.value,
-          responseTimeMs: elementResponse.responseTimeMs ?? null,
+          clientResponseTimeMs: elementResponse.responseTimeMs ?? null,
           act: state.currentAct,
           messageId: elementMsg?.id ?? null, // Fix: PRO-49
         },
         update: {
           response: elementResponse.value,
-          responseTimeMs: elementResponse.responseTimeMs ?? null,
+          clientResponseTimeMs: elementResponse.responseTimeMs ?? null,
           act: state.currentAct,
           messageId: elementMsg?.id ?? null, // Fix: PRO-49
         },
@@ -726,6 +726,7 @@ export async function POST(
         elementType: action.elementType,
         elementData: action.elementData as any,
         sequenceOrder: seq,
+        questionDeliveredAt: new Date(), // PRO-114: server timestamp for timing verification
     });
 
     // S2 fix: Update assessment state for interactive element actions (e.g., Act 3 progress)

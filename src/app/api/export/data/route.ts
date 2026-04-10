@@ -53,7 +53,8 @@ async function exportItemResponses(orgId: string, format: string) {
     itemId: r.itemId,
     itemType: r.itemType,
     response: r.response,
-    responseTimeMs: r.responseTimeMs,
+    clientResponseTimeMs: r.clientResponseTimeMs,
+    serverSideResponseTimeMs: r.serverSideResponseTimeMs,
     rawScore: r.rawScore,
   }));
 
