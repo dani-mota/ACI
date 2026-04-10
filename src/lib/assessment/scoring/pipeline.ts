@@ -392,7 +392,7 @@ export async function runScoringPipeline(assessmentId: string) {
     where: { roleId: role.id },
   });
 
-  const composite = calculateComposite(
+  const { score: composite, excludedConstructs } = calculateComposite(
     subtestResults,
     weights.map((w) => ({ constructId: w.constructId, weight: w.weight })),
   );

@@ -19,22 +19,36 @@ interface RedFlagData {
   severity: string;
 }
 
-// Fix: PRO-6 — Missing constructs treated as 0; denominator always uses total weight
+// Fix: PRO-93 — Exclude missing constructs from both numerator AND denominator
 export function calculateComposite(
   subtestResults: SubtestScore[],
   weights: Weight[]
-): number {
+): { score: number; excludedConstructs: string[] } {
   let weightedSum = 0;
   let totalWeight = 0;
+  const excludedConstructs: string[] = [];
 
   for (const weight of weights) {
     const result = subtestResults.find(r => r.construct === weight.constructId);
-    // Always count weight in denominator — missing constructs contribute 0 to numerator
-    weightedSum += (result?.percentile ?? 0) * weight.weight;
+
+    if (!result || result.percentile === 0) {
+      // Missing construct — exclude from both numerator and denominator
+      excludedConstructs.push(weight.constructId);
+      continue;
+    }
+
+    weightedSum += result.percentile * weight.weight;
     totalWeight += weight.weight;
   }
 
-  return totalWeight > 0 ? Math.round(weightedSum / totalWeight) : 0;
+  if (excludedConstructs.length > 2) {
+    console.warn(
+      `[scoring] ${excludedConstructs.length} constructs excluded from composite: ${excludedConstructs.join(", ")}`,
+    );
+  }
+
+  const score = totalWeight > 0 ? Math.round(weightedSum / totalWeight) : 0;
+  return { score, excludedConstructs };
 }
 
 export function avgPercentile(
