@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { rawScoreToPercentile } from "../norm-tables";
+import { rawScoreToScaledScore } from "../norm-tables";
 import { computeAdaptiveScore } from "../adaptive-loop";
 import { validateConsistency } from "../scoring/consistency";
 import type { ItemResult } from "../types";
@@ -15,21 +15,21 @@ function makeResult(correct: boolean, difficulty: number): ItemResult {
   };
 }
 
-describe("rawScoreToPercentile", () => {
+describe("rawScoreToScaledScore", () => {
   it("maps 0 raw score to a low percentile", () => {
-    const pct = rawScoreToPercentile("QUANTITATIVE_REASONING", 0);
+    const pct = rawScoreToScaledScore("QUANTITATIVE_REASONING", 0);
     expect(pct).toBeGreaterThanOrEqual(1);
     expect(pct).toBeLessThanOrEqual(10);
   });
 
   it("maps 1.0 raw score to a high percentile", () => {
-    const pct = rawScoreToPercentile("QUANTITATIVE_REASONING", 1.0);
+    const pct = rawScoreToScaledScore("QUANTITATIVE_REASONING", 1.0);
     expect(pct).toBeGreaterThanOrEqual(90);
     expect(pct).toBeLessThanOrEqual(99);
   });
 
   it("maps 0.5 raw score near the 50th percentile", () => {
-    const pct = rawScoreToPercentile("QUANTITATIVE_REASONING", 0.5);
+    const pct = rawScoreToScaledScore("QUANTITATIVE_REASONING", 0.5);
     // With -0.05 offset for QR, adjusted score = 0.45
     // Should be below 50th percentile
     expect(pct).toBeGreaterThan(30);
@@ -38,7 +38,7 @@ describe("rawScoreToPercentile", () => {
 
   it("always returns percentile between 1 and 99", () => {
     for (const score of [-0.5, 0, 0.1, 0.5, 0.9, 1.0, 1.5]) {
-      const pct = rawScoreToPercentile("QUANTITATIVE_REASONING", score);
+      const pct = rawScoreToScaledScore("QUANTITATIVE_REASONING", score);
       expect(pct).toBeGreaterThanOrEqual(1);
       expect(pct).toBeLessThanOrEqual(99);
     }
@@ -46,7 +46,7 @@ describe("rawScoreToPercentile", () => {
 
   it("returns higher percentile for higher raw score (monotonic)", () => {
     const scores = [0.1, 0.3, 0.5, 0.7, 0.9];
-    const percentiles = scores.map((s) => rawScoreToPercentile("SPATIAL_VISUALIZATION", s));
+    const percentiles = scores.map((s) => rawScoreToScaledScore("SPATIAL_VISUALIZATION", s));
     for (let i = 1; i < percentiles.length; i++) {
       expect(percentiles[i]).toBeGreaterThanOrEqual(percentiles[i - 1]);
     }
@@ -55,15 +55,15 @@ describe("rawScoreToPercentile", () => {
   it("applies difficulty offset for FLUID_REASONING (harder items)", () => {
     // FR has -0.05 offset → adjusted = rawScore - (-0.05) = rawScore + 0.05
     // Higher adjusted score → higher percentile (compensates for harder items)
-    const frPct = rawScoreToPercentile("FLUID_REASONING", 0.5);
-    const svPct = rawScoreToPercentile("SPATIAL_VISUALIZATION", 0.5); // 0 offset
+    const frPct = rawScoreToScaledScore("FLUID_REASONING", 0.5);
+    const svPct = rawScoreToScaledScore("SPATIAL_VISUALIZATION", 0.5); // 0 offset
     expect(frPct).toBeGreaterThanOrEqual(svPct);
   });
 
   it("applies positive offset for PROCEDURAL_RELIABILITY (Likert bias)", () => {
     // PR has +0.1 offset → adjusted score lower → lower percentile
-    const prPct = rawScoreToPercentile("PROCEDURAL_RELIABILITY", 0.6);
-    const svPct = rawScoreToPercentile("SPATIAL_VISUALIZATION", 0.6);
+    const prPct = rawScoreToScaledScore("PROCEDURAL_RELIABILITY", 0.6);
+    const svPct = rawScoreToScaledScore("SPATIAL_VISUALIZATION", 0.6);
     expect(prPct).toBeLessThanOrEqual(svPct);
   });
 });
@@ -89,7 +89,7 @@ describe("scoring integration", () => {
     expect(score).toBeGreaterThan(0);
     expect(score).toBeLessThan(1);
 
-    const percentile = rawScoreToPercentile("QUANTITATIVE_REASONING", score);
+    const percentile = rawScoreToScaledScore("QUANTITATIVE_REASONING", score);
     expect(percentile).toBeGreaterThanOrEqual(1);
     expect(percentile).toBeLessThanOrEqual(99);
   });
@@ -114,7 +114,7 @@ describe("scoring integration", () => {
     const score = computeAdaptiveScore(state);
     expect(score).toBeCloseTo(1.0);
 
-    const percentile = rawScoreToPercentile("SPATIAL_VISUALIZATION", score);
+    const percentile = rawScoreToScaledScore("SPATIAL_VISUALIZATION", score);
     expect(percentile).toBeGreaterThanOrEqual(90);
   });
 });
@@ -139,8 +139,8 @@ describe("consistency threshold", () => {
 // Fix: PRO-64 — regression test: composite percentile must vary with input
 describe("composite percentile regression (PRO-64)", () => {
   it("two distinct composite scores produce two distinct percentile values", () => {
-    const pctLow = rawScoreToPercentile("COMPOSITE", 40 / 100);
-    const pctHigh = rawScoreToPercentile("COMPOSITE", 80 / 100);
+    const pctLow = rawScoreToScaledScore("COMPOSITE", 40 / 100);
+    const pctHigh = rawScoreToScaledScore("COMPOSITE", 80 / 100);
     expect(pctLow).not.toBe(pctHigh);
     expect(pctLow).toBeGreaterThanOrEqual(1);
     expect(pctLow).toBeLessThanOrEqual(99);
@@ -151,13 +151,13 @@ describe("composite percentile regression (PRO-64)", () => {
   });
 
   it("composite=40 maps to a mid-range percentile, not 94", () => {
-    const pct = rawScoreToPercentile("COMPOSITE", 40 / 100);
+    const pct = rawScoreToScaledScore("COMPOSITE", 40 / 100);
     expect(pct).toBeGreaterThanOrEqual(20);
     expect(pct).toBeLessThanOrEqual(65);
   });
 
   it("composite=80 maps to a high percentile, not 94", () => {
-    const pct = rawScoreToPercentile("COMPOSITE", 80 / 100);
+    const pct = rawScoreToScaledScore("COMPOSITE", 80 / 100);
     expect(pct).toBeGreaterThanOrEqual(65);
     expect(pct).toBeLessThanOrEqual(95);
   });

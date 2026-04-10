@@ -2,7 +2,7 @@ import type { Construct } from "@/generated/prisma/client";
 import type { ConstructLayeredScore, LayerCCharacterization } from "../types";
 import { ASSESSMENT_STRUCTURE } from "../config";
 import { CONSTRUCT_LAYERS } from "../construct-scoring";
-import { rawScoreToPercentile } from "../norm-tables";
+import { rawScoreToScaledScore } from "../norm-tables";
 
 /**
  * Construct aggregation: combines Layer A and Layer B scores.
@@ -83,7 +83,7 @@ export function aggregateConstructScore(input: AggregationInput): ConstructLayer
       layerAWeight: 1.0,
       layerBWeight: 0,
       combinedRawScore: input.layerAScore ?? 0,
-      percentile: rawScoreToPercentile(input.construct, input.layerAScore ?? 0),
+      percentile: rawScoreToScaledScore(input.construct, input.layerAScore ?? 0),
       itemCount: input.layerAItemCount,
       avgResponseTimeMs: input.avgResponseTimeMs,
       consistencyLevel: input.consistencyLevel,
@@ -119,7 +119,7 @@ export function aggregateConstructScore(input: AggregationInput): ConstructLayer
       : 1.0;
   const combinedRawScore = (layerAWeight * a) + ((layerBWeight * b) * consistencyFactor);
 
-  const percentile = rawScoreToPercentile(input.construct, combinedRawScore);
+  const percentile = rawScoreToScaledScore(input.construct, combinedRawScore);
   const itemCount = input.layerAItemCount + input.layerBResponseCount;
 
   return {
