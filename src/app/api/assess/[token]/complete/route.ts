@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse, after } from "next/server";
+import { NextResponse, after } from "next/server";
 import prisma from "@/lib/prisma";
 import { runScoringPipeline } from "@/lib/assessment/scoring/pipeline";
 import { checkRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
@@ -6,104 +6,104 @@ import { createLogger } from "@/lib/assessment/logger";
 import { validateAssessSession } from "@/lib/session/assess-session";
 import { env } from "@/lib/env";
 import * as Sentry from "@sentry/nextjs"; // Fix: PRO-74
+import { withApiHandler } from "@/lib/api-handler";
 
 export const maxDuration = 300;
 
 const log = createLogger("complete-route");
 
-interface RouteParams {
-  params: Promise<{ token: string }>;
-}
+export const POST = withApiHandler(
+  async (req, ctx) => {
+    const { token } = await ctx.params;
 
-export async function POST(request: NextRequest, { params }: RouteParams) {
-  const { token } = await params;
-
-  // Rate limit by token
-  // Fix: PRO-9 — use Redis-backed rate limiter
-  const rl = await checkRateLimitAsync(`complete:${token}`, RATE_LIMITS.assessmentComplete, "assessmentComplete");
-  if (!rl.allowed) {
-    return NextResponse.json(
-      { error: "Too many requests" },
-      { status: 429, headers: { "Retry-After": String(Math.ceil(rl.retryAfterMs / 1000)) } },
-    );
-  }
-
-  const invitation = await prisma.assessmentInvitation.findUnique({
-    where: { linkToken: token },
-  });
-
-  if (!invitation) {
-    return NextResponse.json({ error: "Invalid token" }, { status: 404 });
-  }
-
-  // Session binding — validate if enabled
-  if (env.ENABLE_SESSION_BINDING) {
-    const session = validateAssessSession(invitation, request);
-    if (!session.valid) {
-      return NextResponse.json({ error: "session_invalid" }, { status: 401 });
+    // Rate limit by token
+    // Fix: PRO-9 — use Redis-backed rate limiter
+    const rl = await checkRateLimitAsync(`complete:${token}`, RATE_LIMITS.assessmentComplete, "assessmentComplete");
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many requests" },
+        { status: 429, headers: { "Retry-After": String(Math.ceil(rl.retryAfterMs / 1000)) } },
+      );
     }
-  }
 
-  const assessment = await prisma.assessment.findFirst({
-    where: { candidateId: invitation.candidateId },
-    orderBy: { startedAt: "desc" },
-  });
-
-  if (!assessment) {
-    return NextResponse.json({ error: "Assessment not found" }, { status: 404 });
-  }
-
-  // Fix: PRO-5 — Idempotent response when already completed
-  if (assessment.completedAt) {
-    return NextResponse.json({ status: "already_complete" });
-  }
-
-  const now = new Date();
-  const durationMinutes = Math.round(
-    (now.getTime() - assessment.startedAt.getTime()) / 60000
-  );
-
-  // Atomic check+update to prevent TOCTOU race
-  const updated = await prisma.$transaction(async (tx) => {
-    // Re-check inside transaction to prevent concurrent completion
-    const fresh = await tx.assessment.findUnique({
-      where: { id: assessment.id },
-      select: { completedAt: true },
-    });
-    if (fresh?.completedAt) return false;
-
-    await tx.assessment.update({
-      where: { id: assessment.id },
-      data: {
-        completedAt: now,
-        durationMinutes,
-      },
+    const invitation = await prisma.assessmentInvitation.findUnique({
+      where: { linkToken: token },
     });
 
-    await tx.assessmentInvitation.update({
-      where: { id: invitation.id },
-      data: { status: "COMPLETED" },
+    if (!invitation) {
+      return NextResponse.json({ error: "Invalid token" }, { status: 404 });
+    }
+
+    // Session binding — validate if enabled
+    if (env.ENABLE_SESSION_BINDING) {
+      const session = validateAssessSession(invitation, req);
+      if (!session.valid) {
+        return NextResponse.json({ error: "session_invalid" }, { status: 401 });
+      }
+    }
+
+    const assessment = await prisma.assessment.findFirst({
+      where: { candidateId: invitation.candidateId },
+      orderBy: { startedAt: "desc" },
     });
 
-    await tx.candidate.update({
-      where: { id: invitation.candidateId },
-      data: { status: "SCORING" },
+    if (!assessment) {
+      return NextResponse.json({ error: "Assessment not found" }, { status: 404 });
+    }
+
+    // Fix: PRO-5 — Idempotent response when already completed
+    if (assessment.completedAt) {
+      return NextResponse.json({ status: "already_complete" });
+    }
+
+    const now = new Date();
+    const durationMinutes = Math.round(
+      (now.getTime() - assessment.startedAt.getTime()) / 60000
+    );
+
+    // Atomic check+update to prevent TOCTOU race
+    const updated = await prisma.$transaction(async (tx) => {
+      // Re-check inside transaction to prevent concurrent completion
+      const fresh = await tx.assessment.findUnique({
+        where: { id: assessment.id },
+        select: { completedAt: true },
+      });
+      if (fresh?.completedAt) return false;
+
+      await tx.assessment.update({
+        where: { id: assessment.id },
+        data: {
+          completedAt: now,
+          durationMinutes,
+        },
+      });
+
+      await tx.assessmentInvitation.update({
+        where: { id: invitation.id },
+        data: { status: "COMPLETED" },
+      });
+
+      await tx.candidate.update({
+        where: { id: invitation.candidateId },
+        data: { status: "SCORING" },
+      });
+
+      return true;
     });
 
-    return true;
-  });
+    // Fix: PRO-5 — Idempotent response for TOCTOU race
+    if (!updated) {
+      return NextResponse.json({ status: "already_complete" });
+    }
 
-  // Fix: PRO-5 — Idempotent response for TOCTOU race
-  if (!updated) {
-    return NextResponse.json({ status: "already_complete" });
-  }
+    // Run scoring pipeline after response is sent — ensures pipeline runs to completion
+    // even after the HTTP response is delivered (Vercel background execution)
+    after(() => runPipelineWithRetry(assessment.id));
 
-  // Run scoring pipeline after response is sent — ensures pipeline runs to completion
-  // even after the HTTP response is delivered (Vercel background execution)
-  after(() => runPipelineWithRetry(assessment.id));
-
-  return NextResponse.json({ success: true, durationMinutes });
-}
+    return NextResponse.json({ success: true, durationMinutes });
+  },
+  { module: "assess/[token]/complete" },
+);
 
 /**
  * Run scoring pipeline with exponential backoff retry (max 3 attempts).

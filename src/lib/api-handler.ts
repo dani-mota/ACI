@@ -15,14 +15,14 @@
  */
 
 import * as Sentry from "@sentry/nextjs";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createLogger } from "@/lib/assessment/logger";
 import { getSession } from "@/lib/auth";
 
 type RouteContext = { params: Promise<Record<string, string>> };
 
 type ApiHandler = (
-  req: Request,
+  req: NextRequest,
   ctx: RouteContext,
 ) => Promise<Response>;
 
@@ -39,7 +39,7 @@ export function withApiHandler(
   handler: ApiHandler,
   opts: HandlerOptions,
 ): ApiHandler {
-  return async (req: Request, ctx: RouteContext) => {
+  return async (req: NextRequest, ctx: RouteContext) => {
     const requestId = crypto.randomUUID().slice(0, 8);
     const log = createLogger(opts.module, requestId);
 

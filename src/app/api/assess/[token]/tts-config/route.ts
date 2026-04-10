@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { checkRateLimitAsync } from "@/lib/rate-limit";
 import { validateAssessSession } from "@/lib/session/assess-session";
 import { env } from "@/lib/env";
+import { withApiHandler } from "@/lib/api-handler";
 
 /**
  * GET /api/assess/[token]/tts-config
@@ -16,83 +17,83 @@ import { env } from "@/lib/env";
  * For the current HTTP proxy approach (Stage 4), this route is informational —
  * the client can check TTS availability without the full key.
  */
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ token: string }> },
-) {
-  const { token } = await params;
+export const GET = withApiHandler(
+  async (req, ctx) => {
+    const { token } = await ctx.params;
 
-  // Rate limit: 1 per 60 minutes per token
-  // Fix: PRO-9 — use Redis-backed rate limiter
-  const rl = await checkRateLimitAsync(`tts-config:${token}`, { maxRequests: 1, windowMs: 60 * 60 * 1000 });
-  if (!rl.allowed) {
-    return new Response(JSON.stringify({ error: "Too many requests" }), {
-      status: 429,
-      headers: { "Content-Type": "application/json", "Retry-After": String(Math.ceil(rl.retryAfterMs / 1000)) },
+    // Rate limit: 1 per 60 minutes per token
+    // Fix: PRO-9 — use Redis-backed rate limiter
+    const rl = await checkRateLimitAsync(`tts-config:${token}`, { maxRequests: 1, windowMs: 60 * 60 * 1000 });
+    if (!rl.allowed) {
+      return new Response(JSON.stringify({ error: "Too many requests" }), {
+        status: 429,
+        headers: { "Content-Type": "application/json", "Retry-After": String(Math.ceil(rl.retryAfterMs / 1000)) },
+      });
+    }
+
+    // Validate token
+    const invitation = await prisma.assessmentInvitation.findUnique({
+      where: { linkToken: token },
     });
-  }
 
-  // Validate token
-  const invitation = await prisma.assessmentInvitation.findUnique({
-    where: { linkToken: token },
-  });
-
-  // Fix: PRO-69 — reject COMPLETED tokens alongside EXPIRED
-  if (!invitation || invitation.status === "EXPIRED" || invitation.status === "COMPLETED" || (invitation.expiresAt && new Date() > invitation.expiresAt)) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  // Session binding — validate if enabled
-  if (env.ENABLE_SESSION_BINDING) {
-    const session = validateAssessSession(invitation, request);
-    if (!session.valid) {
-      return new Response(JSON.stringify({ error: "session_invalid" }), {
+    // Fix: PRO-69 — reject COMPLETED tokens alongside EXPIRED
+    if (!invitation || invitation.status === "EXPIRED" || invitation.status === "COMPLETED" || (invitation.expiresAt && new Date() > invitation.expiresAt)) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { "Content-Type": "application/json" },
       });
     }
-  }
 
-  // Check TTS configuration
-  const apiKey = process.env.ELEVENLABS_API_KEY;
-  const voiceId = process.env.ELEVENLABS_VOICE_ID;
+    // Session binding — validate if enabled
+    if (env.ENABLE_SESSION_BINDING) {
+      const session = validateAssessSession(invitation, req as NextRequest);
+      if (!session.valid) {
+        return new Response(JSON.stringify({ error: "session_invalid" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
 
-  if (!apiKey || !voiceId) {
+    // Check TTS configuration
+    const apiKey = process.env.ELEVENLABS_API_KEY;
+    const voiceId = process.env.ELEVENLABS_VOICE_ID;
+
+    if (!apiKey || !voiceId) {
+      return new Response(JSON.stringify({
+        available: false,
+        fallback: true,
+        reason: "TTS not configured",
+      }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // Return TTS config (no full API key — just availability + voice settings)
+    // When we migrate to browser-direct WebSocket, this will return a signed session token
+    const ttl = 90 * 60 * 1000; // 90 minutes
+    const validUntil = new Date(Date.now() + ttl).toISOString();
+
     return new Response(JSON.stringify({
-      available: false,
-      fallback: true,
-      reason: "TTS not configured",
+      available: true,
+      // Fix: PRO-69 — removed voiceId from response body
+      model: "eleven_flash_v2_5",
+      validUntil,
+      ttlMs: ttl,
+      voiceSettings: {
+        stability: 0.6,
+        similarity_boost: 0.8,
+        style: 0.3,
+        use_speaker_boost: true,
+      },
+      // proxy endpoint for current architecture
+      proxyEndpoint: `/api/assess/${token}/tts`,
     }), {
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "private, max-age=3600",
+      },
     });
-  }
-
-  // Return TTS config (no full API key — just availability + voice settings)
-  // When we migrate to browser-direct WebSocket, this will return a signed session token
-  const ttl = 90 * 60 * 1000; // 90 minutes
-  const validUntil = new Date(Date.now() + ttl).toISOString();
-
-  return new Response(JSON.stringify({
-    available: true,
-    // Fix: PRO-69 — removed voiceId from response body
-    model: "eleven_flash_v2_5",
-    validUntil,
-    ttlMs: ttl,
-    voiceSettings: {
-      stability: 0.6,
-      similarity_boost: 0.8,
-      style: 0.3,
-      use_speaker_boost: true,
-    },
-    // proxy endpoint for current architecture
-    proxyEndpoint: `/api/assess/${token}/tts`,
-  }), {
-    headers: {
-      "Content-Type": "application/json",
-      "Cache-Control": "private, max-age=3600",
-    },
-  });
-}
+  },
+  { module: "assess/[token]/tts-config" }
+);

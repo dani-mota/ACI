@@ -1,29 +1,25 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { checkRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 import { validateAssessSession } from "@/lib/session/assess-session";
 import { env } from "@/lib/env";
+import { withApiHandler } from "@/lib/api-handler";
 
-interface RouteParams {
-  params: Promise<{ token: string }>;
-}
+export const POST = withApiHandler(
+  async (req, ctx) => {
+    const { token } = await ctx.params;
 
-export async function POST(request: NextRequest, { params }: RouteParams) {
-  const { token } = await params;
+    // Rate limit by token
+    // Fix: PRO-9 — use Redis-backed rate limiter
+    const rl = await checkRateLimitAsync(`response:${token}`, RATE_LIMITS.itemResponse, "itemResponse");
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many requests" },
+        { status: 429, headers: { "Retry-After": String(Math.ceil(rl.retryAfterMs / 1000)) } },
+      );
+    }
 
-  // Rate limit by token
-  // Fix: PRO-9 — use Redis-backed rate limiter
-  const rl = await checkRateLimitAsync(`response:${token}`, RATE_LIMITS.itemResponse, "itemResponse");
-  if (!rl.allowed) {
-    return NextResponse.json(
-      { error: "Too many requests" },
-      { status: 429, headers: { "Retry-After": String(Math.ceil(rl.retryAfterMs / 1000)) } },
-    );
-  }
-
-  // Fix: PRO-25 — wrap all DB operations in try/catch to return JSON errors
-  try {
-    const body = await request.json();
+    const body = await req.json();
     const { itemId, itemType, response, responseTimeMs, confidence, act } = body;
 
     if (!itemId || !response) {
@@ -46,7 +42,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // Session binding — validate if enabled
     if (env.ENABLE_SESSION_BINDING) {
-      const session = validateAssessSession(invitation, request);
+      const session = validateAssessSession(invitation, req);
       if (!session.valid) {
         return NextResponse.json({ error: "session_invalid" }, { status: 401 });
       }
@@ -127,8 +123,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     });
 
     return NextResponse.json({ id: itemResponse.id });
-  } catch (err) {
-    console.error("[response-route] Error:", err);
-    return NextResponse.json({ error: "Failed to save response" }, { status: 500 });
-  }
-}
+  },
+  { module: "assess/[token]/response" },
+);
