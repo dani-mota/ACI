@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { checkRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
-// Session binding disabled — re-enable behind feature flag when architecture is stable
-// import { validateAssessSession } from "@/lib/session/assess-session";
+import { validateAssessSession } from "@/lib/session/assess-session";
+import { env } from "@/lib/env";
 
 interface RouteParams {
   params: Promise<{ token: string }>;
@@ -44,7 +44,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Session binding disabled for pre-pilot — token auth only
+    // Session binding — validate if enabled
+    if (env.ENABLE_SESSION_BINDING) {
+      const session = validateAssessSession(invitation, request);
+      if (!session.valid) {
+        return NextResponse.json({ error: "session_invalid" }, { status: 401 });
+      }
+    }
 
     const assessment = await prisma.assessment.findFirst({
       where: { candidateId: invitation.candidateId },

@@ -21,8 +21,8 @@ import { escapeXml } from "@/lib/assessment/prompts/prompt-assembly";
 import { normalizeInput } from "@/lib/assessment/validation/input-schema";
 import { validateCandidateMetadata, validateAgentMetadata } from "@/lib/assessment/validation/metadata-schema";
 import type { TurnBuilderContext } from "@/lib/assessment/turn-builders/context";
-// Session binding disabled — re-enable behind feature flag when architecture is stable
-// import { validateAssessSession, bindAssessSession } from "@/lib/session/assess-session";
+import { validateAssessSession } from "@/lib/session/assess-session";
+import { env } from "@/lib/env";
 
 // Vercel serverless: ensure enough time for streaming + onFinish DB writes
 export const maxDuration = 60;
@@ -78,15 +78,21 @@ export async function POST(
     });
   }
 
-  // Session binding disabled for pre-pilot — token auth only
-  const sessionCookieHeader: string | null = null;
+  // Log IP + User-Agent for audit trail (regardless of session binding flag)
+  log.info("Chat request", {
+    ip: request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? "unknown",
+    userAgent: request.headers.get("user-agent") ?? "unknown",
+  });
 
-  /** Attach the session-binding cookie to a Response (first request only). */
-  function withSessionCookie(res: Response): Response {
-    if (sessionCookieHeader) {
-      res.headers.append("Set-Cookie", sessionCookieHeader);
+  // Session binding — validate if enabled
+  if (env.ENABLE_SESSION_BINDING) {
+    const session = validateAssessSession(invitation, request);
+    if (!session.valid) {
+      return new Response(JSON.stringify({ error: "session_invalid" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
     }
-    return res;
   }
 
   // Find the assessment
@@ -281,29 +287,25 @@ export async function POST(
         act: "PHASE_0",
         sequenceOrder: seq,
     });
-    return withSessionCookie(new Response(JSON.stringify({ ok: true }), {
+    return new Response(JSON.stringify({ ok: true }), {
       headers: { "Content-Type": "application/json" },
-    }));
+    });
   }
 
   // Complete Phase 0 → transition to ACT_1
   if (body.trigger === "phase_0_complete") {
     // Fix: PRO-32 — guard against late-arriving Phase 0 completion retries
     if (assessment.assessmentState?.phase0Complete) {
-      const resp = new Response(JSON.stringify({ status: "already_complete" }), {
+      return new Response(JSON.stringify({ status: "already_complete" }), {
         headers: { "Content-Type": "application/json" },
       });
-      if (sessionCookieHeader) {
-        resp.headers.set("Set-Cookie", sessionCookieHeader);
-      }
-      return resp;
     }
     // Fix: PRO-7 — optimistic lock on state-advance write
     const count = await updateStateOptimistic({ currentAct: "ACT_1", phase0Complete: true });
     if (count === 0) return conflictResponse();
-    return withSessionCookie(new Response(JSON.stringify({ ok: true }), {
+    return new Response(JSON.stringify({ ok: true }), {
       headers: { "Content-Type": "application/json" },
-    }));
+    });
   }
 
   // Extract and normalize the candidate's last message (P-9)
@@ -643,9 +645,9 @@ export async function POST(
       ));
     }
 
-    return withSessionCookie(new Response(JSON.stringify(turn), {
+    return new Response(JSON.stringify(turn), {
       headers: { "Content-Type": "application/json" },
-    }));
+    });
   }
 
   // ── @deprecated LEGACY PATH — used when FEATURE_UNIFIED_TURNS is off ──
@@ -1046,7 +1048,7 @@ export async function POST(
       const streamResponse = result.toTextStreamResponse();
       const streamHeaders = new Headers(streamResponse.headers);
       streamHeaders.set("X-ACI-Progress", JSON.stringify(streamProgress));
-      return withSessionCookie(new Response(streamResponse.body, { status: 200, headers: streamHeaders }));
+      return new Response(streamResponse.body, { status: 200, headers: streamHeaders });
     } catch (streamErr) {
       Sentry.captureException(streamErr, { extra: { requestId, act: state.currentAct, beat: state.currentBeat } });
       log.error("Streaming failed", {
@@ -1121,9 +1123,16 @@ export async function GET(
       });
     }
 
-    // PRO-57: Session binding validation (GET — session recovery)
-    // Session binding disabled for pre-pilot — token auth only
-    const sessionCookieHeader: string | null = null;
+    // Session binding — validate if enabled (GET — session recovery)
+    if (env.ENABLE_SESSION_BINDING) {
+      const session = validateAssessSession(invitation, request);
+      if (!session.valid) {
+        return new Response(JSON.stringify({ error: "session_invalid" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
 
     const assessment = await prisma.assessment.findUnique({
       where: { candidateId: invitation.candidateId },
@@ -1195,9 +1204,6 @@ export async function GET(
       }),
       { headers: { "Content-Type": "application/json" } },
     );
-    if (sessionCookieHeader) {
-      response.headers.set("Set-Cookie", sessionCookieHeader);
-    }
     return response;
   } catch (err) {
     Sentry.captureException(err);

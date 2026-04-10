@@ -66,6 +66,12 @@ const serverSchema = z.object({
     .string()
     .default("true")
     .transform((v) => v !== "false"),
+
+  // Session binding — binds assessment to a single browser session (anti-proxy)
+  ENABLE_SESSION_BINDING: z
+    .string()
+    .default("false")
+    .transform((v) => v === "true"),
 });
 
 export type ServerEnv = z.infer<typeof serverSchema>;

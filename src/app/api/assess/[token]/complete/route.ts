@@ -3,8 +3,8 @@ import prisma from "@/lib/prisma";
 import { runScoringPipeline } from "@/lib/assessment/scoring/pipeline";
 import { checkRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 import { createLogger } from "@/lib/assessment/logger";
-// Session binding disabled — re-enable behind feature flag when architecture is stable
-// import { validateAssessSession } from "@/lib/session/assess-session";
+import { validateAssessSession } from "@/lib/session/assess-session";
+import { env } from "@/lib/env";
 import * as Sentry from "@sentry/nextjs"; // Fix: PRO-74
 
 export const maxDuration = 300;
@@ -36,7 +36,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: "Invalid token" }, { status: 404 });
   }
 
-  // Session binding disabled for pre-pilot — token auth only
+  // Session binding — validate if enabled
+  if (env.ENABLE_SESSION_BINDING) {
+    const session = validateAssessSession(invitation, request);
+    if (!session.valid) {
+      return NextResponse.json({ error: "session_invalid" }, { status: 401 });
+    }
+  }
 
   const assessment = await prisma.assessment.findFirst({
     where: { candidateId: invitation.candidateId },
