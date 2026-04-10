@@ -5,19 +5,20 @@ import { canManageTeam, canAssignRole } from "@/lib/rbac";
 import type { AppUserRole } from "@/lib/rbac";
 import { sendEmail } from "@/lib/email/resend";
 import { buildTeamInviteEmail } from "@/lib/email/templates/team-invite";
+import { withApiHandler } from "@/lib/api-handler";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://aci-rho.vercel.app";
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export async function POST(request: NextRequest) {
-  try {
+export const POST = withApiHandler(
+  async (req: NextRequest) => {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     if (!canManageTeam(session.user.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const body = await request.json();
+    const body = await req.json();
     const { email, name, role } = body as { email?: string; name?: string; role?: string };
 
     // Validate email
@@ -103,8 +104,7 @@ export async function POST(request: NextRequest) {
         expiresAt,
       });
       await sendEmail({ to: normalizedEmail, subject, html });
-    } catch (emailErr) {
-      console.error("Failed to send team invite email:", emailErr);
+    } catch {
       // Don't fail the invitation — it was created successfully
     }
 
@@ -131,8 +131,6 @@ export async function POST(request: NextRequest) {
         isExternal,
       },
     }, { status: 201 });
-  } catch (error) {
-    console.error("Team invite error:", error);
-    return NextResponse.json({ error: "Failed to send invitation" }, { status: 500 });
-  }
-}
+  },
+  { module: "team-invite" }
+);

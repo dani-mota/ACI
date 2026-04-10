@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getDemoOrgId } from "@/lib/data";
 import { checkRateLimitAsync } from "@/lib/rate-limit"; // Fix: PRO-71
+import { withApiHandler } from "@/lib/api-handler";
 
 function generateSlug(name: string): string {
   return name
@@ -34,25 +35,25 @@ function getIndustryFromCookie(cookieHeader: string | null): string | null {
   }
 }
 
-export async function POST(request: NextRequest) {
-  // Fix: PRO-71 — rate limit unauthenticated tutorial endpoint
-  const ip = request.headers.get("x-forwarded-for") ?? "unknown";
-  const rl = await checkRateLimitAsync(`tutorial-roles:${ip}`, { maxRequests: 5, windowMs: 60_000 });
-  if (!rl.allowed) {
-    return NextResponse.json(
-      { error: "Too many requests" },
-      { status: 429, headers: { "Retry-After": String(Math.ceil(rl.retryAfterMs / 1000)) } },
-    );
-  }
+export const POST = withApiHandler(
+  async (req) => {
+    // Fix: PRO-71 — rate limit unauthenticated tutorial endpoint
+    const ip = req.headers.get("x-forwarded-for") ?? "unknown";
+    const rl = await checkRateLimitAsync(`tutorial-roles:${ip}`, { maxRequests: 5, windowMs: 60_000 });
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many requests" },
+        { status: 429, headers: { "Retry-After": String(Math.ceil(rl.retryAfterMs / 1000)) } },
+      );
+    }
 
-  try {
-    const industry = getIndustryFromCookie(request.headers.get("cookie"));
+    const industry = getIndustryFromCookie(req.headers.get("cookie"));
     const demoOrgId = await getDemoOrgId(industry);
     if (!demoOrgId) {
       return NextResponse.json({ error: "Demo organization not found" }, { status: 404 });
     }
 
-    const body = await request.json() as {
+    const body = await req.json() as {
       name: string;
       description?: string;
       sourceType: "JD_UPLOAD" | "TEMPLATE_CLONE" | "MANUAL_ENTRY";
@@ -148,8 +149,6 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({ role }, { status: 201 });
-  } catch (error) {
-    console.error("Tutorial role creation error:", error);
-    return NextResponse.json({ error: "Failed to create role" }, { status: 500 });
-  }
-}
+  },
+  { module: "tutorial/roles" }
+);

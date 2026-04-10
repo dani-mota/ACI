@@ -2,6 +2,7 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { getSession } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { generateContentLibrary } from "@/lib/assessment/content-generation";
+import { withApiHandler } from "@/lib/api-handler";
 
 const ALLOWED_ROLES = ["TA_LEADER", "ADMIN"];
 
@@ -25,15 +26,15 @@ async function ensureUniqueSlug(base: string, orgId: string): Promise<string> {
   }
 }
 
-export async function POST(request: NextRequest) {
-  try {
+export const POST = withApiHandler(
+  async (req: NextRequest) => {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     if (!ALLOWED_ROLES.includes(session.user.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const body = await request.json() as {
+    const body = await req.json() as {
       name: string;
       description?: string;
       sourceType: "JD_UPLOAD" | "TEMPLATE_CLONE" | "MANUAL_ENTRY";
@@ -134,12 +135,10 @@ export async function POST(request: NextRequest) {
 
     // Auto-trigger content generation for custom roles with JD context
     if (!role.isGeneric && body.jdContext) {
-      after(() => generateContentLibrary(role.id).catch(console.error));
+      after(() => generateContentLibrary(role.id).catch(() => {}));
     }
 
     return NextResponse.json({ role }, { status: 201 });
-  } catch (error) {
-    console.error("Role creation error:", error);
-    return NextResponse.json({ error: "Failed to create role" }, { status: 500 });
-  }
-}
+  },
+  { module: "roles" }
+);

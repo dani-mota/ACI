@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { PDFOnePager, type PDFOnePagerProps } from "@/components/profile/pdf-one-pager";
@@ -7,12 +7,8 @@ import { getSession } from "@/lib/auth";
 import { withApiHandler } from "@/lib/api-handler";
 import { canView } from "@/lib/rbac";
 
-interface RouteParams {
-  params: Promise<{ candidateId: string }>;
-}
-
-export async function GET(_request: NextRequest, { params }: RouteParams) {
-  return withApiHandler(async () => {
+export const GET = withApiHandler(
+  async (_req, ctx) => {
     const session = await getSession();
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -21,7 +17,7 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const { candidateId } = await params;
+    const { candidateId } = await ctx.params;
 
     const candidate = await prisma.candidate.findUnique({
       where: { id: candidateId },
@@ -106,5 +102,6 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
         "Cache-Control": "private, no-cache, no-store, must-revalidate",
       },
     });
-  }, { module: "export/pdf/[candidateId]/one-pager" })(_request, { params });
-}
+  },
+  { module: "export/pdf/[candidateId]/one-pager" }
+);

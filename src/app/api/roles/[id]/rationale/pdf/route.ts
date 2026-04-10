@@ -4,20 +4,17 @@ import { canView } from "@/lib/rbac";
 import prisma from "@/lib/prisma";
 import { generateRoleBriefPDF } from "@/lib/role-builder/pdf";
 import type { ResearchRationale, GeneratedWeights } from "@/lib/role-builder/pipeline";
+import { withApiHandler } from "@/lib/api-handler";
 
-interface RouteParams {
-  params: Promise<{ id: string }>;
-}
-
-export async function GET(_request: NextRequest, { params }: RouteParams) {
-  try {
+export const GET = withApiHandler(
+  async (_req: NextRequest, ctx) => {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     if (!canView(session.user.role, "pdfExport")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const { id } = await params;
+    const { id } = await ctx.params;
     const role = await prisma.role.findUnique({
       where: { id },
       include: {
@@ -78,8 +75,6 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
         "Content-Length": String(pdfBuffer.length),
       },
     });
-  } catch (error) {
-    console.error("Role brief PDF error:", error);
-    return NextResponse.json({ error: "Failed to generate PDF" }, { status: 500 });
-  }
-}
+  },
+  { module: "rationale-pdf" }
+);

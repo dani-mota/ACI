@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { sendEmail } from "@/lib/email/resend";
 import { buildResultsEmail } from "@/lib/email/templates/results";
+import { withApiHandler } from "@/lib/api-handler";
 
 export const maxDuration = 300;
 
@@ -10,15 +11,15 @@ export const maxDuration = 300;
  * Vercel cron job: finds completed assessments older than 7 days
  * where results email hasn't been sent yet, and sends them.
  */
-export async function GET(request: NextRequest) {
-  // Fix: PRO-65 — explicit null guard prevents "Bearer undefined" bypass
-  const secret = process.env.CRON_SECRET;
-  const authHeader = request.headers.get("Authorization");
-  if (!secret || authHeader !== `Bearer ${secret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+export const GET = withApiHandler(
+  async (req) => {
+    // Fix: PRO-65 — explicit null guard prevents "Bearer undefined" bypass
+    const secret = process.env.CRON_SECRET;
+    const authHeader = req.headers.get("Authorization");
+    if (!secret || authHeader !== `Bearer ${secret}`) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-  try {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
     // Fix: PRO-51 — Paginate through ALL candidates, not just first 20
@@ -99,8 +100,6 @@ export async function GET(request: NextRequest) {
       sent,
       errors: errors.length > 0 ? errors : undefined,
     });
-  } catch (err) {
-    console.error("Cron send-results error:", err);
-    return NextResponse.json({ error: "Internal error" }, { status: 500 });
-  }
-}
+  },
+  { module: "cron/send-results" }
+);

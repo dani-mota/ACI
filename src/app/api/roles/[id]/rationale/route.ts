@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { withApiHandler } from "@/lib/api-handler";
 
-interface RouteParams {
-  params: Promise<{ id: string }>;
-}
-
-export async function GET(_request: NextRequest, { params }: RouteParams) {
-  try {
+export const GET = withApiHandler(
+  async (_req: NextRequest, ctx) => {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { id } = await params;
+    const { id } = await ctx.params;
     const role = await prisma.role.findUnique({
       where: { id },
       select: {
@@ -40,8 +37,6 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
       researchRationale: role.researchRationale,
       confidenceScores: role.confidenceScores,
     });
-  } catch (error) {
-    console.error("Rationale fetch error:", error);
-    return NextResponse.json({ error: "Failed to fetch rationale" }, { status: 500 });
-  }
-}
+  },
+  { module: "rationale" }
+);

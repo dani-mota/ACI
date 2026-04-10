@@ -1,20 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { withApiHandler } from "@/lib/api-handler";
 
-interface RouteParams {
-  params: Promise<{ id: string }>;
-}
-
-export async function PATCH(request: NextRequest, { params }: RouteParams) {
-  try {
+export const PATCH = withApiHandler(
+  async (req: NextRequest, ctx) => {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     if (!["TA_LEADER", "ADMIN"].includes(session.user.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const { id } = await params;
+    const { id } = await ctx.params;
     const role = await prisma.role.findUnique({
       where: { id },
       include: { versions: { orderBy: { versionNumber: "desc" }, take: 1 } },
@@ -24,7 +21,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (!role.isCustom) return NextResponse.json({ error: "Cannot edit system default roles" }, { status: 403 });
     if (role.orgId !== session.user.orgId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-    const body = await request.json() as {
+    const body = await req.json() as {
       name?: string;
       description?: string;
       weights?: Record<string, number>;
@@ -98,21 +95,19 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     const updated = await prisma.role.findUnique({ where: { id } });
     return NextResponse.json({ role: updated });
-  } catch (error) {
-    console.error("Role update error:", error);
-    return NextResponse.json({ error: "Failed to update role" }, { status: 500 });
-  }
-}
+  },
+  { module: "roles" }
+);
 
-export async function DELETE(request: NextRequest, { params }: RouteParams) {
-  try {
+export const DELETE = withApiHandler(
+  async (_req: NextRequest, ctx) => {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     if (session.user.role !== "ADMIN") {
       return NextResponse.json({ error: "Only admins can delete roles" }, { status: 403 });
     }
 
-    const { id } = await params;
+    const { id } = await ctx.params;
     const role = await prisma.role.findUnique({
       where: { id },
       include: { _count: { select: { candidates: true } } },
@@ -130,8 +125,6 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     await prisma.role.delete({ where: { id } });
     return new NextResponse(null, { status: 204 });
-  } catch (error) {
-    console.error("Role delete error:", error);
-    return NextResponse.json({ error: "Failed to delete role" }, { status: 500 });
-  }
-}
+  },
+  { module: "roles" }
+);
