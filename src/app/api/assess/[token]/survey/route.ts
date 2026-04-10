@@ -1,22 +1,20 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { checkRateLimitAsync } from "@/lib/rate-limit";
+import { withApiHandler } from "@/lib/api-handler";
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ token: string }> }
-) {
-  const { token } = await params;
+export const POST = withApiHandler(
+  async (req, ctx) => {
+    const { token } = await ctx.params;
 
-  // Rate limit: 5/min per token
-  // Fix: PRO-9 — use Redis-backed rate limiter
-  const rl = await checkRateLimitAsync(`survey:${token}`, { maxRequests: 5, windowMs: 60_000 }, "assessmentComplete");
-  if (!rl.allowed) {
-    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
-  }
-  // Fix: PRO-25 — wrap all DB operations in try/catch to return JSON errors
-  try {
-    const body = await request.json();
+    // Rate limit: 5/min per token
+    // Fix: PRO-9 — use Redis-backed rate limiter
+    const rl = await checkRateLimitAsync(`survey:${token}`, { maxRequests: 5, windowMs: 60_000 }, "assessmentComplete");
+    if (!rl.allowed) {
+      return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+    }
+
+    const body = await req.json();
     const { assessmentId, difficulty, fairness, faceValidity, openFeedback } = body;
 
     // Fix: PRO-79 — validate Likert fields
@@ -67,8 +65,6 @@ export async function POST(
     });
 
     return NextResponse.json({ success: true });
-  } catch (err) {
-    console.error("[survey-route] Error:", err);
-    return NextResponse.json({ error: "Failed to save survey" }, { status: 500 });
-  }
-}
+  },
+  { module: "assess/[token]/survey" },
+);

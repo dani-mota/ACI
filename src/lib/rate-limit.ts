@@ -38,6 +38,8 @@ export const RATE_LIMITS = {
   itemResponse: { maxRequests: 60, windowMs: 60_000 },
   /** TTS (ElevenLabs proxy): 60 per minute per token */
   tts: { maxRequests: 60, windowMs: 60_000 },
+  /** Per-org Anthropic API: 200 RPM per org (PRO-124) */
+  orgAnthropicRpm: { maxRequests: 200, windowMs: 60_000 },
 } as const;
 
 // ── Redis rate limiter (if configured) ─────────────
@@ -161,4 +163,16 @@ export async function checkRateLimitAsync(
   }
 
   return checkRateLimitInMemory(identifier, config);
+}
+
+/**
+ * PRO-124: Per-org rate limit for Anthropic API calls.
+ * Prevents noisy-neighbor exhaustion during multi-org pilots.
+ */
+export async function checkOrgRateLimit(orgId: string): Promise<RateLimitResult> {
+  return checkRateLimitAsync(
+    `rl:org:${orgId}:anthropic`,
+    RATE_LIMITS.orgAnthropicRpm,
+    "orgAnthropicRpm",
+  );
 }

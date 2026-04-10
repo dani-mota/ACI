@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { withApiHandler } from "@/lib/api-handler";
 
 function isStrongPassword(p: string): boolean {
   return p.length >= 8 && /[A-Z]/.test(p) && /[a-z]/.test(p) && /\d/.test(p);
@@ -11,16 +12,16 @@ function isStrongPassword(p: string): boolean {
  * POST /api/team/accept — Accept a team invitation and create account
  * Public route — no auth required (the user doesn't have an account yet)
  */
-export async function POST(request: NextRequest) {
-  try {
+export const POST = withApiHandler(
+  async (req: NextRequest) => {
     // Rate limit: 10 requests per minute per IP
-    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
     const limit = checkRateLimit(`team-accept:${ip}`, { maxRequests: 10, windowMs: 60_000 });
     if (!limit.allowed) {
       return NextResponse.json({ error: "Too many requests. Please try again later." }, { status: 429 });
     }
 
-    const body = await request.json();
+    const body = await req.json();
     const { token, name, password } = body as {
       token?: string;
       name?: string;
@@ -85,7 +86,6 @@ export async function POST(request: NextRequest) {
           { status: 409 }
         );
       }
-      console.error("Failed to create Supabase auth user:", authError?.message);
       return NextResponse.json({ error: "Failed to create account" }, { status: 500 });
     }
 
@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
       try {
         await supabase.auth.admin.deleteUser(supabaseUserId);
       } catch {
-        console.warn(`Failed to clean up Supabase user ${supabaseUserId}`);
+        // Cleanup failed — will be orphaned in Supabase
       }
 
       if ((txErr as Error).message === "INVITATION_ALREADY_USED") {
@@ -133,8 +133,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      console.error("Transaction failed:", txErr);
-      return NextResponse.json({ error: "Failed to create account" }, { status: 500 });
+      throw txErr;
     }
 
     // Log the action
@@ -153,8 +152,6 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({ success: true, orgSlug: invitation.org.slug });
-  } catch (error) {
-    console.error("Accept invitation error:", error);
-    return NextResponse.json({ error: "Failed to accept invitation" }, { status: 500 });
-  }
-}
+  },
+  { module: "team-accept" }
+);

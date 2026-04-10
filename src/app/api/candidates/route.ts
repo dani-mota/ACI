@@ -1,87 +1,91 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { filterCandidateForRole } from "@/lib/rbac";
+import { withApiHandler } from "@/lib/api-handler";
 
 const SORTABLE_FIELDS = ["createdAt", "lastName", "firstName", "status", "email"] as const;
 
-export async function GET(request: NextRequest) {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+export const GET = withApiHandler(
+  async (req) => {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-  const { searchParams } = new URL(request.url);
+    const { searchParams } = new URL(req.url);
 
-  // Lightweight existence check for invitation duplicate warning
-  const emailCheck = searchParams.get("email");
-  if (emailCheck) {
-    const existing = await prisma.candidate.findUnique({
-      where: { email_orgId: { email: emailCheck, orgId: session.user.orgId! } },
-      select: { id: true, status: true },
-    });
-    return NextResponse.json({ exists: !!existing, status: existing?.status ?? null });
-  }
+    // Lightweight existence check for invitation duplicate warning
+    const emailCheck = searchParams.get("email");
+    if (emailCheck) {
+      const existing = await prisma.candidate.findUnique({
+        where: { email_orgId: { email: emailCheck, orgId: session.user.orgId! } },
+        select: { id: true, status: true },
+      });
+      return NextResponse.json({ exists: !!existing, status: existing?.status ?? null });
+    }
 
-  const search = searchParams.get("search") || "";
-  const status = searchParams.get("status") || "";
-  const role = searchParams.get("role") || "";
-  const rawSortBy = searchParams.get("sortBy") || "createdAt";
-  const sortBy = (SORTABLE_FIELDS as readonly string[]).includes(rawSortBy) ? rawSortBy : "createdAt";
-  const sortDir = searchParams.get("sortDir") || "desc";
-  const page = parseInt(searchParams.get("page") || "1");
-  const pageSize = Math.min(parseInt(searchParams.get("pageSize") || "25"), 100);
+    const search = searchParams.get("search") || "";
+    const status = searchParams.get("status") || "";
+    const role = searchParams.get("role") || "";
+    const rawSortBy = searchParams.get("sortBy") || "createdAt";
+    const sortBy = (SORTABLE_FIELDS as readonly string[]).includes(rawSortBy) ? rawSortBy : "createdAt";
+    const sortDir = searchParams.get("sortDir") || "desc";
+    const page = parseInt(searchParams.get("page") || "1");
+    const pageSize = Math.min(parseInt(searchParams.get("pageSize") || "25"), 100);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const where: any = { orgId: session.user.orgId };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const where: any = { orgId: session.user.orgId };
 
-  // External collaborators can only see candidates assigned to them
-  if (session.user.role === "EXTERNAL_COLLABORATOR") {
-    where.assignments = { some: { userId: session.user.id } };
-  }
+    // External collaborators can only see candidates assigned to them
+    if (session.user.role === "EXTERNAL_COLLABORATOR") {
+      where.assignments = { some: { userId: session.user.id } };
+    }
 
-  if (search) {
-    where.OR = [
-      { firstName: { contains: search, mode: "insensitive" } },
-      { lastName: { contains: search, mode: "insensitive" } },
-      { email: { contains: search, mode: "insensitive" } },
-    ];
-  }
+    if (search) {
+      where.OR = [
+        { firstName: { contains: search, mode: "insensitive" } },
+        { lastName: { contains: search, mode: "insensitive" } },
+        { email: { contains: search, mode: "insensitive" } },
+      ];
+    }
 
-  if (status) {
-    where.status = status;
-  }
+    if (status) {
+      where.status = status;
+    }
 
-  if (role) {
-    where.primaryRole = { slug: role };
-  }
+    if (role) {
+      where.primaryRole = { slug: role };
+    }
 
-  const [candidates, total] = await Promise.all([
-    prisma.candidate.findMany({
-      where,
-      include: {
-        primaryRole: true,
-        assessment: {
-          include: {
-            compositeScores: true,
-            redFlags: true,
+    const [candidates, total] = await Promise.all([
+      prisma.candidate.findMany({
+        where,
+        include: {
+          primaryRole: true,
+          assessment: {
+            include: {
+              compositeScores: true,
+              redFlags: true,
+            },
           },
         },
-      },
-      orderBy: { [sortBy]: sortDir },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-    }),
-    prisma.candidate.count({ where }),
-  ]);
+        orderBy: { [sortBy]: sortDir },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      prisma.candidate.count({ where }),
+    ]);
 
-  const filtered = candidates.map((c) => filterCandidateForRole(c, session.user.role));
+    const filtered = candidates.map((c) => filterCandidateForRole(c, session.user.role));
 
-  return NextResponse.json({
-    candidates: filtered,
-    total,
-    page,
-    pageSize,
-    totalPages: Math.ceil(total / pageSize),
-  });
-}
+    return NextResponse.json({
+      candidates: filtered,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    });
+  },
+  { module: "candidates" }
+);

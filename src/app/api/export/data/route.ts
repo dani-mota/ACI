@@ -1,35 +1,39 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { withApiHandler } from "@/lib/api-handler";
 
 /**
  * GET /api/export/data?type=items|constructs|full&format=csv|json
  * Export assessment data for psychometric analysis.
  */
-export async function GET(request: NextRequest) {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+export const GET = withApiHandler(
+  async (req) => {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-  // Restrict to TA_LEADER and ADMIN
-  if (!["TA_LEADER", "ADMIN"].includes(session.user.role)) {
-    return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
-  }
+    // Restrict to TA_LEADER and ADMIN
+    if (!["TA_LEADER", "ADMIN"].includes(session.user.role)) {
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
+    }
 
-  const { searchParams } = new URL(request.url);
-  const type = searchParams.get("type") || "constructs";
-  const format = searchParams.get("format") || "csv";
+    const { searchParams } = new URL(req.url);
+    const type = searchParams.get("type") || "constructs";
+    const format = searchParams.get("format") || "csv";
 
-  const orgId = session.user.orgId;
+    const orgId = session.user.orgId;
 
-  if (type === "items") {
-    return exportItemResponses(orgId, format);
-  } else if (type === "full") {
-    return exportFullData(orgId, format);
-  }
-  return exportConstructScores(orgId, format);
-}
+    if (type === "items") {
+      return exportItemResponses(orgId, format);
+    } else if (type === "full") {
+      return exportFullData(orgId, format);
+    }
+    return exportConstructScores(orgId, format);
+  },
+  { module: "export/data" }
+);
 
 async function exportItemResponses(orgId: string, format: string) {
   const responses = await prisma.itemResponse.findMany({
@@ -53,7 +57,8 @@ async function exportItemResponses(orgId: string, format: string) {
     itemId: r.itemId,
     itemType: r.itemType,
     response: r.response,
-    responseTimeMs: r.responseTimeMs,
+    clientResponseTimeMs: r.clientResponseTimeMs,
+    serverSideResponseTimeMs: r.serverSideResponseTimeMs,
     rawScore: r.rawScore,
   }));
 

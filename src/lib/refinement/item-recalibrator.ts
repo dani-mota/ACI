@@ -26,7 +26,7 @@ export async function recalibrateItems(minSampleSize = 10): Promise<{
     select: {
       itemId: true,
       rawScore: true,
-      responseTimeMs: true,
+      clientResponseTimeMs: true,
     },
   });
 
@@ -35,7 +35,7 @@ export async function recalibrateItems(minSampleSize = 10): Promise<{
   for (const r of responses) {
     if (r.rawScore === null) continue;
     if (!grouped.has(r.itemId)) grouped.set(r.itemId, []);
-    grouped.get(r.itemId)!.push({ rawScore: r.rawScore, responseTimeMs: r.responseTimeMs });
+    grouped.get(r.itemId)!.push({ rawScore: r.rawScore, responseTimeMs: r.clientResponseTimeMs });
   }
 
   let processed = 0;

@@ -493,15 +493,16 @@ enum InvitationStatus {
 // ──────────────────────────────────────────────
 
 model ItemResponse {
-  id             String         @id @default(cuid())
-  assessmentId   String
-  assessment     Assessment     @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
-  itemId         String
-  itemType       ItemType
-  response       String
-  responseTimeMs Int?
-  confidence     Float?
-  rawScore       Float?
+  id                      String         @id @default(cuid())
+  assessmentId            String
+  assessment              Assessment     @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  itemId                  String
+  itemType                ItemType
+  response                String
+  clientResponseTimeMs    Int?           @map("responseTimeMs") // PRO-114: renamed from responseTimeMs
+  serverSideResponseTimeMs Int?          // PRO-114: authoritative server-computed timing
+  confidence              Float?
+  rawScore                Float?
   // V2 fields
   act            AssessmentAct?
   // Fix: PRO-83 — add FK constraint for messageId
@@ -630,9 +631,10 @@ model ConversationMessage {
   metadata        Json?                   // Beat number, scenario index, construct signals, etc.
   elementType     InteractionElementType?
   elementData     Json?                   // Options, correct answer, timer config, etc.
-  candidateInput  String?                 // Candidate's structured response to an interactive element
-  responseTimeMs  Int?
-  sequenceOrder   Int
+  candidateInput      String?                 // Candidate's structured response to an interactive element
+  responseTimeMs      Int?
+  questionDeliveredAt DateTime?               // PRO-114: server timestamp when interactive element was dispatched
+  sequenceOrder       Int
   idempotencyKey  String?                 @unique // Fix: PRO-31 — deduplication key for client retries
   // Fix: PRO-83 — back-relation for ItemResponse.messageId FK
   itemResponses   ItemResponse[]

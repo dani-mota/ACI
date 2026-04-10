@@ -6,12 +6,8 @@ import { getSession } from "@/lib/auth";
 import { withApiHandler } from "@/lib/api-handler";
 import { canView } from "@/lib/rbac";
 
-interface RouteParams {
-  params: Promise<{ candidateId: string }>;
-}
-
-export async function GET(_request: NextRequest, { params }: RouteParams) {
-  return withApiHandler(async () => {
+export const GET = withApiHandler(
+  async (_req, ctx) => {
     const session = await getSession();
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -20,7 +16,7 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const { candidateId } = await params;
+    const { candidateId } = await ctx.params;
 
     // ------------------------------------------------------------------
     // Fetch candidate with full assessment data (mirrors profile page)
@@ -133,5 +129,6 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
         "Cache-Control": "private, no-cache, no-store, must-revalidate",
       },
     });
-  }, { module: "export/pdf/[candidateId]" })(_request, { params });
-}
+  },
+  { module: "export/pdf/[candidateId]" }
+);

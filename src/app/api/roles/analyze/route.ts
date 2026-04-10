@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { runRoleBuilderPipeline } from "@/lib/role-builder/pipeline";
 import prisma from "@/lib/prisma";
+import { withApiHandler } from "@/lib/api-handler";
 
 const ALLOWED_ROLES = ["TA_LEADER", "ADMIN"];
 
-export async function POST(request: NextRequest) {
-  try {
+export const POST = withApiHandler(
+  async (req: NextRequest) => {
     const session = await getSession();
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -15,7 +16,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const body = await request.json() as {
+    const body = await req.json() as {
       sourceType: "JD_UPLOAD" | "TEMPLATE_CLONE" | "MANUAL_ENTRY";
       text?: string;
       templateSlug?: string;
@@ -81,11 +82,6 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json(result);
-  } catch (error) {
-    console.error("Role analyze error:", error);
-    return NextResponse.json(
-      { error: "Analysis failed. Please try again or use the 'Start from Template' option." },
-      { status: 500 }
-    );
-  }
-}
+  },
+  { module: "roles-analyze" }
+);

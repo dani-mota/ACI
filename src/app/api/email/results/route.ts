@@ -1,97 +1,101 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { sendEmail } from "@/lib/email/resend";
 import { buildResultsEmail } from "@/lib/email/templates/results";
 import { getSession } from "@/lib/auth";
+import { withApiHandler } from "@/lib/api-handler";
 
 /**
  * POST /api/email/results
  * Send assessment results email to a candidate.
  * Body: { candidateId: string }
  */
-export async function POST(request: NextRequest) {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+export const POST = withApiHandler(
+  async (req) => {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-  const body = await request.json();
-  const { candidateId } = body;
+    const body = await req.json();
+    const { candidateId } = body;
 
-  if (!candidateId) {
-    return NextResponse.json({ error: "candidateId required" }, { status: 400 });
-  }
+    if (!candidateId) {
+      return NextResponse.json({ error: "candidateId required" }, { status: 400 });
+    }
 
-  const candidate = await prisma.candidate.findUnique({
-    where: { id: candidateId },
-    include: {
-      primaryRole: true,
-      org: true,
-      assessment: {
-        include: {
-          subtestResults: true,
-          compositeScores: true,
+    const candidate = await prisma.candidate.findUnique({
+      where: { id: candidateId },
+      include: {
+        primaryRole: true,
+        org: true,
+        assessment: {
+          include: {
+            subtestResults: true,
+            compositeScores: true,
+          },
         },
       },
-    },
-  });
+    });
 
-  // Fix: PRO-72 — org-scope guard to prevent cross-org results email
-  if (!candidate || candidate.orgId !== session.user.orgId) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+    // Fix: PRO-72 — org-scope guard to prevent cross-org results email
+    if (!candidate || candidate.orgId !== session.user.orgId) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
 
-  if (!candidate.assessment) {
-    return NextResponse.json({ error: "Candidate or assessment not found" }, { status: 404 });
-  }
+    if (!candidate.assessment) {
+      return NextResponse.json({ error: "Candidate or assessment not found" }, { status: 404 });
+    }
 
-  // Calculate layer-level percentiles
-  const subtests = candidate.assessment.subtestResults;
-  const cognitive = subtests.filter((s) => s.layer === "COGNITIVE_CORE");
-  const technical = subtests.filter((s) => s.layer === "TECHNICAL_APTITUDE");
-  const behavioral = subtests.filter((s) => s.layer === "BEHAVIORAL_INTEGRITY");
+    // Calculate layer-level percentiles
+    const subtests = candidate.assessment.subtestResults;
+    const cognitive = subtests.filter((s) => s.layer === "COGNITIVE_CORE");
+    const technical = subtests.filter((s) => s.layer === "TECHNICAL_APTITUDE");
+    const behavioral = subtests.filter((s) => s.layer === "BEHAVIORAL_INTEGRITY");
 
-  const avgPercentile = (arr: typeof subtests) =>
-    arr.length > 0
-      ? Math.round(arr.reduce((sum, s) => sum + s.percentile, 0) / arr.length)
-      : 50;
+    const avgPercentile = (arr: typeof subtests) =>
+      arr.length > 0
+        ? Math.round(arr.reduce((sum, s) => sum + s.percentile, 0) / arr.length)
+        : 50;
 
-  const cognitivePercentile = avgPercentile(cognitive);
-  const technicalPercentile = avgPercentile(technical);
-  const behavioralPercentile = avgPercentile(behavioral);
+    const cognitivePercentile = avgPercentile(cognitive);
+    const technicalPercentile = avgPercentile(technical);
+    const behavioralPercentile = avgPercentile(behavioral);
 
-  const narrative = generateNarrative(
-    candidate.firstName,
-    cognitivePercentile,
-    technicalPercentile,
-    behavioralPercentile
-  );
+    const narrative = generateNarrative(
+      candidate.firstName,
+      cognitivePercentile,
+      technicalPercentile,
+      behavioralPercentile
+    );
 
-  const { subject, html } = buildResultsEmail({
-    candidateName: candidate.firstName,
-    roleName: candidate.primaryRole.name,
-    companyName: candidate.org.name,
-    cognitivePercentile,
-    technicalPercentile,
-    behavioralPercentile,
-    narrative,
-  });
+    const { subject, html } = buildResultsEmail({
+      candidateName: candidate.firstName,
+      roleName: candidate.primaryRole.name,
+      companyName: candidate.org.name,
+      cognitivePercentile,
+      technicalPercentile,
+      behavioralPercentile,
+      narrative,
+    });
 
-  await sendEmail({
-    to: candidate.email,
-    subject,
-    html,
-  });
+    await sendEmail({
+      to: candidate.email,
+      subject,
+      html,
+    });
 
-  // Mark results email as sent
-  await prisma.candidate.update({
-    where: { id: candidateId },
-    // Fix: PRO-20 — set resultsEmailSentAt so cron doesn't re-send
-    data: { resultsEmailSentAt: new Date() },
-  });
+    // Mark results email as sent
+    await prisma.candidate.update({
+      where: { id: candidateId },
+      // Fix: PRO-20 — set resultsEmailSentAt so cron doesn't re-send
+      data: { resultsEmailSentAt: new Date() },
+    });
 
-  return NextResponse.json({ success: true });
-}
+    return NextResponse.json({ success: true });
+  },
+  { module: "email/results" }
+);
 
 function generateNarrative(
   name: string,

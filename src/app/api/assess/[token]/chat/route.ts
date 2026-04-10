@@ -1,5 +1,6 @@
-import { NextRequest, after } from "next/server";
+import { after } from "next/server";
 import * as Sentry from "@sentry/nextjs";
+import { withApiHandler } from "@/lib/api-handler";
 import { streamText } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import prisma from "@/lib/prisma";
@@ -14,7 +15,7 @@ import { loadContentLibrary, lookupBeatContent, getReadyLibrary, selectRandomVar
 import { SCENARIOS } from "@/lib/assessment/scenarios";
 import { recordResult, initLoopState } from "@/lib/assessment/adaptive-loop";
 import { ITEM_BANK } from "@/lib/assessment/item-bank";
-import { checkRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
+import { checkRateLimitAsync, checkOrgRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { createLogger } from "@/lib/assessment/logger";
 import { dispatch } from "@/lib/assessment/dispatcher";
 import { escapeXml } from "@/lib/assessment/prompts/prompt-assembly";
@@ -38,16 +39,12 @@ export const maxDuration = 60;
  * - candidateInput?: string (for structured element responses)
  * - elementResponse?: { elementType: string, value: string, itemId?: string }
  */
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ token: string }> },
-) {
-  const { token } = await params;
+export const POST = withApiHandler(
+  async (req, ctx) => {
+  const { token } = await ctx.params;
   const requestId = crypto.randomUUID().slice(0, 8);
   const log = createLogger("chat-route", requestId);
   let stateSnapshot: Record<string, unknown> | null = null;
-
-  try {
 
   // Rate limit by token
   // Fix: PRO-9 — use Redis-backed rate limiter
@@ -80,19 +77,32 @@ export async function POST(
 
   // Log IP + User-Agent for audit trail (regardless of session binding flag)
   log.info("Chat request", {
-    ip: request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? "unknown",
-    userAgent: request.headers.get("user-agent") ?? "unknown",
+    ip: req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? "unknown",
+    userAgent: req.headers.get("user-agent") ?? "unknown",
   });
 
   // Session binding — validate if enabled
   if (env.ENABLE_SESSION_BINDING) {
-    const session = validateAssessSession(invitation, request);
+    const session = validateAssessSession(invitation, req);
     if (!session.valid) {
       return new Response(JSON.stringify({ error: "session_invalid" }), {
         status: 401,
         headers: { "Content-Type": "application/json" },
       });
     }
+  }
+
+  // PRO-124: Per-org Anthropic rate limit — prevent noisy neighbor API exhaustion
+  const orgId = invitation.candidate.orgId;
+  const orgRl = await checkOrgRateLimit(orgId);
+  if (!orgRl.allowed) {
+    return new Response(JSON.stringify({ error: "Too many requests" }), {
+      status: 429,
+      headers: {
+        "Content-Type": "application/json",
+        "Retry-After": String(Math.ceil(orgRl.retryAfterMs / 1000)),
+      },
+    });
   }
 
   // Find the assessment
@@ -131,7 +141,7 @@ export async function POST(
   }
 
   // Fix: PRO-31 — idempotency check for message deduplication
-  const idempotencyKey = request.headers.get("X-Idempotency-Key");
+  const idempotencyKey = req.headers.get("X-Idempotency-Key");
   if (idempotencyKey) {
     const existing = await prisma.conversationMessage.findUnique({
       where: { idempotencyKey },
@@ -143,7 +153,7 @@ export async function POST(
     }
   }
 
-  const body = await request.json();
+  const body = await req.json();
   const { messages: clientMessages, elementResponse } = body;
 
   // Validate elementResponse shape if present
@@ -356,13 +366,13 @@ export async function POST(
           itemId: elementResponse.itemId,
           itemType: elementResponse.elementType || "MULTIPLE_CHOICE",
           response: elementResponse.value,
-          responseTimeMs: elementResponse.responseTimeMs ?? null,
+          clientResponseTimeMs: elementResponse.responseTimeMs ?? null,
           act: state.currentAct,
           messageId: elementMsg?.id ?? null, // Fix: PRO-49
         },
         update: {
           response: elementResponse.value,
-          responseTimeMs: elementResponse.responseTimeMs ?? null,
+          clientResponseTimeMs: elementResponse.responseTimeMs ?? null,
           act: state.currentAct,
           messageId: elementMsg?.id ?? null, // Fix: PRO-49
         },
@@ -640,7 +650,7 @@ export async function POST(
           data: { status: "SCORING" },
         });
       });
-      after(() => runScoringPipeline(assessment.id).catch((err) =>
+      after(() => runScoringPipeline(assessment.id, orgId).catch((err) =>
         log.error("Scoring pipeline failed (will be recovered by cron)", { error: String(err) })
       ));
     }
@@ -726,6 +736,7 @@ export async function POST(
         elementType: action.elementType,
         elementData: action.elementData as any,
         sequenceOrder: seq,
+        questionDeliveredAt: new Date(), // PRO-114: server timestamp for timing verification
     });
 
     // S2 fix: Update assessment state for interactive element actions (e.g., Act 3 progress)
@@ -1069,24 +1080,9 @@ export async function POST(
     status: 500,
     headers: { "Content-Type": "application/json" },
   });
-
-  } catch (err) {
-    Sentry.captureException(err, { extra: { requestId, state: stateSnapshot } });
-    log.error("Unhandled error in chat route", {
-      token: token?.slice(0, 8) + "...",
-      state: stateSnapshot,
-      error: err instanceof Error ? err.message : String(err),
-      stack: err instanceof Error ? err.stack : undefined,
-    });
-    return new Response(
-      JSON.stringify({
-        error: "Internal server error",
-        ...(process.env.NODE_ENV === "development" ? { detail: err instanceof Error ? err.message : String(err) } : {}),
-      }),
-      { status: 500, headers: { "Content-Type": "application/json" } },
-    );
-  }
-}
+  },
+  { module: "assess/[token]/chat" },
+);
 
 /**
  * GET /api/assess/[token]/chat
@@ -1094,15 +1090,11 @@ export async function POST(
  * Returns the current assessment state and message history.
  * Used for session recovery when the candidate returns.
  */
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ token: string }> },
-) {
-  const { token } = await params;
-  const log = createLogger("chat-route-get");
+export const GET = withApiHandler(
+  async (req, ctx) => {
+  const { token } = await ctx.params;
 
-  try {
-    // Rate limit GET by token: 20/min
+  // Rate limit GET by token: 20/min
     // Fix: PRO-9 — use Redis-backed rate limiter
     const rl = await checkRateLimitAsync(`chat-get:${token}`, { maxRequests: 20, windowMs: 60_000 }, "aiProbe");
     if (!rl.allowed) {
@@ -1125,7 +1117,7 @@ export async function GET(
 
     // Session binding — validate if enabled (GET — session recovery)
     if (env.ENABLE_SESSION_BINDING) {
-      const session = validateAssessSession(invitation, request);
+      const session = validateAssessSession(invitation, req);
       if (!session.valid) {
         return new Response(JSON.stringify({ error: "session_invalid" }), {
           status: 401,
@@ -1205,15 +1197,9 @@ export async function GET(
       { headers: { "Content-Type": "application/json" } },
     );
     return response;
-  } catch (err) {
-    Sentry.captureException(err);
-    log.error("GET handler failed", { error: err instanceof Error ? err.message : String(err) });
-    return new Response(
-      JSON.stringify({ error: "Internal server error" }),
-      { status: 500, headers: { "Content-Type": "application/json" } },
-    );
-  }
-}
+  },
+  { module: "assess/[token]/chat-get" },
+);
 
 // ──────────────────────────────────────────────
 // Helpers

@@ -1,8 +1,8 @@
-import type { ConversationMessage } from "@/generated/prisma/client";
+import type { ConversationMessage, ItemResponse } from "@/generated/prisma/client";
 import type { RedFlagCheck, ConstructLayeredScore, ConsistencyResult, LayerBScore } from "../types";
 
 /**
- * V2 Red Flag Detection: 12 checks (7 original preserved + 5 new for conversational format).
+ * V2 Red Flag Detection: 13 checks (7 original preserved + 6 new for conversational format).
  */
 
 interface RedFlagInput {
@@ -10,6 +10,7 @@ interface RedFlagInput {
   messages: ConversationMessage[];
   consistencyResults: ConsistencyResult[];
   layerBScores: LayerBScore[];
+  itemResponses?: ItemResponse[]; // PRO-114: for timing manipulation detection
   totalDurationMs?: number;
 }
 
@@ -24,12 +25,13 @@ export function detectRedFlags(input: RedFlagInput): RedFlagCheck[] {
     checkMinimalEngagement(input.messages),
     checkOverconfidencePattern(input.constructScores),
 
-    // ── 5 new checks for V2 ─────────────────────────────────────
+    // ── 6 new checks for V2 ─────────────────────────────────────
     checkScenarioDisengagement(input.messages),
     checkConsistencyFailure(input.consistencyResults),
     checkCopyPasteDetection(input.messages),
     checkEscalationAvoidance(input.messages),
     checkHighVarianceEvaluation(input.layerBScores),
+    checkTimingManipulation(input.itemResponses ?? []),
   ];
 
   return checks.filter((c) => c.triggered);
@@ -298,4 +300,31 @@ function getBigrams(text: string): string[] {
     bigrams.push(`${words[i]} ${words[i + 1]}`);
   }
   return bigrams;
+}
+
+// PRO-114: Detect timing manipulation — client-submitted times that diverge >20% from server-measured times
+function checkTimingManipulation(itemResponses: ItemResponse[]): RedFlagCheck {
+  const withBothTimings = itemResponses.filter(
+    (r) => r.clientResponseTimeMs != null && r.serverSideResponseTimeMs != null && r.serverSideResponseTimeMs > 0,
+  );
+
+  if (withBothTimings.length === 0) {
+    return { triggered: false, severity: "CRITICAL", category: "", title: "", description: "", constructs: [] };
+  }
+
+  const manipulated = withBothTimings.filter((r) => {
+    const divergence = Math.abs(r.clientResponseTimeMs! - r.serverSideResponseTimeMs!) / r.serverSideResponseTimeMs!;
+    return divergence > 0.20;
+  });
+
+  const ratio = manipulated.length / withBothTimings.length;
+
+  return {
+    triggered: ratio > 0.3, // >30% of responses show timing manipulation
+    severity: "CRITICAL",
+    category: "Timing Manipulation",
+    title: "Client-submitted response times diverge from server-measured times",
+    description: `${manipulated.length} of ${withBothTimings.length} responses (${Math.round(ratio * 100)}%) show >20% divergence between client and server timing.`,
+    constructs: [],
+  };
 }
