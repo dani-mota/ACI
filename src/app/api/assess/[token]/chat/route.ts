@@ -15,7 +15,7 @@ import { loadContentLibrary, lookupBeatContent, getReadyLibrary, selectRandomVar
 import { SCENARIOS } from "@/lib/assessment/scenarios";
 import { recordResult, initLoopState } from "@/lib/assessment/adaptive-loop";
 import { ITEM_BANK } from "@/lib/assessment/item-bank";
-import { checkRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
+import { checkRateLimitAsync, checkOrgRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { createLogger } from "@/lib/assessment/logger";
 import { dispatch } from "@/lib/assessment/dispatcher";
 import { escapeXml } from "@/lib/assessment/prompts/prompt-assembly";
@@ -90,6 +90,19 @@ export const POST = withApiHandler(
         headers: { "Content-Type": "application/json" },
       });
     }
+  }
+
+  // PRO-124: Per-org Anthropic rate limit — prevent noisy neighbor API exhaustion
+  const orgId = invitation.candidate.orgId;
+  const orgRl = await checkOrgRateLimit(orgId);
+  if (!orgRl.allowed) {
+    return new Response(JSON.stringify({ error: "Too many requests" }), {
+      status: 429,
+      headers: {
+        "Content-Type": "application/json",
+        "Retry-After": String(Math.ceil(orgRl.retryAfterMs / 1000)),
+      },
+    });
   }
 
   // Find the assessment
@@ -637,7 +650,7 @@ export const POST = withApiHandler(
           data: { status: "SCORING" },
         });
       });
-      after(() => runScoringPipeline(assessment.id).catch((err) =>
+      after(() => runScoringPipeline(assessment.id, orgId).catch((err) =>
         log.error("Scoring pipeline failed (will be recovered by cron)", { error: String(err) })
       ));
     }

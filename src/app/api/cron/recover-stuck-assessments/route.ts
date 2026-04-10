@@ -88,7 +88,7 @@ export const GET = withApiHandler(
         }
 
         // Run scoring pipeline
-        await runScoringPipeline(assessment.id);
+        await runScoringPipeline(assessment.id, assessment.candidate.orgId);
 
         results.push({ assessmentId: assessment.id, status: "recovered" });
       } catch (err) {
@@ -107,12 +107,23 @@ export const GET = withApiHandler(
         completedAt: { not: null, lt: tenMinutesAgo },
         compositeScores: { none: {} },
       },
-      take: 20, // Process in batches to avoid timeout
+      include: { candidate: { select: { orgId: true } } },
+      take: 100, // PRO-124: Fetch more, then cap per-org below
     });
 
-    for (const assessment of unscoredAssessments) {
+    // PRO-124: Per-org batching — max 5 per org per cron run
+    const perOrgCounts = new Map<string, number>();
+    const cappedAssessments = unscoredAssessments.filter((a) => {
+      const org = a.candidate.orgId;
+      const count = perOrgCounts.get(org) ?? 0;
+      if (count >= 5) return false;
+      perOrgCounts.set(org, count + 1);
+      return true;
+    });
+
+    for (const assessment of cappedAssessments) {
       try {
-        await runScoringPipeline(assessment.id);
+        await runScoringPipeline(assessment.id, assessment.candidate.orgId);
         results.push({ assessmentId: assessment.id, status: "recovered" });
       } catch (err) {
         // Fix: PRO-74 — report per-assessment scoring failure to Sentry

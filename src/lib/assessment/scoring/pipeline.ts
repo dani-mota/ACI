@@ -1,6 +1,7 @@
 import prisma from "@/lib/prisma";
 import type { Construct, CandidateStatus } from "@/generated/prisma/client";
 import { calculateComposite, evaluateCutline, determineStatus } from "@/lib/scoring";
+import { checkOrgRateLimit } from "@/lib/rate-limit";
 import { generateAllPredictions } from "@/lib/predictions";
 import { getRoleContext } from "../role-context";
 import { CONSTRUCT_LAYERS } from "../construct-scoring";
@@ -49,7 +50,7 @@ async function loadCorrectAnswers(itemIds: string[]): Promise<Map<string, string
  * 12. Status determination — REUSE existing scoring.ts
  * 13. Update candidate status
  */
-export async function runScoringPipeline(assessmentId: string) {
+export async function runScoringPipeline(assessmentId: string, orgId?: string) {
   const pipelineStart = Date.now();
   log.info("Pipeline started", { assessmentId });
 
@@ -283,6 +284,14 @@ export async function runScoringPipeline(assessmentId: string) {
         conversationContext: contextMessages,
       };
     });
+
+    // PRO-124: Check per-org rate limit before each Layer B AI call
+    if (orgId) {
+      const rl = await checkOrgRateLimit(orgId);
+      if (!rl.allowed) {
+        throw new Error(`Org ${orgId} Anthropic rate limit exceeded — retry after ${rl.retryAfterMs}ms`);
+      }
+    }
 
     const result = await evaluateConstruct(responses);
     allLayerBScores.push(...result.scores);
