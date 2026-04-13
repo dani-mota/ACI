@@ -69,7 +69,7 @@ export function MissionDashboard({ missions, talentPool }: MissionDashboardProps
   }, []);
 
   if (!selectedMission) {
-    return <p className="text-sm text-slate-500 py-8 text-center">No missions available.</p>;
+    return <p className="text-sm text-muted-foreground py-8 text-center">No missions available.</p>;
   }
 
   return (
@@ -84,7 +84,7 @@ export function MissionDashboard({ missions, talentPool }: MissionDashboardProps
       />
 
       {/* Sub-tabs */}
-      <div className="flex items-center gap-1 border-b border-slate-700/50 pb-px">
+      <div className="flex items-center gap-1 border-b border-border pb-px">
         {TAB_CONFIG.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -95,14 +95,14 @@ export function MissionDashboard({ missions, talentPool }: MissionDashboardProps
               className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-all border-b-2 -mb-px ${
                 isActive
                   ? "text-amber-400 border-amber-500"
-                  : "text-slate-400 border-transparent hover:text-slate-300 hover:border-slate-600"
+                  : "text-muted-foreground border-transparent hover:text-foreground hover:border-border"
               }`}
             >
               <Icon className="w-3.5 h-3.5" />
               {tab.label}
               {tab.id === "draft" && assembledTeam.length > 0 && (
                 <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
-                  isActive ? "bg-amber-500/20 text-amber-400" : "bg-slate-700/50 text-slate-500"
+                  isActive ? "bg-amber-500/20 text-amber-400" : "bg-muted text-muted-foreground"
                 }`}>
                   {assembledTeam.length}
                 </span>

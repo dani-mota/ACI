@@ -45,18 +45,18 @@ export function TeamRadarChart({ series, height = 400 }: TeamRadarChartProps) {
     <ResponsiveContainer width="100%" height={height}>
       <RadarChart cx="50%" cy="50%" outerRadius="72%" data={chartData}>
         <PolarGrid
-          stroke="rgba(148, 163, 184, 0.15)"
+          stroke="var(--border)"
           gridType="polygon"
         />
         <PolarAngleAxis
           dataKey="construct"
-          tick={{ fill: "#94A3B8", fontSize: 11, fontWeight: 500 }}
+          tick={{ fill: "var(--foreground)", fontSize: 11, fontWeight: 500 }}
           tickLine={false}
         />
         <PolarRadiusAxis
           angle={90}
           domain={[0, 100]}
-          tick={{ fill: "#64748B", fontSize: 9 }}
+          tick={{ fill: "var(--muted-foreground)", fontSize: 9 }}
           tickCount={5}
           axisLine={false}
         />
@@ -75,16 +75,16 @@ export function TeamRadarChart({ series, height = 400 }: TeamRadarChartProps) {
         ))}
         <Tooltip
           contentStyle={{
-            backgroundColor: "rgba(15, 23, 41, 0.95)",
-            border: "1px solid rgba(37, 99, 235, 0.25)",
+            backgroundColor: "var(--popover)",
+            border: "1px solid var(--border)",
             borderRadius: "6px",
             fontSize: "12px",
-            color: "#c9d6e8",
+            color: "var(--popover-foreground)",
           }}
-          itemStyle={{ color: "#c9d6e8" }}
+          itemStyle={{ color: "var(--popover-foreground)" }}
         />
         <Legend
-          wrapperStyle={{ fontSize: "12px", color: "#94A3B8", paddingTop: "8px" }}
+          wrapperStyle={{ fontSize: "12px", color: "var(--muted-foreground)", paddingTop: "8px" }}
         />
       </RadarChart>
     </ResponsiveContainer>

@@ -36,13 +36,13 @@ function StatCard({
   color: string;
 }) {
   return (
-    <div className="rounded-lg border border-slate-700/50 bg-slate-800/30 p-4">
+    <div className="rounded-lg border border-border bg-card p-4">
       <div className="flex items-center gap-2 mb-2">
         <Icon className={`w-4 h-4 ${color}`} />
-        <span className="text-xs text-slate-400 font-medium">{label}</span>
+        <span className="text-xs text-muted-foreground font-medium">{label}</span>
       </div>
       <div className={`text-2xl font-bold ${color}`}>{value}</div>
-      {sub && <div className="text-[10px] text-slate-500 mt-0.5">{sub}</div>}
+      {sub && <div className="text-[10px] text-muted-foreground mt-0.5">{sub}</div>}
     </div>
   );
 }
@@ -63,10 +63,10 @@ function GapBarChart({ metrics, ideal }: { metrics: TeamAggregateMetrics; ideal:
 
         return (
           <div key={cid} className="flex items-center gap-2 text-xs group">
-            <div className="w-[100px] text-slate-400 truncate text-right text-[11px]">
+            <div className="w-[100px] text-muted-foreground truncate text-right text-[11px]">
               {CONSTRUCT_LABELS[cid].split(" ").slice(0, 2).join(" ")}
             </div>
-            <div className="flex-1 h-5 bg-slate-800/50 rounded-sm relative overflow-hidden">
+            <div className="flex-1 h-5 bg-muted rounded-sm relative overflow-hidden">
               {/* Team mean marker */}
               <div
                 className="absolute top-0 bottom-0 bg-blue-500/30 rounded-sm"
@@ -91,9 +91,9 @@ function GapBarChart({ metrics, ideal }: { metrics: TeamAggregateMetrics; ideal:
               )}
               {/* Value label */}
               <div className="absolute inset-0 flex items-center justify-between px-2">
-                <span className="font-mono text-[10px] text-slate-300 z-20">{teamMean}</span>
+                <span className="font-mono text-[10px] text-foreground z-20">{teamMean}</span>
                 <span className={`font-mono text-[10px] z-20 ${
-                  absGap > 10 ? "text-amber-400" : absGap > 5 ? "text-slate-300" : "text-emerald-400"
+                  absGap > 10 ? "text-amber-400" : absGap > 5 ? "text-foreground" : "text-emerald-400"
                 }`}>
                   {isDeficit ? `-${Math.round(gap)}` : `+${Math.round(Math.abs(gap))}`}
                 </span>
@@ -102,7 +102,7 @@ function GapBarChart({ metrics, ideal }: { metrics: TeamAggregateMetrics; ideal:
           </div>
         );
       })}
-      <div className="flex items-center gap-4 mt-2 ml-[108px] text-[10px] text-slate-500">
+      <div className="flex items-center gap-4 mt-2 ml-[108px] text-[10px] text-muted-foreground">
         <div className="flex items-center gap-1">
           <div className="w-3 h-2 bg-blue-500/30 rounded-sm" /> Team Mean
         </div>
@@ -143,12 +143,12 @@ export function TeamDashboard({ team, members }: TeamDashboardProps) {
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-3">
-            <h2 className="text-xl font-bold text-slate-100">Team {team.name}</h2>
+            <h2 className="text-xl font-bold text-foreground">Team {team.name}</h2>
             <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-blue-500/15 text-blue-400 border border-blue-500/20">
               {MISSION_TYPE_LABELS[team.missionType]}
             </span>
           </div>
-          <p className="text-sm text-slate-400 mt-0.5">
+          <p className="text-sm text-muted-foreground mt-0.5">
             {team.department} &middot; {members.length} members
           </p>
         </div>
@@ -188,8 +188,8 @@ export function TeamDashboard({ team, members }: TeamDashboardProps) {
 
       {/* Radar + CDI row */}
       <div className="grid grid-cols-2 gap-4">
-        <div className="rounded-lg border border-slate-700/50 bg-slate-800/20 p-4">
-          <h3 className="text-sm font-semibold text-slate-200 mb-2">Team Profile vs Ideal</h3>
+        <div className="rounded-lg border border-border bg-card p-4">
+          <h3 className="text-sm font-semibold text-foreground mb-2">Team Profile vs Ideal</h3>
           <TeamRadarChart
             series={[
               { label: "Team Average", data: teamMeans, color: "#2563EB", opacity: 0.2 },
@@ -201,8 +201,8 @@ export function TeamDashboard({ team, members }: TeamDashboardProps) {
 
         <div className="space-y-4">
           <CDIGauge value={metrics.cognitiveDiversityIndex} interpretation={metrics.cdiInterpretation} />
-          <div className="rounded-lg border border-slate-700/50 bg-slate-800/20 p-4">
-            <h3 className="text-sm font-semibold text-slate-200 mb-3">Gap Analysis</h3>
+          <div className="rounded-lg border border-border bg-card p-4">
+            <h3 className="text-sm font-semibold text-foreground mb-3">Gap Analysis</h3>
             <GapBarChart metrics={metrics} ideal={ideal} />
           </div>
         </div>
@@ -210,13 +210,13 @@ export function TeamDashboard({ team, members }: TeamDashboardProps) {
 
       {/* SPOF Alerts */}
       <div>
-        <h3 className="text-sm font-semibold text-slate-200 mb-2">Single Points of Failure</h3>
+        <h3 className="text-sm font-semibold text-foreground mb-2">Single Points of Failure</h3>
         <SpofAlerts metrics={metrics} members={members} />
       </div>
 
       {/* Heatmap */}
-      <div className="rounded-lg border border-slate-700/50 bg-slate-800/20 p-4">
-        <h3 className="text-sm font-semibold text-slate-200 mb-3">Member Cognitive Profiles</h3>
+      <div className="rounded-lg border border-border bg-card p-4">
+        <h3 className="text-sm font-semibold text-foreground mb-3">Member Cognitive Profiles</h3>
         <TeamHeatmap members={members} highlightSpof={spofMap} />
       </div>
     </div>

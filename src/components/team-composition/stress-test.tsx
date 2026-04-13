@@ -37,24 +37,24 @@ function StressResultCard({ result }: { result: StressTestResult }) {
       >
         {RISK_ICONS[result.riskLevel]}
         <div className="flex-1">
-          <div className="text-sm font-medium text-slate-200">{result.scenario.label}</div>
-          <div className="text-[10px] text-slate-500">{result.scenario.description}</div>
+          <div className="text-sm font-medium text-foreground">{result.scenario.label}</div>
+          <div className="text-[10px] text-muted-foreground">{result.scenario.description}</div>
         </div>
         <div className="text-right shrink-0 mr-2">
           <div className={`text-xs font-bold ${risk.text} uppercase`}>{result.riskLevel}</div>
-          <div className="text-[10px] text-slate-500">
+          <div className="text-[10px] text-muted-foreground">
             {result.delta >= 0 ? "No impact" : `${(result.delta * 100).toFixed(0)}% coverage`}
           </div>
         </div>
-        {expanded ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
+        {expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
       </button>
 
       {expanded && (
-        <div className="px-4 pb-4 border-t border-slate-700/30 pt-3 space-y-3">
+        <div className="px-4 pb-4 border-t border-border pt-3 space-y-3">
           {/* Findings */}
           <div className="space-y-1">
             {result.findings.map((f, i) => (
-              <p key={i} className="text-xs text-slate-300 leading-relaxed">
+              <p key={i} className="text-xs text-foreground leading-relaxed">
                 {f}
               </p>
             ))}
@@ -63,17 +63,17 @@ function StressResultCard({ result }: { result: StressTestResult }) {
           {/* Phase impacts */}
           {result.phaseImpacts.length > 0 && (
             <div className="space-y-1.5">
-              <div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Phase Impact</div>
+              <div className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">Phase Impact</div>
               {result.phaseImpacts.map((p) => (
                 <div key={p.phaseId} className="flex items-center gap-2 text-xs">
-                  <span className="text-slate-400 w-40 truncate">{p.phaseName}</span>
-                  <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                  <span className="text-muted-foreground w-40 truncate">{p.phaseName}</span>
+                  <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
                     <div
                       className={`h-full rounded-full ${p.stressedCoverage >= 0.8 ? "bg-emerald-500" : p.stressedCoverage >= 0.5 ? "bg-amber-500" : "bg-red-500"}`}
                       style={{ width: `${p.stressedCoverage * 100}%` }}
                     />
                   </div>
-                  <span className="text-slate-500 w-8 text-right">{(p.stressedCoverage * 100).toFixed(0)}%</span>
+                  <span className="text-muted-foreground w-8 text-right">{(p.stressedCoverage * 100).toFixed(0)}%</span>
                   {p.newGaps.length > 0 && (
                     <div className="flex gap-1 ml-1">
                       {p.newGaps.slice(0, 3).map((g) => (
@@ -118,7 +118,7 @@ export function StressTest({ mission, team }: StressTestProps) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+        <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
           Stress Testing
         </h3>
         <button
@@ -141,7 +141,7 @@ export function StressTest({ mission, team }: StressTestProps) {
       </div>
 
       {team.length === 0 && (
-        <p className="text-xs text-slate-500 py-4 text-center">Draft team members first to enable stress testing.</p>
+        <p className="text-xs text-muted-foreground py-4 text-center">Draft team members first to enable stress testing.</p>
       )}
 
       {results.length > 0 && (

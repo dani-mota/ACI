@@ -42,10 +42,10 @@ export function TeamCompositionClient() {
     <div className="px-6 py-6">
       {/* Page header */}
       <div className="mb-6">
-        <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
           <span>Arklight Cognitive Index</span>
           <span>/</span>
-          <span className="text-slate-400">Team Composition Analysis</span>
+          <span className="text-muted-foreground/70">Team Composition Analysis</span>
         </div>
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold text-foreground">
@@ -56,14 +56,14 @@ export function TeamCompositionClient() {
           <div className="relative">
             <button
               onClick={() => setTeamDropdownOpen(!teamDropdownOpen)}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-700/50 bg-slate-800/30 hover:bg-slate-800/50 transition-all text-sm"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border bg-card hover:bg-muted transition-all text-sm"
             >
               <div className="w-2 h-2 rounded-full bg-blue-500" />
-              <span className="font-medium text-slate-200">Team {selectedTeam.name}</span>
-              <span className="text-[10px] text-slate-500">
+              <span className="font-medium text-foreground">Team {selectedTeam.name}</span>
+              <span className="text-[10px] text-muted-foreground">
                 {MISSION_TYPE_LABELS[selectedTeam.missionType]}
               </span>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+              <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
             </button>
 
             {teamDropdownOpen && (
@@ -72,7 +72,7 @@ export function TeamCompositionClient() {
                   className="fixed inset-0 z-40"
                   onClick={() => setTeamDropdownOpen(false)}
                 />
-                <div className="absolute right-0 top-full mt-1 w-72 z-50 rounded-lg border border-slate-700/50 bg-[#0f1729] shadow-xl shadow-black/40 overflow-hidden">
+                <div className="absolute right-0 top-full mt-1 w-72 z-50 rounded-lg border border-border bg-popover shadow-xl shadow-black/20 overflow-hidden">
                   {MOCK_TEAMS.map((team) => {
                     const teamMembers = getTeamMembers(team);
                     return (
@@ -82,7 +82,7 @@ export function TeamCompositionClient() {
                           setSelectedTeamId(team.id);
                           setTeamDropdownOpen(false);
                         }}
-                        className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-all hover:bg-slate-800/50 ${
+                        className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-all hover:bg-muted ${
                           team.id === selectedTeamId ? "bg-blue-500/10 border-l-2 border-blue-500" : "border-l-2 border-transparent"
                         }`}
                       >
@@ -90,8 +90,8 @@ export function TeamCompositionClient() {
                           {team.name[0]}
                         </div>
                         <div className="flex-1">
-                          <div className="text-sm font-medium text-slate-200">Team {team.name}</div>
-                          <div className="text-[10px] text-slate-500">
+                          <div className="text-sm font-medium text-foreground">Team {team.name}</div>
+                          <div className="text-[10px] text-muted-foreground">
                             {MISSION_TYPE_LABELS[team.missionType]} &middot; {teamMembers.length} members
                           </div>
                         </div>
@@ -106,7 +106,7 @@ export function TeamCompositionClient() {
       </div>
 
       {/* Tab navigation */}
-      <div className="flex items-center gap-1 mb-6 border-b border-slate-700/50 pb-px">
+      <div className="flex items-center gap-1 mb-6 border-b border-border pb-px">
         {TAB_CONFIG.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -116,15 +116,15 @@ export function TeamCompositionClient() {
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-all border-b-2 -mb-px ${
                 isActive
-                  ? "text-blue-400 border-blue-500"
-                  : "text-slate-400 border-transparent hover:text-slate-300 hover:border-slate-600"
+                  ? "text-blue-500 dark:text-blue-400 border-blue-500"
+                  : "text-muted-foreground border-transparent hover:text-foreground hover:border-border"
               }`}
             >
               <Icon className="w-3.5 h-3.5" />
               {tab.label}
               {tab.id === "candidates" && (
                 <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
-                  isActive ? "bg-blue-500/20 text-blue-400" : "bg-slate-700/50 text-slate-500"
+                  isActive ? "bg-blue-500/20 text-blue-500 dark:text-blue-400" : "bg-muted text-muted-foreground"
                 }`}>
                   {candidates.length}
                 </span>

@@ -10,7 +10,7 @@ interface HeatmapProps {
 function scoreColor(score: number): string {
   if (score >= 85) return "bg-emerald-800/80 text-emerald-100";
   if (score >= 70) return "bg-emerald-600/60 text-emerald-50";
-  if (score >= 55) return "bg-slate-600/50 text-slate-200";
+  if (score >= 55) return "bg-secondary text-foreground";
   if (score >= 40) return "bg-amber-600/50 text-amber-100";
   return "bg-red-700/50 text-red-100";
 }
@@ -18,7 +18,7 @@ function scoreColor(score: number): string {
 function scoreBorder(score: number): string {
   if (score >= 85) return "border-emerald-500/30";
   if (score >= 70) return "border-emerald-400/20";
-  if (score >= 55) return "border-slate-500/20";
+  if (score >= 55) return "border-border";
   if (score >= 40) return "border-amber-500/30";
   return "border-red-500/30";
 }
@@ -29,7 +29,7 @@ export function TeamHeatmap({ members, highlightSpof }: HeatmapProps) {
       <table className="w-full text-xs">
         <thead>
           <tr>
-            <th className="text-left py-2 px-3 text-slate-400 font-medium sticky left-0 bg-[#0f1729] z-10 min-w-[140px]">
+            <th className="text-left py-2 px-3 text-muted-foreground font-medium sticky left-0 bg-popover z-10 min-w-[140px]">
               Team Member
             </th>
             {CONSTRUCT_IDS.map((cid) => (
@@ -38,7 +38,7 @@ export function TeamHeatmap({ members, highlightSpof }: HeatmapProps) {
                 className={`py-2 px-1.5 text-center font-medium min-w-[72px] ${
                   highlightSpof?.[cid]
                     ? "text-amber-400"
-                    : "text-slate-400"
+                    : "text-muted-foreground"
                 }`}
               >
                 <div className="flex flex-col items-center gap-0.5">
@@ -53,15 +53,15 @@ export function TeamHeatmap({ members, highlightSpof }: HeatmapProps) {
         </thead>
         <tbody>
           {members.map((member) => (
-            <tr key={member.id} className="border-t border-slate-800/50">
-              <td className="py-1.5 px-3 text-slate-300 font-medium sticky left-0 bg-[#0f1729] z-10">
+            <tr key={member.id} className="border-t border-border">
+              <td className="py-1.5 px-3 text-foreground font-medium sticky left-0 bg-popover z-10">
                 <div className="flex items-center gap-2">
                   <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500/30 to-cyan-500/30 flex items-center justify-center text-[10px] font-bold text-blue-300 shrink-0">
                     {member.name.split(" ").map(n => n[0]).join("")}
                   </div>
                   <div>
                     <div className="text-[11px]">{member.name}</div>
-                    <div className="text-[9px] text-slate-500">{member.role}</div>
+                    <div className="text-[9px] text-muted-foreground">{member.role}</div>
                   </div>
                 </div>
               </td>

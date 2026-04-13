@@ -24,7 +24,7 @@ interface CandidateEvaluationProps {
 function ImpactBadge({ score }: { score: number }) {
   if (score > 15) return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/20">High Impact</span>;
   if (score > 5) return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/20">Moderate</span>;
-  if (score > 0) return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-500/20 text-slate-400 border border-slate-500/20">Low Impact</span>;
+  if (score > 0) return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-secondary text-muted-foreground border border-border">Low Impact</span>;
   return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-400 border border-red-500/20">Negative</span>;
 }
 
@@ -35,14 +35,14 @@ function DeltaBar({ construct, delta }: { construct: ConstructId; delta: number 
 
   return (
     <div className="flex items-center gap-1.5 text-[10px]">
-      <span className="w-[70px] text-right text-slate-500 truncate">
+      <span className="w-[70px] text-right text-muted-foreground truncate">
         {CONSTRUCT_SHORT_LABELS[construct]}
       </span>
-      <div className="flex-1 h-3 bg-slate-800/50 rounded-sm relative">
+      <div className="flex-1 h-3 bg-muted rounded-sm relative">
         <div className="absolute inset-0 flex items-center">
           <div className="w-full h-full relative">
             {/* Center line */}
-            <div className="absolute left-1/2 top-0 bottom-0 w-px bg-slate-600/50" />
+            <div className="absolute left-1/2 top-0 bottom-0 w-px bg-border" />
             {/* Delta bar */}
             <div
               className={`absolute top-0 bottom-0 rounded-sm ${
@@ -57,7 +57,7 @@ function DeltaBar({ construct, delta }: { construct: ConstructId; delta: number 
         </div>
       </div>
       <span className={`w-[32px] text-right font-mono ${
-        delta > 2 ? "text-emerald-400" : delta < -1 ? "text-red-400" : "text-slate-500"
+        delta > 2 ? "text-emerald-400" : delta < -1 ? "text-red-400" : "text-muted-foreground"
       }`}>
         {delta > 0 ? "+" : ""}{delta.toFixed(1)}
       </span>
@@ -88,7 +88,7 @@ function CandidateCard({
 
   return (
     <div className={`rounded-lg border transition-all ${
-      expanded ? "border-blue-500/30 bg-slate-800/30" : "border-slate-700/40 bg-slate-800/15 hover:border-slate-600/50"
+      expanded ? "border-blue-500/30 bg-card" : "border-border bg-card hover:border-border"
     }`}>
       {/* Summary row */}
       <button
@@ -101,15 +101,15 @@ function CandidateCard({
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-slate-200">{candidate.name}</span>
+            <span className="text-sm font-semibold text-foreground">{candidate.name}</span>
             <ImpactBadge score={fit.teamImpactScore} />
           </div>
-          <div className="text-[11px] text-slate-500">{candidate.role}</div>
+          <div className="text-[11px] text-muted-foreground">{candidate.role}</div>
         </div>
 
         <div className="flex items-center gap-6 text-xs shrink-0">
           <div className="text-center">
-            <div className="text-[10px] text-slate-500 mb-0.5">Impact</div>
+            <div className="text-[10px] text-muted-foreground mb-0.5">Impact</div>
             <div className={`font-mono font-bold ${
               fit.teamImpactScore > 10 ? "text-emerald-400" : fit.teamImpactScore > 0 ? "text-blue-400" : "text-red-400"
             }`}>
@@ -117,34 +117,34 @@ function CandidateCard({
             </div>
           </div>
           <div className="text-center">
-            <div className="text-[10px] text-slate-500 mb-0.5">Fit Delta</div>
-            <div className="font-mono font-bold text-slate-300">
+            <div className="text-[10px] text-muted-foreground mb-0.5">Fit Delta</div>
+            <div className="font-mono font-bold text-foreground">
               {fit.teamFitDelta > 0 ? "+" : ""}{fit.teamFitDelta.toFixed(1)}
             </div>
           </div>
           <div className="text-center">
-            <div className="text-[10px] text-slate-500 mb-0.5">Redundancy</div>
+            <div className="text-[10px] text-muted-foreground mb-0.5">Redundancy</div>
             <div className={`font-mono font-bold ${
-              fit.redundancyScore > 0.15 ? "text-amber-400" : "text-slate-400"
+              fit.redundancyScore > 0.15 ? "text-amber-400" : "text-muted-foreground"
             }`}>
               {(fit.redundancyScore * 100).toFixed(0)}%
             </div>
           </div>
           <div className="text-center">
-            <div className="text-[10px] text-slate-500 mb-0.5">Merit</div>
-            <div className="font-mono font-bold text-slate-300">{fit.individualMerit.toFixed(0)}</div>
+            <div className="text-[10px] text-muted-foreground mb-0.5">Merit</div>
+            <div className="font-mono font-bold text-foreground">{fit.individualMerit.toFixed(0)}</div>
           </div>
-          {expanded ? <ChevronDown className="w-4 h-4 text-slate-500" /> : <ChevronRight className="w-4 h-4 text-slate-500" />}
+          {expanded ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
         </div>
       </button>
 
       {/* Expanded detail */}
       {expanded && (
-        <div className="px-4 pb-4 pt-0 border-t border-slate-700/30">
+        <div className="px-4 pb-4 pt-0 border-t border-border">
           <div className="grid grid-cols-2 gap-4 mt-4">
             {/* Radar */}
             <div>
-              <h4 className="text-xs font-medium text-slate-400 mb-1">Profile Comparison</h4>
+              <h4 className="text-xs font-medium text-muted-foreground mb-1">Profile Comparison</h4>
               <TeamRadarChart
                 series={[
                   { label: "Candidate", data: candidate.scores, color: "#22D3EE", opacity: 0.2 },
@@ -157,7 +157,7 @@ function CandidateCard({
 
             {/* Gap delta bars */}
             <div>
-              <h4 className="text-xs font-medium text-slate-400 mb-2">Team Fit Delta by Construct</h4>
+              <h4 className="text-xs font-medium text-muted-foreground mb-2">Team Fit Delta by Construct</h4>
               <div className="space-y-1">
                 {sortedDeltas.map((cid) => (
                   <DeltaBar key={cid} construct={cid} delta={fit.gapDelta[cid]} />
@@ -166,8 +166,8 @@ function CandidateCard({
 
               {/* Gap fills */}
               {fit.primaryGapsFilled.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-slate-700/30">
-                  <div className="text-[10px] text-slate-500 mb-1 flex items-center gap-1">
+                <div className="mt-3 pt-3 border-t border-border">
+                  <div className="text-[10px] text-muted-foreground mb-1 flex items-center gap-1">
                     <TrendingUp className="w-3 h-3 text-emerald-500" /> Fills Gaps
                   </div>
                   <div className="flex flex-wrap gap-1">
@@ -182,7 +182,7 @@ function CandidateCard({
 
               {fit.redundantConstructs.length > 0 && (
                 <div className="mt-2">
-                  <div className="text-[10px] text-slate-500 mb-1 flex items-center gap-1">
+                  <div className="text-[10px] text-muted-foreground mb-1 flex items-center gap-1">
                     <TrendingDown className="w-3 h-3 text-amber-500" /> Redundant On
                   </div>
                   <div className="flex flex-wrap gap-1">
@@ -236,21 +236,21 @@ export function CandidateEvaluation({ team, members, candidates }: CandidateEval
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-bold text-slate-100">
+          <h3 className="text-lg font-bold text-foreground">
             Candidate Evaluation — Team {team.name}
           </h3>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <p className="text-xs text-muted-foreground mt-0.5">
             {candidates.length} candidates ranked by {sortBy === "impact" ? "Team Impact Score" : "Individual Merit"}
           </p>
         </div>
 
-        <div className="flex items-center gap-1 bg-slate-800/50 rounded-md border border-slate-700/50 p-0.5">
+        <div className="flex items-center gap-1 bg-muted rounded-md border border-border p-0.5">
           <button
             onClick={() => setSortBy("impact")}
             className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${
               sortBy === "impact"
                 ? "bg-blue-500/20 text-blue-400 border border-blue-500/25"
-                : "text-slate-400 hover:text-slate-300 border border-transparent"
+                : "text-muted-foreground hover:text-foreground border border-transparent"
             }`}
           >
             Team-Adjusted
@@ -260,7 +260,7 @@ export function CandidateEvaluation({ team, members, candidates }: CandidateEval
             className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${
               sortBy === "merit"
                 ? "bg-blue-500/20 text-blue-400 border border-blue-500/25"
-                : "text-slate-400 hover:text-slate-300 border border-transparent"
+                : "text-muted-foreground hover:text-foreground border border-transparent"
             }`}
           >
             Individual Merit

@@ -28,7 +28,7 @@ export function SpofAlerts({ metrics, members }: SpofAlertsProps) {
           <div className="w-2 h-2 rounded-full bg-emerald-500" />
           No Single Points of Failure Detected
         </div>
-        <p className="text-xs text-slate-400 mt-1">
+        <p className="text-xs text-muted-foreground mt-1">
           Every critical construct has adequate coverage across multiple team members.
         </p>
       </div>
@@ -48,15 +48,15 @@ export function SpofAlerts({ metrics, members }: SpofAlertsProps) {
               <div className="text-sm font-medium text-amber-400">
                 {CONSTRUCT_LABELS[construct]}
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-xs text-muted-foreground mt-0.5">
                 Only{" "}
-                <span className="text-slate-300 font-medium">
+                <span className="text-foreground font-medium">
                   {keyMember?.name ?? "1 member"}
                 </span>{" "}
                 scores above threshold ({metric.aboveThreshold.length === 1 ? "1" : metric.aboveThreshold.length} of{" "}
                 {metric.aboveThreshold.length + (members.length - metric.aboveThreshold.length)} members). Team mean:{" "}
-                <span className="font-mono text-slate-300">{Math.round(metric.mean)}</span> vs ideal{" "}
-                <span className="font-mono text-slate-300">{Math.round(metric.mean + metric.gapFromIdeal)}</span>.
+                <span className="font-mono text-foreground">{Math.round(metric.mean)}</span> vs ideal{" "}
+                <span className="font-mono text-foreground">{Math.round(metric.mean + metric.gapFromIdeal)}</span>.
                 If this person leaves, the team loses critical capability.
               </p>
             </div>

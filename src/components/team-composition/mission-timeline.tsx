@@ -6,7 +6,7 @@ const DEMAND_COLORS: Record<CognitiveDemand, { bg: string; text: string; border:
   critical: { bg: "bg-red-500/20", text: "text-red-400", border: "border-red-500/40" },
   high: { bg: "bg-amber-500/15", text: "text-amber-400", border: "border-amber-500/30" },
   moderate: { bg: "bg-blue-500/10", text: "text-blue-400", border: "border-blue-500/20" },
-  low: { bg: "bg-slate-800/30", text: "text-slate-600", border: "border-transparent" },
+  low: { bg: "bg-card", text: "text-muted-foreground", border: "border-transparent" },
 };
 
 const DEMAND_LABELS: Record<CognitiveDemand, string> = {
@@ -31,29 +31,29 @@ export function MissionTimeline({ mission }: MissionTimelineProps) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+        <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
           Cognitive Demand Timeline
         </h3>
         <div className="flex items-center gap-3">
           {(["critical", "high", "moderate"] as CognitiveDemand[]).map((d) => (
             <div key={d} className="flex items-center gap-1.5">
               <div className={`w-2.5 h-2.5 rounded-sm ${DEMAND_COLORS[d].bg} border ${DEMAND_COLORS[d].border}`} />
-              <span className="text-[10px] text-slate-500 capitalize">{d}</span>
+              <span className="text-[10px] text-muted-foreground capitalize">{d}</span>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-700/50 bg-slate-900/30 overflow-hidden">
+      <div className="rounded-xl border border-border bg-card overflow-hidden">
         {/* Phase headers */}
-        <div className="grid border-b border-slate-700/50" style={{ gridTemplateColumns: `160px repeat(${mission.phases.length}, 1fr)` }}>
-          <div className="px-3 py-2 text-[10px] font-medium text-slate-500 uppercase tracking-wider">
+        <div className="grid border-b border-border" style={{ gridTemplateColumns: `160px repeat(${mission.phases.length}, 1fr)` }}>
+          <div className="px-3 py-2 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
             Construct
           </div>
           {mission.phases.map((phase) => (
-            <div key={phase.id} className="px-3 py-2 text-center border-l border-slate-700/30">
-              <div className="text-[11px] font-medium text-slate-300 truncate">{phase.name}</div>
-              <div className="text-[9px] text-slate-500">
+            <div key={phase.id} className="px-3 py-2 text-center border-l border-border">
+              <div className="text-[11px] font-medium text-foreground truncate">{phase.name}</div>
+              <div className="text-[9px] text-muted-foreground">
                 Mo {phase.startMonth}–{phase.endMonth}
               </div>
             </div>
@@ -65,31 +65,31 @@ export function MissionTimeline({ mission }: MissionTimelineProps) {
           <div key={cat.label}>
             {/* Category header */}
             <div
-              className="grid border-t border-slate-700/30"
+              className="grid border-t border-border"
               style={{ gridTemplateColumns: `160px repeat(${mission.phases.length}, 1fr)` }}
             >
-              <div className="px-3 py-1.5 text-[9px] font-bold text-slate-500 uppercase tracking-widest bg-slate-800/20">
+              <div className="px-3 py-1.5 text-[9px] font-bold text-muted-foreground uppercase tracking-widest bg-card">
                 {cat.label}
               </div>
               {mission.phases.map((p) => (
-                <div key={p.id} className="bg-slate-800/20 border-l border-slate-700/30" />
+                <div key={p.id} className="bg-card border-l border-border" />
               ))}
             </div>
 
             {cat.ids.map((cid) => (
               <div
                 key={cid}
-                className="grid border-t border-slate-800/50 hover:bg-slate-800/20 transition-colors"
+                className="grid border-t border-border hover:bg-card transition-colors"
                 style={{ gridTemplateColumns: `160px repeat(${mission.phases.length}, 1fr)` }}
               >
-                <div className="px-3 py-1.5 text-[11px] text-slate-400 flex items-center">
+                <div className="px-3 py-1.5 text-[11px] text-muted-foreground flex items-center">
                   {CONSTRUCT_SHORT_LABELS[cid]}
                 </div>
                 {mission.phases.map((phase) => {
                   const demand = phase.demands[cid];
                   const colors = DEMAND_COLORS[demand];
                   return (
-                    <div key={phase.id} className="px-2 py-1.5 flex items-center justify-center border-l border-slate-800/30">
+                    <div key={phase.id} className="px-2 py-1.5 flex items-center justify-center border-l border-border">
                       {demand !== "low" ? (
                         <span className={`text-[9px] font-bold px-2 py-0.5 rounded ${colors.bg} ${colors.text} border ${colors.border}`}>
                           {DEMAND_LABELS[demand]}

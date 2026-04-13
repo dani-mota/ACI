@@ -125,7 +125,7 @@ export function CDIGauge({ value, interpretation }: CDIGaugeProps) {
           <div className={`text-sm font-semibold ${config.color} mb-1`}>
             {config.label}
           </div>
-          <p className="text-xs text-slate-400 leading-relaxed">
+          <p className="text-xs text-muted-foreground leading-relaxed">
             {config.description}
           </p>
         </div>

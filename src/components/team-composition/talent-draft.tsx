@@ -28,7 +28,7 @@ function RecommendationCard({
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="rounded-lg border border-slate-700/50 bg-slate-900/30 overflow-hidden">
+    <div className="rounded-lg border border-border bg-card overflow-hidden">
       <div className="flex items-center gap-3 px-4 py-3">
         {/* Avatar */}
         <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-amber-500/20 to-orange-500/10 flex items-center justify-center text-xs font-bold text-amber-400 shrink-0">
@@ -37,8 +37,8 @@ function RecommendationCard({
 
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium text-slate-200 truncate">{profile.name}</div>
-          <div className="text-[10px] text-slate-500 truncate">{profile.role}</div>
+          <div className="text-sm font-medium text-foreground truncate">{profile.name}</div>
+          <div className="text-[10px] text-muted-foreground truncate">{profile.role}</div>
         </div>
 
         {/* Coverage delta */}
@@ -46,15 +46,15 @@ function RecommendationCard({
           {rec.coverageDelta > 0 ? (
             <span className="text-xs font-bold text-emerald-400">+{(rec.coverageDelta * 100).toFixed(0)}%</span>
           ) : (
-            <span className="text-xs font-bold text-slate-500">+0%</span>
+            <span className="text-xs font-bold text-muted-foreground">+0%</span>
           )}
-          <div className="text-[9px] text-slate-500">coverage</div>
+          <div className="text-[9px] text-muted-foreground">coverage</div>
         </div>
 
         {/* Fills count */}
         <div className="text-right shrink-0 w-12">
           <span className="text-xs font-bold text-blue-400">{rec.coversFills.length}</span>
-          <div className="text-[9px] text-slate-500">fills</div>
+          <div className="text-[9px] text-muted-foreground">fills</div>
         </div>
 
         {/* Actions */}
@@ -65,13 +65,13 @@ function RecommendationCard({
           <UserPlus className="w-3 h-3" />
           Draft
         </button>
-        <button onClick={() => setExpanded(!expanded)} className="text-slate-500 hover:text-slate-300 transition-colors">
+        <button onClick={() => setExpanded(!expanded)} className="text-muted-foreground hover:text-foreground transition-colors">
           {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </button>
       </div>
 
       {expanded && (
-        <div className="px-4 pb-3 border-t border-slate-800/50 pt-3 space-y-2">
+        <div className="px-4 pb-3 border-t border-border pt-3 space-y-2">
           {/* What they fill */}
           {rec.coversFills.length > 0 && (
             <div>
@@ -140,13 +140,13 @@ export function TalentDraft({
     <div className="space-y-4">
       {/* Assembled team */}
       <div>
-        <h3 className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">
+        <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
           Assembled Team ({assembledTeam.length})
         </h3>
         {assembledTeam.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-slate-700/50 bg-slate-900/20 p-6 text-center">
-            <UserPlus className="w-6 h-6 text-slate-600 mx-auto mb-2" />
-            <p className="text-xs text-slate-500">Draft talent from the pool below to assemble your mission team.</p>
+          <div className="rounded-lg border border-dashed border-border bg-card p-6 text-center">
+            <UserPlus className="w-6 h-6 text-muted-foreground mx-auto mb-2" />
+            <p className="text-xs text-muted-foreground">Draft talent from the pool below to assemble your mission team.</p>
           </div>
         ) : (
           <div className="flex flex-wrap gap-2">
@@ -156,12 +156,12 @@ export function TalentDraft({
                   {m.name.split(" ").map((n) => n[0]).join("")}
                 </div>
                 <div>
-                  <div className="text-xs font-medium text-slate-200">{m.name}</div>
-                  <div className="text-[9px] text-slate-500">{m.role}</div>
+                  <div className="text-xs font-medium text-foreground">{m.name}</div>
+                  <div className="text-[9px] text-muted-foreground">{m.role}</div>
                 </div>
                 <button
                   onClick={() => onRemoveMember(m.id)}
-                  className="ml-1 text-slate-500 hover:text-red-400 transition-colors"
+                  className="ml-1 text-muted-foreground hover:text-red-400 transition-colors"
                   title="Remove from team"
                 >
                   <UserMinus className="w-3.5 h-3.5" />
@@ -174,7 +174,7 @@ export function TalentDraft({
 
       {/* Talent pool */}
       <div>
-        <h3 className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">
+        <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
           Talent Pool — Mission-Ranked ({recommendations.length})
         </h3>
         <div className="space-y-1.5">
@@ -183,7 +183,7 @@ export function TalentDraft({
             if (!profile) return null;
             return (
               <div key={rec.profileId} className="flex items-start gap-2">
-                <span className="text-[10px] font-bold text-slate-600 mt-3 w-5 text-right shrink-0">
+                <span className="text-[10px] font-bold text-muted-foreground mt-3 w-5 text-right shrink-0">
                   {idx + 1}
                 </span>
                 <div className="flex-1">
@@ -198,7 +198,7 @@ export function TalentDraft({
             );
           })}
           {recommendations.length === 0 && (
-            <p className="text-xs text-slate-500 py-4 text-center">All available talent has been drafted.</p>
+            <p className="text-xs text-muted-foreground py-4 text-center">All available talent has been drafted.</p>
           )}
         </div>
       </div>
