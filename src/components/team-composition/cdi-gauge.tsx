@@ -40,40 +40,40 @@ export function CDIGauge({ value, interpretation }: CDIGaugeProps) {
 
   const config = interpretationConfig[interpretation];
 
-  // SVG arc for gauge
-  const radius = 60;
+  // SVG arc for gauge — 270° sweep from lower-left to lower-right through the top
+  const radius = 42;
   const cx = 75;
-  const cy = 70;
-  const startAngle = -135;
-  const endAngle = -45;
-  const totalAngle = endAngle - startAngle;
+  const cy = 60;
+  const startAngle = 135; // lower-left in SVG coords (y-down)
+  const totalSweep = 270; // degrees counterclockwise
 
-  function polarToCartesian(angle: number) {
-    const rad = (angle * Math.PI) / 180;
+  function polarToCartesian(angleDeg: number) {
+    const rad = (angleDeg * Math.PI) / 180;
     return { x: cx + radius * Math.cos(rad), y: cy + radius * Math.sin(rad) };
   }
 
-  const bgStart = polarToCartesian(startAngle);
-  const bgEnd = polarToCartesian(endAngle);
-  const valueAngle = startAngle + totalAngle * value;
+  const start = polarToCartesian(startAngle);
+  const end = polarToCartesian(startAngle + totalSweep); // 405° = 45° (lower-right)
+  const valueAngle = startAngle + totalSweep * value;
   const valEnd = polarToCartesian(valueAngle);
 
-  const bgArc = `M ${bgStart.x} ${bgStart.y} A ${radius} ${radius} 0 1 1 ${bgEnd.x} ${bgEnd.y}`;
+  // sweep=0 = counterclockwise (goes upward through top)
+  const bgArc = `M ${start.x} ${start.y} A ${radius} ${radius} 0 1 0 ${end.x} ${end.y}`;
   const valueArc =
     value > 0
-      ? `M ${bgStart.x} ${bgStart.y} A ${radius} ${radius} 0 ${value > 0.5 ? 1 : 0} 1 ${valEnd.x} ${valEnd.y}`
+      ? `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${value > 0.5 ? 1 : 0} 0 ${valEnd.x} ${valEnd.y}`
       : "";
 
   return (
     <div className={`rounded-lg border ${config.border} bg-gradient-to-b ${config.bg} p-5`}>
       <div className="flex items-start gap-5">
         <div className="shrink-0">
-          <svg width="150" height="100" viewBox="0 0 150 100">
+          <svg width="150" height="105" viewBox="0 0 150 105">
             {/* Background arc */}
             <path
               d={bgArc}
               fill="none"
-              stroke="rgba(148, 163, 184, 0.15)"
+              stroke="var(--border)"
               strokeWidth="12"
               strokeLinecap="round"
             />
@@ -101,7 +101,7 @@ export function CDIGauge({ value, interpretation }: CDIGaugeProps) {
             {/* Center text */}
             <text
               x={cx}
-              y={cy - 5}
+              y={cy + 5}
               textAnchor="middle"
               className={`text-2xl font-bold ${config.color}`}
               fill="currentColor"
@@ -111,9 +111,9 @@ export function CDIGauge({ value, interpretation }: CDIGaugeProps) {
             </text>
             <text
               x={cx}
-              y={cy + 14}
+              y={cy + 22}
               textAnchor="middle"
-              fill="#94A3B8"
+              fill="var(--muted-foreground)"
               style={{ fontSize: "10px" }}
             >
               CDI Score
