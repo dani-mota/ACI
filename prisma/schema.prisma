@@ -253,10 +253,16 @@ enum CandidateStatus {
   ERROR
 }
 
+enum AssessmentMode {
+  CANDIDATE
+  EMPLOYEE
+}
+
 model Assessment {
   id              String              @id @default(cuid())
   candidateId     String              @unique
   candidate       Candidate           @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  assessmentMode  AssessmentMode      @default(CANDIDATE)
   startedAt       DateTime
   completedAt     DateTime?
   durationMinutes Int?
