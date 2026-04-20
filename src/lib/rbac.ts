@@ -256,3 +256,26 @@ export function getRoleLabel(role: AppUserRole): string {
   };
   return labels[role] || role;
 }
+
+// ─── Dashboard mode access ──────────────────────────────────
+
+export type DashboardMode = "candidates" | "employees";
+
+const MODE_ACCESS: Record<AppUserRole, DashboardMode[]> = {
+  EXTERNAL_COLLABORATOR: ["candidates"],
+  RECRUITER_COORDINATOR: ["candidates"],
+  RECRUITING_MANAGER: ["candidates"],
+  HIRING_MANAGER: ["candidates", "employees"],
+  TA_LEADER: ["candidates", "employees"],
+  ADMIN: ["candidates", "employees"],
+};
+
+export function getAccessibleModes(role: AppUserRole): DashboardMode[] {
+  const modes = MODE_ACCESS[role];
+  if (!modes || modes.length === 0) return ["candidates"];
+  return modes;
+}
+
+export function canAccessMode(role: AppUserRole, mode: DashboardMode): boolean {
+  return getAccessibleModes(role).includes(mode);
+}
