@@ -42,6 +42,25 @@ const STATUS_CONFIG: Record<string, { bg: string; text: string; border: string; 
     border: "border-purple-300/40 dark:border-purple-700/40",
     dot: "bg-purple-600 dark:bg-purple-400",
   },
+  // PRO-129: Employee lifecycle statuses (different enum than CandidateStatus, same badge surface)
+  ACTIVE: {
+    bg: "bg-aci-green/10 dark:bg-aci-green/15",
+    text: "text-aci-green",
+    border: "border-aci-green/20",
+    dot: "bg-aci-green",
+  },
+  REASSESSMENT_DUE: {
+    bg: "bg-aci-amber/10 dark:bg-aci-amber/15",
+    text: "text-aci-amber",
+    border: "border-aci-amber/20",
+    dot: "bg-aci-amber",
+  },
+  IN_TRANSITION: {
+    bg: "bg-aci-blue/10 dark:bg-aci-blue/15",
+    text: "text-aci-blue",
+    border: "border-aci-blue/20",
+    dot: "bg-aci-blue",
+  },
 };
 
 export function StatusBadge({ status, size = "md" }: StatusBadgeProps) {

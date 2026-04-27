@@ -36,6 +36,10 @@ export function getStatusLabel(status: string): string {
     case "INCOMPLETE": return "In Progress";
     case "SCORING": return "Scoring";
     case "HIRED": return "Hired";
+    // PRO-129: Employee lifecycle statuses
+    case "ACTIVE": return "Active";
+    case "REASSESSMENT_DUE": return "Reassessment Due";
+    case "IN_TRANSITION": return "In Transition";
     default: return status;
   }
 }

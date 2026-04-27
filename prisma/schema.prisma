@@ -260,6 +260,12 @@ enum AssessmentMode {
   EMPLOYEE
 }
 
+enum EmployeeStatus {
+  ACTIVE
+  REASSESSMENT_DUE
+  IN_TRANSITION
+}
+
 model Assessment {
   id              String              @id @default(cuid())
   candidateId     String              @unique
@@ -271,6 +277,8 @@ model Assessment {
   convertedAt     DateTime?
   convertedBy     String?
   converter       User?               @relation("AssessmentConverter", fields: [convertedBy], references: [id])
+  // PRO-129: employee lifecycle status (only meaningful when assessmentMode = EMPLOYEE)
+  employeeStatus  EmployeeStatus?
   startedAt       DateTime
   completedAt     DateTime?
   durationMinutes Int?

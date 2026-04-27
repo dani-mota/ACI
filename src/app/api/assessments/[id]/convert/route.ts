@@ -47,6 +47,7 @@ export const POST = withApiHandler(
           roleFamily,
           convertedAt: now,
           convertedBy: session.user.id,
+          employeeStatus: "ACTIVE",
         },
       });
 

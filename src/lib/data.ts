@@ -258,6 +258,37 @@ export async function getRoleDetailData(slug: string, orgId: string) {
 }
 
 /**
+ * PRO-129: People Table data fetcher.
+ * Returns all converted employees for an org. Client filters/sorts via useMemo.
+ */
+export async function getEmployeesData(orgId: string) {
+  const employees = await prisma.candidate.findMany({
+    where: {
+      orgId,
+      assessment: {
+        assessmentMode: "EMPLOYEE",
+      },
+    },
+    include: {
+      primaryRole: { select: { name: true, slug: true } },
+      assessment: {
+        select: {
+          id: true,
+          completedAt: true,
+          convertedAt: true,
+          department: true,
+          roleFamily: true,
+          employeeStatus: true,
+        },
+      },
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+
+  return JSON.parse(JSON.stringify(employees));
+}
+
+/**
  * Get the demo organization ID for a given industry segment.
  * Falls back to the first demo org if no industry is specified or matched.
  */

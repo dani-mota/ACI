@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 
-import { getDashboardData } from "@/lib/data";
+import { getDashboardData, getEmployeesData } from "@/lib/data";
 import { requireAuth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import Link from "next/link";
@@ -12,7 +12,7 @@ import { AttentionItems } from "@/components/dashboard/attention-items";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { InviteButton } from "@/components/invitation/invite-button";
 import { ModeTabs } from "@/components/dashboard/mode-tabs";
-import { EmployeesPlaceholder } from "@/components/dashboard/employees-placeholder";
+import { PeopleTable } from "@/components/dashboard/people-table";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { getAccessibleModes, type DashboardMode, type AppUserRole } from "@/lib/rbac";
@@ -62,9 +62,14 @@ export default async function DashboardPage({ searchParams }: PageProps) {
       {activeMode === "candidates" && (
         <CandidatesContent orgId={orgId} userId={session.user.id} role={session.user.role} canCreateRole={canCreateRole} />
       )}
-      {activeMode === "employees" && <EmployeesPlaceholder />}
+      {activeMode === "employees" && <EmployeesContent orgId={orgId} />}
     </div>
   );
+}
+
+async function EmployeesContent({ orgId }: { orgId: string }) {
+  const employees = await getEmployeesData(orgId);
+  return <PeopleTable employees={employees} />;
 }
 
 async function CandidatesContent({
