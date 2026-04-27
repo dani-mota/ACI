@@ -55,5 +55,5 @@ export {
 } from "./lifecycle";
 export type { AssessmentLifecycle } from "./lifecycle";
 
-// Assessment mode (PRO-126) — mirrors Prisma enum, generated type available after migration
-export type AssessmentMode = "CANDIDATE" | "EMPLOYEE";
+// Assessment mode (PRO-126)
+export type { AssessmentMode } from "@/generated/prisma/enums";
