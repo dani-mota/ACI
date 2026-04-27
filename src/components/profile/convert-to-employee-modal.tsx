@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { TaxonomyCombobox } from "./taxonomy-combobox";
 
 interface ConvertToEmployeeModalProps {
   assessmentId: string;
@@ -19,6 +19,7 @@ interface ConvertToEmployeeModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConverted?: () => void;
+  suggestions: { departments: string[]; roleFamilies: string[] };
 }
 
 export function ConvertToEmployeeModal({
@@ -27,6 +28,7 @@ export function ConvertToEmployeeModal({
   open,
   onOpenChange,
   onConverted,
+  suggestions,
 }: ConvertToEmployeeModalProps) {
   const router = useRouter();
   const [department, setDepartment] = useState("");
@@ -92,11 +94,13 @@ export function ConvertToEmployeeModal({
             <label htmlFor="department" className="text-xs font-medium text-foreground">
               Department <span className="text-aci-red">*</span>
             </label>
-            <Input
+            <TaxonomyCombobox
               id="department"
               value={department}
-              onChange={(e) => setDepartment(e.target.value)}
+              onChange={setDepartment}
+              options={suggestions.departments}
               placeholder="e.g. Manufacturing"
+              emptyLabel="No departments yet — type to create one"
               disabled={submitting}
             />
           </div>
@@ -104,11 +108,13 @@ export function ConvertToEmployeeModal({
             <label htmlFor="roleFamily" className="text-xs font-medium text-foreground">
               Role Family <span className="text-aci-red">*</span>
             </label>
-            <Input
+            <TaxonomyCombobox
               id="roleFamily"
               value={roleFamily}
-              onChange={(e) => setRoleFamily(e.target.value)}
+              onChange={setRoleFamily}
+              options={suggestions.roleFamilies}
               placeholder="e.g. Skilled Trades"
+              emptyLabel="No role families yet — type to create one"
               disabled={submitting}
             />
           </div>

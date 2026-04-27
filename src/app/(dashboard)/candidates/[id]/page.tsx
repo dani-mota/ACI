@@ -1,4 +1,4 @@
-import { getCandidateData } from "@/lib/data";
+import { getCandidateData, getOrgDepartmentsAndRoleFamilies } from "@/lib/data";
 import { requireAuth } from "@/lib/auth";
 import { notFound } from "next/navigation";
 import { ProfileClient } from "@/components/profile/profile-client";
@@ -12,12 +12,15 @@ export default async function CandidateProfilePage({ params }: PageProps) {
   const orgId = session.user.orgId;
   const userRole = session.user.role;
   const { id } = await params;
-  const data = await getCandidateData(id, orgId, {
-    userId: session.user.id,
-    role: session.user.role,
-  });
+  const [data, suggestions] = await Promise.all([
+    getCandidateData(id, orgId, {
+      userId: session.user.id,
+      role: session.user.role,
+    }),
+    getOrgDepartmentsAndRoleFamilies(orgId),
+  ]);
 
   if (!data) notFound();
 
-  return <ProfileClient {...data} userRole={userRole} />;
+  return <ProfileClient {...data} suggestions={suggestions} userRole={userRole} />;
 }
