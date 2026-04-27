@@ -66,7 +66,7 @@ export const GET = withApiHandler(
           assessment: {
             include: {
               compositeScores: true,
-              redFlags: true,
+              redFlags: { where: { archivedAt: null } },
             },
           },
         },

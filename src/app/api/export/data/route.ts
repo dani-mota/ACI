@@ -104,8 +104,8 @@ async function exportFullData(orgId: string, format: string) {
         include: {
           subtestResults: true,
           compositeScores: true,
-          predictions: true,
-          redFlags: true,
+          predictions: { where: { archivedAt: null } },
+          redFlags: { where: { archivedAt: null } },
           survey: true,
         },
       },

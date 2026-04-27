@@ -279,3 +279,11 @@ export function getAccessibleModes(role: AppUserRole): DashboardMode[] {
 export function canAccessMode(role: AppUserRole, mode: DashboardMode): boolean {
   return getAccessibleModes(role).includes(mode);
 }
+
+// ─── Candidate → Employee conversion (PRO-127) ──────────────
+// TODO(PRO-133): add PEOPLE_MANAGER and HR_TALENT_LEADER once those roles land.
+const CONVERT_CANDIDATE_ROLES: AppUserRole[] = ["RECRUITING_MANAGER", "TA_LEADER", "ADMIN"];
+
+export function canConvertCandidate(role: AppUserRole): boolean {
+  return CONVERT_CANDIDATE_ROLES.includes(role);
+}

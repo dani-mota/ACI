@@ -35,6 +35,7 @@ export function getStatusLabel(status: string): string {
     case "INVITED": return "Invited";
     case "INCOMPLETE": return "In Progress";
     case "SCORING": return "Scoring";
+    case "HIRED": return "Hired";
     default: return status;
   }
 }

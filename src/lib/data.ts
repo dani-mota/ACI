@@ -23,7 +23,7 @@ export async function getDashboardData(orgId: string, opts?: { userId?: string; 
         assessment: {
           include: {
             compositeScores: true,
-            redFlags: true,
+            redFlags: { where: { archivedAt: null } },
           },
         },
       },
@@ -90,8 +90,8 @@ export async function getCandidateData(id: string, orgId: string, opts?: { userI
         include: {
           subtestResults: true,
           compositeScores: true,
-          predictions: true,
-          redFlags: true,
+          predictions: { where: { archivedAt: null } },
+          redFlags: { where: { archivedAt: null } },
           aiInteractions: true,
         },
       },
@@ -149,7 +149,7 @@ export async function getRolesData(orgId: string) {
             include: {
               subtestResults: true,
               compositeScores: true,
-              redFlags: true,
+              redFlags: { where: { archivedAt: null } },
             },
           },
         },
@@ -172,8 +172,8 @@ export async function getCompareData(ids: string[], orgId: string) {
         include: {
           subtestResults: true,
           compositeScores: true,
-          predictions: true,
-          redFlags: true,
+          predictions: { where: { archivedAt: null } },
+          redFlags: { where: { archivedAt: null } },
         },
       },
     },
@@ -243,7 +243,7 @@ export async function getRoleDetailData(slug: string, orgId: string) {
           include: {
             subtestResults: true,
             compositeScores: true,
-            redFlags: true,
+            redFlags: { where: { archivedAt: null } },
           },
         },
       },

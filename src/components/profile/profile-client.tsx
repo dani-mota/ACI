@@ -12,9 +12,11 @@ import { RoleSwitcher } from "./role-switcher";
 import { InterviewGuide } from "./interview-guide";
 import { RoleMismatch } from "./role-mismatch";
 import { CONSTRUCTS, LAYER_INFO, type LayerType } from "@/lib/constructs";
-import { AlertTriangle, TrendingUp, TrendingDown, Shield, FileDown, FileText, ClipboardList } from "lucide-react";
+import { AlertTriangle, TrendingUp, TrendingDown, Shield, FileDown, FileText, ClipboardList, UserPlus } from "lucide-react";
 import { RecordOutcomeForm } from "./record-outcome-form";
 import { RoleFitRankings } from "./role-fit-rankings";
+import { ConvertToEmployeeModal } from "./convert-to-employee-modal";
+import { canConvertCandidate, type AppUserRole } from "@/lib/rbac";
 
 const OUTCOME_ROLES = ["RECRUITING_MANAGER", "TA_LEADER", "ADMIN"];
 
@@ -135,7 +137,15 @@ function generateExecutiveSummary(
 export function ProfileClient({ candidate, allRoles, cutlines, userRole }: ProfileClientProps) {
   const [selectedRoleSlug, setSelectedRoleSlug] = useState(candidate.primaryRole.slug);
   const [showAnimation, setShowAnimation] = useState(false);
+  const [convertModalOpen, setConvertModalOpen] = useState(false);
   const previousWeightsRef = useRef<Record<string, number>>({});
+
+  // PRO-127: convert button visibility — only when role allows AND candidate is still a CANDIDATE
+  const showConvertButton =
+    userRole !== undefined &&
+    canConvertCandidate(userRole as AppUserRole) &&
+    candidate.status !== "HIRED" &&
+    candidate.assessment?.assessmentMode === "CANDIDATE";
 
   const selectedRole = allRoles.find((r: any) => r.slug === selectedRoleSlug) || allRoles[0];
 
@@ -249,6 +259,15 @@ export function ProfileClient({ candidate, allRoles, cutlines, userRole }: Profi
               <ClipboardList className="w-3.5 h-3.5" />
               Interview Kit PDF
             </button>
+            {showConvertButton && (
+              <button
+                onClick={() => setConvertModalOpen(true)}
+                className="flex items-center gap-2 w-full px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-aci-blue border border-aci-blue/30 hover:bg-aci-blue/10 transition-colors mt-2"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                Mark as Hired
+              </button>
+            )}
           </div>
         </div>
 
@@ -412,6 +431,15 @@ export function ProfileClient({ candidate, allRoles, cutlines, userRole }: Profi
           />
         </div>
       </div>
+
+      {showConvertButton && candidate.assessment?.id && (
+        <ConvertToEmployeeModal
+          assessmentId={candidate.assessment.id}
+          candidateName={`${candidate.firstName} ${candidate.lastName}`}
+          open={convertModalOpen}
+          onOpenChange={setConvertModalOpen}
+        />
+      )}
     </div>
   );
 }

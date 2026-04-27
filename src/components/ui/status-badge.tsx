@@ -36,6 +36,12 @@ const STATUS_CONFIG: Record<string, { bg: string; text: string; border: string; 
     border: "border-aci-blue/20",
     dot: "bg-aci-blue",
   },
+  HIRED: {
+    bg: "bg-purple-100 dark:bg-purple-900/20",
+    text: "text-purple-700 dark:text-purple-300",
+    border: "border-purple-300/40 dark:border-purple-700/40",
+    dot: "bg-purple-600 dark:bg-purple-400",
+  },
 };
 
 export function StatusBadge({ status, size = "md" }: StatusBadgeProps) {

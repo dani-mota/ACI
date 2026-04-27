@@ -39,6 +39,7 @@ model User {
   recordedOutcomes     OutcomeRecord[]
   teamInvitesSent      TeamInvitation[]       @relation("TeamInvitesSent")
   candidateAssignments CandidateAssignment[]
+  assessmentsConverted Assessment[]           @relation("AssessmentConverter")
   createdAt            DateTime              @default(now())
 }
 
@@ -250,6 +251,7 @@ enum CandidateStatus {
   RECOMMENDED
   REVIEW_REQUIRED
   DO_NOT_ADVANCE
+  HIRED
   ERROR
 }
 
@@ -263,6 +265,12 @@ model Assessment {
   candidateId     String              @unique
   candidate       Candidate           @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   assessmentMode  AssessmentMode      @default(CANDIDATE)
+  // PRO-127: employee conversion fields (set when assessmentMode flips to EMPLOYEE)
+  department      String?
+  roleFamily      String?
+  convertedAt     DateTime?
+  convertedBy     String?
+  converter       User?               @relation("AssessmentConverter", fields: [convertedBy], references: [id])
   startedAt       DateTime
   completedAt     DateTime?
   durationMinutes Int?
@@ -398,6 +406,7 @@ model Prediction {
   attritionRisk       RiskLevel
   attritionFactors    Json
   attritionStrategies Json
+  archivedAt          DateTime?        // PRO-127: set on conversion to EMPLOYEE mode
   createdAt           DateTime         @default(now())
 }
 
@@ -428,6 +437,7 @@ model RedFlag {
   title        String
   description  String
   constructs   String[]
+  archivedAt   DateTime?    // PRO-127: set on conversion to EMPLOYEE mode
   createdAt    DateTime     @default(now())
 }
 

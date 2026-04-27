@@ -25,7 +25,7 @@ export const GET = withApiHandler(
         assessment: {
           include: {
             subtestResults: true,
-            redFlags: true,
+            redFlags: { where: { archivedAt: null } },
           },
         },
       },

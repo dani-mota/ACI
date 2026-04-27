@@ -27,7 +27,7 @@ export const GET = withApiHandler(
           include: {
             subtestResults: true,
             compositeScores: true,
-            predictions: true,
+            predictions: { where: { archivedAt: null } },
           },
         },
       },

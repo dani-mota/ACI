@@ -33,8 +33,8 @@ export const GET = withApiHandler(
           include: {
             subtestResults: true,
             compositeScores: true,
-            predictions: true,
-            redFlags: true,
+            predictions: { where: { archivedAt: null } },
+            redFlags: { where: { archivedAt: null } },
           },
         },
       },
