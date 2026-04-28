@@ -289,6 +289,30 @@ export async function getEmployeesData(orgId: string) {
 }
 
 /**
+ * PRO-178: Suggestion lists for the conversion modal's Department + Role Family
+ * comboboxes. Returns distinct stored values across the org's assessments,
+ * sorted case-insensitively (so duplicates like "Engineering"/"engineering"
+ * land adjacent and stay visible — we don't normalize).
+ */
+export async function getOrgDepartmentsAndRoleFamilies(orgId: string) {
+  const rows = await prisma.assessment.findMany({
+    where: {
+      candidate: { orgId },
+      OR: [{ department: { not: null } }, { roleFamily: { not: null } }],
+    },
+    select: { department: true, roleFamily: true },
+  });
+  const sortCi = (a: string, b: string) => a.toLowerCase().localeCompare(b.toLowerCase());
+  const departments = Array.from(
+    new Set(rows.map((r) => r.department).filter((v): v is string => !!v)),
+  ).sort(sortCi);
+  const roleFamilies = Array.from(
+    new Set(rows.map((r) => r.roleFamily).filter((v): v is string => !!v)),
+  ).sort(sortCi);
+  return { departments, roleFamilies };
+}
+
+/**
  * Get the demo organization ID for a given industry segment.
  * Falls back to the first demo org if no industry is specified or matched.
  */

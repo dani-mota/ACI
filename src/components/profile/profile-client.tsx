@@ -25,6 +25,7 @@ interface ProfileClientProps {
   allRoles: any[];
   cutlines: any[];
   userRole?: string;
+  suggestions?: { departments: string[]; roleFamilies: string[] };
 }
 
 function generateExecutiveSummary(
@@ -134,7 +135,7 @@ function generateExecutiveSummary(
   };
 }
 
-export function ProfileClient({ candidate, allRoles, cutlines, userRole }: ProfileClientProps) {
+export function ProfileClient({ candidate, allRoles, cutlines, userRole, suggestions }: ProfileClientProps) {
   const [selectedRoleSlug, setSelectedRoleSlug] = useState(candidate.primaryRole.slug);
   const [showAnimation, setShowAnimation] = useState(false);
   const [convertModalOpen, setConvertModalOpen] = useState(false);
@@ -438,6 +439,7 @@ export function ProfileClient({ candidate, allRoles, cutlines, userRole }: Profi
           candidateName={`${candidate.firstName} ${candidate.lastName}`}
           open={convertModalOpen}
           onOpenChange={setConvertModalOpen}
+          suggestions={suggestions ?? { departments: [], roleFamilies: [] }}
         />
       )}
     </div>
