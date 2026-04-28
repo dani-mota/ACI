@@ -35,13 +35,16 @@ export const POST = withApiHandler(
       return NextResponse.json({ error: "You cannot assign this role" }, { status: 403 });
     }
 
-    // Domain check: auto-detect internal vs external
+    // Domain check: auto-detect internal vs external.
+    // PRO-173: when org.domain is null we cannot prove the invitee is internal,
+    // so treat every domain as external (safest default). Otherwise a TA_LEADER
+    // at a domain-less org could invite any external email at full privilege.
     const org = await prisma.organization.findUnique({
       where: { id: session.user.orgId },
       select: { domain: true },
     });
     const emailDomain = normalizedEmail.split("@")[1];
-    const isExternal = org?.domain ? emailDomain !== org.domain : false;
+    const isExternal = org?.domain ? emailDomain !== org.domain : true;
     const effectiveRole = isExternal ? "EXTERNAL_COLLABORATOR" : (role as AppUserRole);
 
     // Check if user already exists in this org
