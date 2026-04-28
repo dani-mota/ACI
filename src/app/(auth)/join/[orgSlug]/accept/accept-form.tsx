@@ -68,10 +68,25 @@ export function AcceptInviteForm({
         return;
       }
 
-      // Sign in via Supabase client
+      // Sign in via Supabase client. PRO-171: surface a clear message if
+      // the auto-sign-in fails so the user isn't bounced to /login with no
+      // explanation after their account was successfully created.
       const supabase = createSupabaseBrowserClient();
-      if (supabase) {
-        await supabase.auth.signInWithPassword({ email, password });
+      const signInResult = supabase
+        ? await supabase.auth.signInWithPassword({ email, password })
+        : null;
+
+      // Clear password from React state regardless of outcome.
+      setPassword("");
+      setConfirmPassword("");
+
+      if (!supabase || signInResult?.error) {
+        setError(
+          "Your account was created successfully. Please log in with your email and password."
+        );
+        setLoading(false);
+        setTimeout(() => router.push("/login"), 2500);
+        return;
       }
 
       router.push("/dashboard");
