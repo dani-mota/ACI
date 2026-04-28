@@ -132,6 +132,7 @@ export function AcceptInviteForm({
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
+              maxLength={200}
             />
           </div>
 

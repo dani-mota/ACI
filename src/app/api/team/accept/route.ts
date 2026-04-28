@@ -42,6 +42,10 @@ export const POST = withApiHandler(
       return NextResponse.json({ error: "Token, name, and password are required" }, { status: 400 });
     }
 
+    if (name.trim().length > 200) {
+      return NextResponse.json({ error: "Name is too long" }, { status: 400 });
+    }
+
     if (!isStrongPassword(password)) {
       return NextResponse.json(
         { error: "Password must be at least 8 characters with uppercase, lowercase, and a number" },

@@ -62,6 +62,11 @@ export const POST = withApiHandler(
     const inviteToken =
       typeof body.token === "string" && body.token.length > 0 ? body.token : null;
 
+    // PRO-174: enforce length on every path (not just the OAuth branch).
+    if (firstName.length > 100 || lastName.length > 100) {
+      return NextResponse.json({ error: "Name is too long" }, { status: 400 });
+    }
+
     // Check if user already has a Prisma record
     const existingUser = await prisma.user.findUnique({
       where: { supabaseId: supabaseUser.id },
@@ -132,10 +137,6 @@ export const POST = withApiHandler(
         { error: "First name and last name are required" },
         { status: 400 }
       );
-    }
-
-    if (firstName.length > 100 || lastName.length > 100) {
-      return NextResponse.json({ error: "Name is too long" }, { status: 400 });
     }
 
     // PRO-168: prefer token-based lookup; fall back to email but reject when
