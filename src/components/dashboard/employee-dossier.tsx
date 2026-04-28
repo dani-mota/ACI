@@ -1,6 +1,7 @@
 import { InitialsBadge } from "@/components/ui/initials-badge";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { CognitiveSignature } from "./cognitive-signature";
+import { ConstructMapEmployee } from "./construct-map-employee";
 
 interface EmployeeDossierProps {
   candidate: {
@@ -69,6 +70,14 @@ export function EmployeeDossier({ candidate }: EmployeeDossierProps) {
         initialSignature={assessment.cognitiveSignature}
         subtestResults={assessment.subtestResults}
       />
+
+      {/* Layer 2: Construct Map */}
+      <section className="bg-card border border-border p-6">
+        <h2 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-4">
+          Construct Map
+        </h2>
+        <ConstructMapEmployee subtestResults={assessment.subtestResults} />
+      </section>
     </div>
   );
 }

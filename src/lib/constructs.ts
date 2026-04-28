@@ -29,6 +29,12 @@ export const LAYER_INFO: Record<LayerType, { name: string; color: string; icon: 
   },
 };
 
+// ⚠️ INSERTION ORDER MATTERS.
+// PRO-131's Employee Construct Map renders one radar spoke per construct
+// in this order: 5 cognitive → 5 technical → 2 behavioral.
+// Reordering this object alphabetically (or any other way) will silently
+// break the visual grouping on the radar chart. If a different order is
+// needed for a specific surface, transform a copy at the call site.
 export const CONSTRUCTS: Record<string, ConstructMeta> = {
   FLUID_REASONING: {
     name: "Fluid Reasoning",
