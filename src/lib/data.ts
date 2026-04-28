@@ -313,6 +313,37 @@ export async function getOrgDepartmentsAndRoleFamilies(orgId: string) {
 }
 
 /**
+ * PRO-130: Employee Dossier data fetcher.
+ * Returns a single employee's dossier-ready data scoped to the user's org.
+ * Deliberately omits redFlags and predictions — those are archived in employee mode.
+ */
+export async function getEmployeeDossierData(employeeId: string, orgId: string) {
+  const candidate = await prisma.candidate.findFirst({
+    where: {
+      id: employeeId,
+      orgId,
+      assessment: { assessmentMode: "EMPLOYEE" },
+    },
+    include: {
+      primaryRole: { select: { name: true, slug: true } },
+      assessment: {
+        select: {
+          id: true,
+          completedAt: true,
+          convertedAt: true,
+          department: true,
+          roleFamily: true,
+          employeeStatus: true,
+          cognitiveSignature: true,
+          subtestResults: { select: { construct: true, percentile: true, layer: true } },
+        },
+      },
+    },
+  });
+  return candidate ? JSON.parse(JSON.stringify(candidate)) : null;
+}
+
+/**
  * Get the demo organization ID for a given industry segment.
  * Falls back to the first demo org if no industry is specified or matched.
  */

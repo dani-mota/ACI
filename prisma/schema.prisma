@@ -279,6 +279,12 @@ model Assessment {
   converter       User?               @relation("AssessmentConverter", fields: [convertedBy], references: [id])
   // PRO-129: employee lifecycle status (only meaningful when assessmentMode = EMPLOYEE)
   employeeStatus  EmployeeStatus?
+  // PRO-130: Cognitive Signature (Layer 1) — cached AI-generated narrative
+  // We deliberately store ONLY successful AI output. Failed Haiku attempts bump
+  // cognitiveSignatureAttemptedAt (cooldown gate) without polluting the cache with fallback text.
+  cognitiveSignature              String?
+  cognitiveSignaturePromptVersion Int      @default(1)
+  cognitiveSignatureAttemptedAt   DateTime?
   startedAt       DateTime
   completedAt     DateTime?
   durationMinutes Int?
