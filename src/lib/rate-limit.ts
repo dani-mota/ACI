@@ -40,6 +40,10 @@ export const RATE_LIMITS = {
   tts: { maxRequests: 60, windowMs: 60_000 },
   /** Per-org Anthropic API: 200 RPM per org (PRO-124) */
   orgAnthropicRpm: { maxRequests: 200, windowMs: 60_000 },
+  /** Team invite acceptance: 10 per minute per IP (PRO-170) */
+  teamAccept: { maxRequests: 10, windowMs: 60_000 },
+  /** Onboarding completion: 5 per minute per supabase user (PRO-170) */
+  onboarding: { maxRequests: 5, windowMs: 60_000 },
 } as const;
 
 // ── Redis rate limiter (if configured) ─────────────

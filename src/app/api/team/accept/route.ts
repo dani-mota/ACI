@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 import { withApiHandler } from "@/lib/api-handler";
 
 function isStrongPassword(p: string): boolean {
@@ -14,11 +14,21 @@ function isStrongPassword(p: string): boolean {
  */
 export const POST = withApiHandler(
   async (req: NextRequest) => {
-    // Rate limit: 10 requests per minute per IP
+    // Rate limit: 10 requests per minute per IP — Redis-backed across isolates (PRO-170)
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-    const limit = checkRateLimit(`team-accept:${ip}`, { maxRequests: 10, windowMs: 60_000 });
+    const limit = await checkRateLimitAsync(
+      `team-accept:${ip}`,
+      RATE_LIMITS.teamAccept,
+      "teamAccept",
+    );
     if (!limit.allowed) {
-      return NextResponse.json({ error: "Too many requests. Please try again later." }, { status: 429 });
+      return NextResponse.json(
+        { error: "Too many requests. Please try again later." },
+        {
+          status: 429,
+          headers: { "Retry-After": String(Math.ceil(limit.retryAfterMs / 1000)) },
+        },
+      );
     }
 
     const body = await req.json();
