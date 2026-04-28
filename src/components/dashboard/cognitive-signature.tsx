@@ -24,35 +24,27 @@ export function CognitiveSignature({
     if (requestedRef.current) return;
     requestedRef.current = true;
 
-    let cancelled = false;
+    // No cleanup-based cancellation: the requestedRef guard prevents duplicate
+    // fetches in React 18 strict mode, and we want the response from the single
+    // in-flight request to land regardless of which mount it resolves on.
     (async () => {
       try {
         const res = await fetch(`/api/employees/${candidateId}/cognitive-signature`, {
           method: "POST",
         });
         if (!res.ok) {
-          if (!cancelled) {
-            setError("Could not generate the cognitive signature.");
-            setLoading(false);
-          }
+          setError("Could not generate the cognitive signature.");
+          setLoading(false);
           return;
         }
         const json = (await res.json()) as { signature: string; source: "ai" | "fallback" };
-        if (!cancelled) {
-          setSignature(json.signature);
-          setLoading(false);
-        }
+        setSignature(json.signature);
+        setLoading(false);
       } catch {
-        if (!cancelled) {
-          setError("Could not generate the cognitive signature.");
-          setLoading(false);
-        }
+        setError("Could not generate the cognitive signature.");
+        setLoading(false);
       }
     })();
-
-    return () => {
-      cancelled = true;
-    };
   }, [candidateId, initialSignature]);
 
   return (
