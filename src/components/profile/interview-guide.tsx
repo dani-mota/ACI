@@ -3,10 +3,15 @@
 import { useState } from "react";
 import { Target, AlertTriangle, Clock, ChevronDown, ChevronRight } from "lucide-react";
 import { CONSTRUCTS } from "@/lib/constructs";
+import type { AssessmentMode } from "@/generated/prisma/enums";
+import { isEmployeeMode } from "@/lib/assessment/mode-utils";
 
 interface InterviewGuideProps {
   subtestResults: any[];
   redFlags: any[];
+  // PRO-134: optional. When passed as "EMPLOYEE", suppresses the Red Flag
+  // section only — the probe/validate sections are informational and stay.
+  assessmentMode?: AssessmentMode | null;
 }
 
 const INTERVIEW_QUESTIONS: Record<string, { questions: string[]; listenFor: string }> = {
@@ -159,10 +164,12 @@ function ConstructSection({
   );
 }
 
-export function InterviewGuide({ subtestResults, redFlags }: InterviewGuideProps) {
+export function InterviewGuide({ subtestResults, redFlags, assessmentMode }: InterviewGuideProps) {
   const sorted = [...subtestResults].sort((a: any, b: any) => a.percentile - b.percentile);
   const weakest = sorted.slice(0, 3);
   const strongest = sorted.slice(-2).reverse();
+  // PRO-134: Red Flag follow-ups never render in Employee Mode.
+  const showRedFlags = !isEmployeeMode({ assessmentMode }) && redFlags.length > 0;
 
   return (
     <div className="bg-card border border-border p-4">
@@ -198,7 +205,7 @@ export function InterviewGuide({ subtestResults, redFlags }: InterviewGuideProps
       </div>
 
       {/* Red flag follow-ups */}
-      {redFlags.length > 0 && (
+      {showRedFlags && (
         <div className="space-y-1.5">
           <p className="text-[10px] font-medium text-foreground uppercase tracking-wider">Flag Follow-ups</p>
           {redFlags.map((flag: any) => (

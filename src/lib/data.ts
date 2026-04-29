@@ -2,6 +2,15 @@ import prisma from "@/lib/prisma";
 import { type AppUserRole, filterCandidateForRole } from "@/lib/rbac";
 import { CONSTRUCTS } from "@/lib/constructs";
 import type { Construct } from "@/generated/prisma/enums";
+import { CURRENT_PROMPT_VERSION as CURRENT_COGNITIVE_SIGNATURE_PROMPT_VERSION } from "@/lib/assessment/prompts/cognitive-signature";
+import {
+  type OrgConstructDistribution,
+  quartileLabel,
+} from "@/lib/assessment/org-distribution";
+
+// Re-export so existing call sites keep importing from `@/lib/data`.
+export { quartileLabel };
+export type { OrgConstructDistribution };
 
 /**
  * Shared data-fetching helpers used by both the live dashboard and tutorial demo.
@@ -337,12 +346,29 @@ export async function getEmployeeDossierData(employeeId: string, orgId: string) 
           roleFamily: true,
           employeeStatus: true,
           cognitiveSignature: true,
+          // PRO-134: needed so a stale-version row reads as null and the client
+          // triggers regeneration on mount (skeleton, never v1 evaluative text).
+          cognitiveSignaturePromptVersion: true,
           subtestResults: { select: { construct: true, percentile: true, layer: true } },
         },
       },
     },
   });
-  return candidate ? JSON.parse(JSON.stringify(candidate)) : null;
+  if (!candidate) return null;
+
+  // PRO-134: zero-leak regeneration window. If the cached signature was written
+  // under a previous prompt version, treat it as null on the read path so the
+  // client component sees null → renders skeleton → POSTs the regen route → v2
+  // narrative replaces the skeleton. Never v1 evaluative text on screen.
+  const a = candidate.assessment;
+  if (
+    a &&
+    a.cognitiveSignature !== null &&
+    a.cognitiveSignaturePromptVersion < CURRENT_COGNITIVE_SIGNATURE_PROMPT_VERSION
+  ) {
+    a.cognitiveSignature = null;
+  }
+  return JSON.parse(JSON.stringify(candidate));
 }
 
 // ─── PRO-132: Evidence Layer (Layer 3) ───────────────────────────────────────
@@ -424,6 +450,47 @@ export async function getEvidenceLayerData(
       hasCurrentAnnotation: hasCurrent,
     };
   });
+}
+
+// ─── PRO-134: Org-wide construct distributions ──────────────────────────────
+
+/**
+ * Per-construct quartile breakpoints for an org's existing assessments.
+ * Lets Employee Mode dossier surfaces render "Top quartile in our company on
+ * Ambiguity Tolerance" instead of "73rd percentile of candidates".
+ *
+ * Computed on-the-fly. No caching for v1 — small orgs, small data. Add
+ * memoization or a scheduled recomputation if dossier latency becomes an issue.
+ */
+export async function getOrgConstructDistributions(
+  orgId: string,
+): Promise<OrgConstructDistribution[]> {
+  const rows = await prisma.subtestResult.findMany({
+    where: { assessment: { candidate: { orgId } } },
+    select: { construct: true, percentile: true },
+  });
+
+  const byConstruct = new Map<string, number[]>();
+  for (const r of rows) {
+    const arr = byConstruct.get(r.construct) ?? [];
+    arr.push(r.percentile);
+    byConstruct.set(r.construct, arr);
+  }
+
+  const result: OrgConstructDistribution[] = [];
+  for (const code of Object.keys(CONSTRUCTS)) {
+    const arr = byConstruct.get(code) ?? [];
+    const sorted = [...arr].sort((a, b) => a - b);
+    const n = sorted.length;
+    result.push({
+      construct: code,
+      q1: n ? sorted[Math.floor(n * 0.25)] : 0,
+      q2: n ? sorted[Math.floor(n * 0.5)] : 0,
+      q3: n ? sorted[Math.floor(n * 0.75)] : 0,
+      sampleSize: n,
+    });
+  }
+  return result;
 }
 
 /**

@@ -17,6 +17,7 @@ import { RecordOutcomeForm } from "./record-outcome-form";
 import { RoleFitRankings } from "./role-fit-rankings";
 import { ConvertToEmployeeModal } from "./convert-to-employee-modal";
 import { canConvertCandidate, type AppUserRole } from "@/lib/rbac";
+import { isCandidateMode } from "@/lib/assessment/mode-utils";
 
 const OUTCOME_ROLES = ["RECRUITING_MANAGER", "TA_LEADER", "ADMIN"];
 
@@ -141,12 +142,13 @@ export function ProfileClient({ candidate, allRoles, cutlines, userRole, suggest
   const [convertModalOpen, setConvertModalOpen] = useState(false);
   const previousWeightsRef = useRef<Record<string, number>>({});
 
-  // PRO-127: convert button visibility — only when role allows AND candidate is still a CANDIDATE
+  // PRO-127: convert button visibility — only when role allows AND candidate is still a CANDIDATE.
+  // PRO-134: mode discrimination via the shared `isCandidateMode` utility.
   const showConvertButton =
     userRole !== undefined &&
     canConvertCandidate(userRole as AppUserRole) &&
     candidate.status !== "HIRED" &&
-    candidate.assessment?.assessmentMode === "CANDIDATE";
+    isCandidateMode(candidate.assessment);
 
   const selectedRole = allRoles.find((r: any) => r.slug === selectedRoleSlug) || allRoles[0];
 

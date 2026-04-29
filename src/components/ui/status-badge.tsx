@@ -3,7 +3,14 @@ import { getStatusLabel } from "@/lib/format";
 interface StatusBadgeProps {
   status: string;
   size?: "sm" | "md";
+  // PRO-134: when "employee", candidate verdicts (RECOMMENDED, REVIEW_REQUIRED,
+  // DO_NOT_ADVANCE) render nothing — never leak verdict labels into Employee
+  // Mode surfaces. Employee statuses (ACTIVE/REASSESSMENT_DUE/IN_TRANSITION) and
+  // HIRED still render normally. Defaults to "candidate" for backwards compat.
+  mode?: "candidate" | "employee";
 }
+
+const CANDIDATE_VERDICT_STATUSES = new Set(["RECOMMENDED", "REVIEW_REQUIRED", "DO_NOT_ADVANCE"]);
 
 const STATUS_CONFIG: Record<string, { bg: string; text: string; border: string; dot: string }> = {
   RECOMMENDED: {
@@ -63,7 +70,9 @@ const STATUS_CONFIG: Record<string, { bg: string; text: string; border: string; 
   },
 };
 
-export function StatusBadge({ status, size = "md" }: StatusBadgeProps) {
+export function StatusBadge({ status, size = "md", mode = "candidate" }: StatusBadgeProps) {
+  if (mode === "employee" && CANDIDATE_VERDICT_STATUSES.has(status)) return null;
+
   const label = getStatusLabel(status);
   const config = STATUS_CONFIG[status] || STATUS_CONFIG.INCOMPLETE;
 

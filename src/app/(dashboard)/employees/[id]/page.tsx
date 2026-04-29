@@ -1,6 +1,10 @@
 import { notFound, redirect } from "next/navigation";
 import { requireAuth } from "@/lib/auth";
-import { getEmployeeDossierData, getEvidenceLayerData } from "@/lib/data";
+import {
+  getEmployeeDossierData,
+  getEvidenceLayerData,
+  getOrgConstructDistributions,
+} from "@/lib/data";
 import { canAccessMode } from "@/lib/rbac";
 import { EmployeeDossier } from "@/components/dashboard/employee-dossier";
 import { CURRENT_PROMPT_VERSION as EVIDENCE_PROMPT_VERSION } from "@/lib/assessment/prompts/evidence-annotation";
@@ -24,9 +28,19 @@ export default async function EmployeeDossierPage({ params }: PageProps) {
   // 404 (not 403) for cross-org or non-EMPLOYEE — don't leak existence
   if (!data) notFound();
 
-  // PRO-132: page-level evidence map (12 entries, one per construct).
-  // Lazy generation per-construct happens client-side on accordion expand.
-  const evidence = await getEvidenceLayerData(data.assessment.id, EVIDENCE_PROMPT_VERSION);
+  // PRO-132: per-construct evidence map. PRO-134: org-wide quartile breakpoints
+  // for the developmental "Top quartile in our company on X" replacement label.
+  // Both fetches are independent of the dossier, so run in parallel.
+  const [evidence, orgDistributions] = await Promise.all([
+    getEvidenceLayerData(data.assessment.id, EVIDENCE_PROMPT_VERSION),
+    getOrgConstructDistributions(session.user.orgId),
+  ]);
 
-  return <EmployeeDossier candidate={data} initialEvidence={evidence} />;
+  return (
+    <EmployeeDossier
+      candidate={data}
+      initialEvidence={evidence}
+      orgDistributions={orgDistributions}
+    />
+  );
 }

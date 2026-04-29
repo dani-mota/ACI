@@ -5,6 +5,7 @@ import { PDFScorecard, type PDFScorecardProps } from "@/components/profile/pdf-s
 import { getSession } from "@/lib/auth";
 import { withApiHandler } from "@/lib/api-handler";
 import { canView } from "@/lib/rbac";
+import { isEmployeeMode } from "@/lib/assessment/mode-utils";
 
 export const GET = withApiHandler(
   async (_req, ctx) => {
@@ -51,6 +52,16 @@ export const GET = withApiHandler(
       );
     }
 
+    // PRO-134: PDF export is candidate-mode only. An EMPLOYEE assessment must
+    // never produce a candidate-framing PDF (red flags, hiring recommendation,
+    // verdict). Employee-mode PDF export is a separate future feature.
+    if (isEmployeeMode(candidate.assessment)) {
+      return NextResponse.json(
+        { error: "PDF export not available in Employee Mode" },
+        { status: 403 }
+      );
+    }
+
     // ------------------------------------------------------------------
     // Shape data to match PDFScorecardProps
     // ------------------------------------------------------------------
@@ -65,6 +76,7 @@ export const GET = withApiHandler(
           slug: candidate.primaryRole.slug,
         },
         assessment: {
+          assessmentMode: candidate.assessment.assessmentMode,
           subtestResults: candidate.assessment.subtestResults.map((sr) => ({
             construct: sr.construct,
             layer: sr.layer,

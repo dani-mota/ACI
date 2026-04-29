@@ -3,6 +3,7 @@
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ScoreBar } from "@/components/ui/score-bar";
 import { AlertTriangle, Clock, Eye, TrendingUp } from "lucide-react";
+import { isEmployeeMode } from "@/lib/assessment/mode-utils";
 
 interface DecisionSummaryProps {
   candidate: any;
@@ -11,6 +12,11 @@ interface DecisionSummaryProps {
 }
 
 export function DecisionSummary({ candidate, compositeScore, roleName }: DecisionSummaryProps) {
+  // PRO-134: defensive guard. This component is candidate-mode only by route
+  // topology today; the guard future-proofs against accidental imports into
+  // an Employee Mode surface (verdict + red-flag content must never leak).
+  if (isEmployeeMode(candidate?.assessment)) return null;
+
   const prediction = candidate.assessment?.predictions;
   const redFlags = candidate.assessment?.redFlags || [];
 

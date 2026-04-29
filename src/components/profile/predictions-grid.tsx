@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { Clock, Eye, TrendingUp, AlertTriangle, ChevronDown } from "lucide-react";
+import type { AssessmentMode } from "@/generated/prisma/enums";
+import { isEmployeeMode } from "@/lib/assessment/mode-utils";
 
 const METHODOLOGY: Record<string, { constructs: string; explanation: string }> = {
   "Ramp Time": {
@@ -28,6 +30,9 @@ const METHODOLOGY: Record<string, { constructs: string; explanation: string }> =
 
 interface PredictionsGridProps {
   prediction: any;
+  // PRO-134: optional, used by the defensive guard. Existing callers omit it
+  // and the component renders normally (candidate-mode default).
+  assessmentMode?: AssessmentMode | null;
 }
 
 function PredictionCard({
@@ -96,7 +101,9 @@ function PredictionCard({
   );
 }
 
-export function PredictionsGrid({ prediction }: PredictionsGridProps) {
+export function PredictionsGrid({ prediction, assessmentMode }: PredictionsGridProps) {
+  // PRO-134: defensive guard against accidental import into Employee Mode surfaces.
+  if (isEmployeeMode({ assessmentMode })) return null;
   if (!prediction) return null;
 
   const cards = [

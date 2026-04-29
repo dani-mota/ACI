@@ -11,6 +11,8 @@ import {
   type LayerType,
   type ConstructMeta,
 } from "@/lib/constructs";
+import type { AssessmentMode } from "@/generated/prisma/enums";
+import { isEmployeeMode } from "@/lib/assessment/mode-utils";
 import type { IntelligencePanel } from "@/lib/intelligence";
 
 // ---------------------------------------------------------------------------
@@ -45,6 +47,8 @@ export interface PDFOnePagerProps {
     status: string;
     primaryRole: { name: string; slug: string };
     assessment: {
+      // PRO-134: assessmentMode threaded for the Document-level defensive guard.
+      assessmentMode?: AssessmentMode | null;
       subtestResults: SubtestResult[];
       compositeScores: CompositeScore[];
       predictions: Predictions | null;
@@ -416,6 +420,40 @@ const LAYER_ORDER: LayerType[] = [
 export function PDFOnePager({ candidate, panels }: PDFOnePagerProps) {
   const { assessment, primaryRole, status } = candidate;
   const candidateName = `${candidate.firstName} ${candidate.lastName}`;
+
+  // PRO-134: defense-in-depth. Route already 403s on Employee Mode; the document
+  // refuses to emit hiring-decision content even if a future caller bypasses the route.
+  if (isEmployeeMode(assessment)) {
+    return (
+      <Document
+        title={`ACI One-Pager — ${candidateName}`}
+        author="ACI Platform"
+        creator="ACI — Arklight Cognitive Index"
+      >
+        <Page size="A4" style={s.page}>
+          <View style={s.topStrip}>
+            <View style={s.topLeft}>
+              <Text style={s.wordmark}>ACI</Text>
+              <View>
+                <Text style={s.candidateName}>{candidateName}</Text>
+                <Text style={s.roleName}>{primaryRole.name}</Text>
+              </View>
+            </View>
+          </View>
+          <View style={{ padding: 24 }}>
+            <Text style={{ fontSize: 12, fontFamily: "Helvetica-Bold", color: NAVY, marginBottom: 8 }}>
+              Not available in Employee Mode
+            </Text>
+            <Text style={{ fontSize: 9, color: DARK_TEXT, lineHeight: 1.5 }}>
+              Hiring-manager summaries are not generated for Employee Mode
+              assessments. Use the Employee Dossier in the dashboard for
+              developmental insights.
+            </Text>
+          </View>
+        </Page>
+      </Document>
+    );
+  }
 
   const composite = assessment.compositeScores.find(
     (cs) => cs.roleSlug === primaryRole.slug

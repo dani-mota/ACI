@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight, ClipboardCheck, Compass, Wrench, Users, Lightbulb, Rocket, AlertTriangle, CheckCircle, Info } from "lucide-react";
 import { generateAllPanels } from "@/lib/intelligence";
+import type { AssessmentMode } from "@/generated/prisma/enums";
+import { isEmployeeMode } from "@/lib/assessment/mode-utils";
 
 const ICONS: Record<string, any> = {
   "clipboard-check": ClipboardCheck,
@@ -22,9 +24,14 @@ const RISK_CONFIG = {
 interface IntelligenceReportProps {
   subtestResults: any[];
   roleName?: string;
+  // PRO-134: optional, used by the defensive guard. Existing callers omit it.
+  assessmentMode?: AssessmentMode | null;
 }
 
-export function IntelligenceReport({ subtestResults, roleName }: IntelligenceReportProps) {
+export function IntelligenceReport({ subtestResults, roleName, assessmentMode }: IntelligenceReportProps) {
+  // PRO-134: defensive guard against accidental import into Employee Mode surfaces.
+  if (isEmployeeMode({ assessmentMode })) return null;
+
   const panels = generateAllPanels(
     subtestResults.map((r: any) => ({ construct: r.construct, percentile: r.percentile })),
     roleName
