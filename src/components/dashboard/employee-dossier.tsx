@@ -2,6 +2,8 @@ import { InitialsBadge } from "@/components/ui/initials-badge";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { CognitiveSignature } from "./cognitive-signature";
 import { ConstructMapEmployee } from "./construct-map-employee";
+import { EvidenceLayer } from "./evidence-layer";
+import type { EvidenceLayerEntry } from "@/lib/data";
 
 interface EmployeeDossierProps {
   candidate: {
@@ -20,9 +22,10 @@ interface EmployeeDossierProps {
       subtestResults: { construct: string; percentile: number; layer: string | null }[];
     };
   };
+  initialEvidence: EvidenceLayerEntry[];
 }
 
-export function EmployeeDossier({ candidate }: EmployeeDossierProps) {
+export function EmployeeDossier({ candidate, initialEvidence }: EmployeeDossierProps) {
   const { firstName, lastName, email, primaryRole, assessment } = candidate;
   const completed = assessment.completedAt
     ? new Date(assessment.completedAt).toLocaleDateString("en-US", {
@@ -77,6 +80,14 @@ export function EmployeeDossier({ candidate }: EmployeeDossierProps) {
           Construct Map
         </h2>
         <ConstructMapEmployee subtestResults={assessment.subtestResults} />
+      </section>
+
+      {/* Layer 3: Evidence */}
+      <section className="bg-card border border-border p-6">
+        <h2 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-4">
+          Evidence
+        </h2>
+        <EvidenceLayer candidateId={candidate.id} initialEvidence={initialEvidence} />
       </section>
     </div>
   );

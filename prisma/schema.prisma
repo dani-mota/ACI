@@ -299,6 +299,8 @@ model Assessment {
   messages          ConversationMessage[]
   assessmentState   AssessmentState?
   aiEvaluationRuns  AIEvaluationRun[]
+  // PRO-132: per-construct evidence annotations (lazy-generated on dossier expand)
+  evidenceAnnotations EvidenceAnnotation[]
   // Cost tracking
   scoringCostUsd    Float?
   scoringTokensIn   Int?
@@ -668,6 +670,8 @@ model ConversationMessage {
   idempotencyKey  String?                 @unique // Fix: PRO-31 — deduplication key for client retries
   // Fix: PRO-83 — back-relation for ItemResponse.messageId FK
   itemResponses   ItemResponse[]
+  // PRO-132 back-relation: a message can be the evidence source for one or more construct annotations
+  evidenceAnnotations EvidenceAnnotation[]
   createdAt       DateTime                @default(now())
 
   @@index([assessmentId, act])
@@ -717,6 +721,35 @@ model AIEvaluationRun {
   @@index([assessmentId, construct])
   @@index([messageId])
   @@unique([assessmentId, messageId, construct, runIndex])
+}
+
+// ──────────────────────────────────────────────
+// EVIDENCE LAYER (PRO-132)
+// ──────────────────────────────────────────────
+// Per-construct cached annotation linked to a real candidate message.
+// Lazy-generated when a manager expands a construct row in the dossier.
+// Only successful AI output is stored; failed Haiku attempts bump
+// attemptedAt (cooldown gate) without polluting the cache with fallback text.
+
+model EvidenceAnnotation {
+  id            String              @id @default(cuid())
+  assessmentId  String
+  assessment    Assessment          @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  construct     Construct
+  // The ConversationMessage chosen as evidence; content is read at render time.
+  messageId     String
+  message       ConversationMessage @relation(fields: [messageId], references: [id], onDelete: Restrict)
+  // 1-sentence developmental-framing annotation. Null if generation has not been attempted.
+  annotation    String?
+  // Bumped by PRO-134; mismatches force regeneration on next expand.
+  promptVersion Int                 @default(1)
+  // Last Haiku attempt timestamp; gates retries during cooldown after failures.
+  attemptedAt   DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@unique([assessmentId, construct])
+  @@index([assessmentId])
 }
 
 // ──────────────────────────────────────────────

@@ -1,5 +1,7 @@
 import prisma from "@/lib/prisma";
 import { type AppUserRole, filterCandidateForRole } from "@/lib/rbac";
+import { CONSTRUCTS } from "@/lib/constructs";
+import type { Construct } from "@/generated/prisma/enums";
 
 /**
  * Shared data-fetching helpers used by both the live dashboard and tutorial demo.
@@ -341,6 +343,87 @@ export async function getEmployeeDossierData(employeeId: string, orgId: string) 
     },
   });
   return candidate ? JSON.parse(JSON.stringify(candidate)) : null;
+}
+
+// ─── PRO-132: Evidence Layer (Layer 3) ───────────────────────────────────────
+
+/** Minimum content length for a message to qualify as an evidence excerpt.
+ * Filters out useless one-liners ("yeah, sometimes") that score high but
+ * read as junk evidence to a manager. */
+const EVIDENCE_MIN_CONTENT_LENGTH = 50;
+
+export interface EvidenceLayerEntry {
+  construct: string;
+  message: { id: string; content: string } | null;
+  annotation: string | null;
+  promptVersion: number | null;
+  /** True when annotation is non-null AND promptVersion matches the current. */
+  hasCurrentAnnotation: boolean;
+}
+
+/**
+ * Per-construct evidence map for the Employee Dossier Layer 3 (PRO-132).
+ *
+ * For each of the 12 constructs:
+ *   - find the highest-aggregateScore CANDIDATE message with content.length >= 50
+ *   - left-join the cached EvidenceAnnotation (if any)
+ *
+ * Lazy-on-expand generation in the API route fills in missing annotations.
+ */
+export async function getEvidenceLayerData(
+  assessmentId: string,
+  currentPromptVersion: number,
+): Promise<EvidenceLayerEntry[]> {
+  // AIEvaluationRun.messageId is a loose string FK (no relation declared in
+  // schema), so we fetch runs and messages separately and join in app code.
+  const [runs, annotations] = await Promise.all([
+    prisma.aIEvaluationRun.findMany({
+      where: { assessmentId },
+      orderBy: { aggregateScore: "desc" },
+    }),
+    prisma.evidenceAnnotation.findMany({ where: { assessmentId } }),
+  ]);
+
+  const messageIds = Array.from(new Set(runs.map((r) => r.messageId)));
+  const messages =
+    messageIds.length === 0
+      ? []
+      : await prisma.conversationMessage.findMany({
+          where: { id: { in: messageIds }, role: "CANDIDATE" },
+          select: { id: true, content: true },
+        });
+  const messageById = new Map(messages.map((m) => [m.id, m]));
+
+  // Group runs by construct and pick the top qualifying CANDIDATE message per construct.
+  const topByConstruct = new Map<string, { id: string; content: string }>();
+  for (const run of runs) {
+    if (topByConstruct.has(run.construct)) continue;
+    const msg = messageById.get(run.messageId);
+    if (!msg) continue; // not a candidate message (filtered above) or missing
+    if (msg.content.length < EVIDENCE_MIN_CONTENT_LENGTH) continue;
+    topByConstruct.set(run.construct, { id: msg.id, content: msg.content });
+  }
+
+  const annotationByConstruct = new Map(annotations.map((a) => [a.construct, a]));
+
+  // Iterate the 12 constructs in CONSTRUCTS insertion order so the layer
+  // mirrors the radar chart's spoke ordering.
+  const constructCodes = Object.keys(CONSTRUCTS) as Construct[];
+  return constructCodes.map((code) => {
+    const message = topByConstruct.get(code) ?? null;
+    const annotation = annotationByConstruct.get(code);
+    const hasCurrent =
+      annotation !== undefined &&
+      annotation.annotation !== null &&
+      annotation.promptVersion === currentPromptVersion;
+    return {
+      construct: code,
+      message,
+      annotation: annotation?.annotation ?? null,
+      promptVersion: annotation?.promptVersion ?? null,
+      hasCurrentAnnotation: hasCurrent,
+    };
+  });
 }
 
 /**
