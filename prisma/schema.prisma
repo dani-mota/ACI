@@ -23,6 +23,8 @@ model Organization {
   roles           Role[]
   cutlines        Cutline[]
   teamInvitations TeamInvitation[]
+  // PRO-135: org-scoped role demand profiles for the Construct Map overlay.
+  roleDemandProfiles RoleDemandProfile[]
 }
 
 model User {
@@ -40,6 +42,8 @@ model User {
   teamInvitesSent      TeamInvitation[]       @relation("TeamInvitesSent")
   candidateAssignments CandidateAssignment[]
   assessmentsConverted Assessment[]           @relation("AssessmentConverter")
+  // PRO-135: profiles authored by this user.
+  roleDemandProfilesCreated RoleDemandProfile[] @relation("RoleDemandProfileAuthor")
   createdAt            DateTime              @default(now())
 }
 
@@ -761,4 +765,40 @@ model Act2ItemAnswer {
   itemId        String   @unique
   correctAnswer String
   createdAt     DateTime @default(now())
+}
+
+// ──────────────────────────────────────────────
+// ROLE DEMAND PROFILES (PRO-135)
+// ──────────────────────────────────────────────
+
+model RoleDemandProfile {
+  id          String   @id @default(cuid())
+  // Display name. e.g., "Software Engineer — IC3"
+  name        String
+  // Matches Assessment.roleFamily; resolved case-insensitively at the data layer
+  // (Prisma `mode: "insensitive"`). The migration adds a functional partial
+  // index on (orgId, LOWER(roleFamily)) WHERE isTemplate = false to keep that
+  // resolution from degrading to a sequential scan as profile counts grow.
+  roleFamily  String
+  orgId       String
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  // JSON because the 12 construct keys are fixed and we always read/write the
+  // whole map at once. Normalized rows would force per-construct upserts on
+  // save and a JOIN on every overlay read with no querying-by-value benefit.
+  // Shape changes (new constructs) won't require migrations. Stored 1-10
+  // (authoring scale); the radar overlay reads it via a single resolver that
+  // converts to 0-100.
+  constructScores Json
+
+  isTemplate  Boolean  @default(false)
+  createdById String
+  createdBy   User     @relation("RoleDemandProfileAuthor", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([orgId, roleFamily])
+  // The functional partial index on (orgId, LOWER(roleFamily)) WHERE
+  // isTemplate = false is created in the migration directly — Prisma can't
+  // express LOWER() expressions in @@index. See PRO-135 migration SQL.
 }
