@@ -3,7 +3,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { CognitiveSignature } from "./cognitive-signature";
 import { ConstructMapEmployee } from "./construct-map-employee";
 import { EvidenceLayer } from "./evidence-layer";
-import type { EvidenceLayerEntry } from "@/lib/data";
+import type { EvidenceLayerEntry, OrgConstructDistribution } from "@/lib/data";
 
 interface EmployeeDossierProps {
   candidate: {
@@ -23,9 +23,10 @@ interface EmployeeDossierProps {
     };
   };
   initialEvidence: EvidenceLayerEntry[];
+  orgDistributions: OrgConstructDistribution[];
 }
 
-export function EmployeeDossier({ candidate, initialEvidence }: EmployeeDossierProps) {
+export function EmployeeDossier({ candidate, initialEvidence, orgDistributions }: EmployeeDossierProps) {
   const { firstName, lastName, email, primaryRole, assessment } = candidate;
   const completed = assessment.completedAt
     ? new Date(assessment.completedAt).toLocaleDateString("en-US", {
@@ -53,7 +54,7 @@ export function EmployeeDossier({ candidate, initialEvidence }: EmployeeDossierP
                 <p className="text-xs text-muted-foreground font-mono mt-0.5">{email}</p>
               </div>
               {assessment.employeeStatus && (
-                <StatusBadge status={assessment.employeeStatus} size="sm" />
+                <StatusBadge status={assessment.employeeStatus} size="sm" mode="employee" />
               )}
             </div>
             <dl className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -79,7 +80,10 @@ export function EmployeeDossier({ candidate, initialEvidence }: EmployeeDossierP
         <h2 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-4">
           Construct Map
         </h2>
-        <ConstructMapEmployee subtestResults={assessment.subtestResults} />
+        <ConstructMapEmployee
+          subtestResults={assessment.subtestResults}
+          orgDistributions={orgDistributions}
+        />
       </section>
 
       {/* Layer 3: Evidence */}

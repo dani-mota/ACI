@@ -6,6 +6,8 @@ import {
   StyleSheet,
 } from "@react-pdf/renderer";
 import { CONSTRUCTS, LAYER_INFO, type LayerType, type ConstructMeta } from "@/lib/constructs";
+import type { AssessmentMode } from "@/generated/prisma/enums";
+import { isEmployeeMode } from "@/lib/assessment/mode-utils";
 import { INTERVIEW_QUESTIONS } from "./interview-guide";
 
 // ---------------------------------------------------------------------------
@@ -31,6 +33,8 @@ export interface PDFInterviewKitProps {
     status: string;
     primaryRole: { name: string; slug: string };
     assessment: {
+      // PRO-134: assessmentMode threaded for the Document-level defensive guard.
+      assessmentMode?: AssessmentMode | null;
       subtestResults: SubtestResult[];
       redFlags: RedFlag[];
     };
@@ -250,6 +254,30 @@ const s = StyleSheet.create({
 export function PDFInterviewKit({ candidate }: PDFInterviewKitProps) {
   const candidateName = `${candidate.firstName} ${candidate.lastName}`;
   const { assessment, primaryRole } = candidate;
+
+  // PRO-134: defense-in-depth. Route already 403s on Employee Mode; the document
+  // refuses to emit red-flag follow-ups even if a future caller bypasses the route.
+  if (isEmployeeMode(assessment)) {
+    return (
+      <Document
+        title={`ACI Interview Kit — ${candidateName}`}
+        author="ACI Platform"
+        creator="ACI — Arklight Cognitive Index"
+      >
+        <Page size="A4" style={s.page}>
+          <View style={s.headerBar} fixed>
+            <Text style={s.wordmark}>ACI</Text>
+            <Text style={s.headerMeta}>{candidateName} · {primaryRole.name}</Text>
+          </View>
+          <Text style={s.title}>Not available in Employee Mode</Text>
+          <Text style={s.flagDesc}>
+            Candidate-mode interview kits are not generated for Employee Mode
+            assessments.
+          </Text>
+        </Page>
+      </Document>
+    );
+  }
 
   const sorted = [...assessment.subtestResults].sort((a, b) => a.percentile - b.percentile);
   const weakest = sorted.slice(0, 3);

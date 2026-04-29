@@ -6,6 +6,7 @@ import { generateAllPanels } from "@/lib/intelligence";
 import { getSession } from "@/lib/auth";
 import { withApiHandler } from "@/lib/api-handler";
 import { canView } from "@/lib/rbac";
+import { isEmployeeMode } from "@/lib/assessment/mode-utils";
 
 export const GET = withApiHandler(
   async (_req, ctx) => {
@@ -41,6 +42,14 @@ export const GET = withApiHandler(
       return NextResponse.json({ error: "Assessment data not available" }, { status: 400 });
     }
 
+    // PRO-134: PDF export is candidate-mode only.
+    if (isEmployeeMode(candidate.assessment)) {
+      return NextResponse.json(
+        { error: "PDF export not available in Employee Mode" },
+        { status: 403 }
+      );
+    }
+
     // Generate intelligence report panels for hiring actions
     const subtestScores = candidate.assessment.subtestResults.map((sr) => ({
       construct: sr.construct,
@@ -58,6 +67,7 @@ export const GET = withApiHandler(
           slug: candidate.primaryRole.slug,
         },
         assessment: {
+          assessmentMode: candidate.assessment.assessmentMode,
           subtestResults: candidate.assessment.subtestResults.map((sr) => ({
             construct: sr.construct,
             layer: sr.layer,

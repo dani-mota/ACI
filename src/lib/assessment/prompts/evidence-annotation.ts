@@ -8,17 +8,21 @@
  * The excerpt itself is real ConversationMessage.content (never paraphrased here).
  * Haiku ONLY writes the annotation.
  *
- * Forbidden vocabulary handling reuses PRO-130's exported list. PRO-134 will refactor
- * the shared list into its own module; for now we import directly from cognitive-signature.
+ * Forbidden vocabulary handling consumes the canonical list from
+ * `evaluative-vocabulary.ts` (PRO-134). Re-exported here so the API route can
+ * pull both the prompt builder and the guard from one module.
  */
 
 import { CONSTRUCTS, LAYER_INFO, type LayerType } from "@/lib/constructs";
-import { containsForbiddenLanguage } from "./cognitive-signature";
+import { containsForbiddenLanguage } from "./evaluative-vocabulary";
 
 // Re-export so the API route imports both pieces from one module.
 export { containsForbiddenLanguage };
 
-export const CURRENT_PROMPT_VERSION = 1;
+// PRO-134: bumped to 2 when prompt rules tightened (wider soft-guidance list).
+// Existing v1 EvidenceAnnotation rows regenerate on next expand because the
+// hot-path cache check requires `promptVersion === CURRENT_PROMPT_VERSION`.
+export const CURRENT_PROMPT_VERSION = 2;
 
 export interface BuildEvidenceAnnotationPromptInput {
   construct: string;
@@ -44,8 +48,9 @@ ABSOLUTE PROHIBITIONS (the output is regex-blocked if it contains any of these p
 - "percentile of candidates"
 
 AVOID (use neutral descriptive alternatives):
-- Evaluative vocabulary: "weak", "poor", "deficient", "worrying", "inadequate", "good", "bad"
-- Verdict language: "this is right/wrong", "this shows X is a problem"
+- Evaluative vocabulary: "weak", "poor", "deficient", "worrying", "inadequate", "good", "bad", "excellent", "concerning"
+- Verdict language: "this is right/wrong", "this shows X is a problem", "needs improvement"
+- Use instead: "lower", "developing", "under-leveraged", "less practiced", "characteristic of", "tends to"
 
 REQUIRED STYLE:
 - ONE sentence. Plain English. No markdown, no headers, no bullets.

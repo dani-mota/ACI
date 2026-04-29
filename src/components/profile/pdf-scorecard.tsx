@@ -11,6 +11,8 @@ import {
   type LayerType,
   type ConstructMeta,
 } from "@/lib/constructs";
+import type { AssessmentMode } from "@/generated/prisma/enums";
+import { isEmployeeMode } from "@/lib/assessment/mode-utils";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -60,6 +62,9 @@ export interface PDFScorecardProps {
     status: string;
     primaryRole: { name: string; slug: string };
     assessment: {
+      // PRO-134: assessmentMode threaded so the Document-level guard can
+      // suppress evaluative output if a future caller bypasses the route 403.
+      assessmentMode?: AssessmentMode | null;
       subtestResults: SubtestResult[];
       compositeScores: CompositeScore[];
       predictions: Predictions | null;
@@ -1096,6 +1101,32 @@ function RecommendationsPage({
 export function PDFScorecard({ candidate }: PDFScorecardProps) {
   const candidateName = `${candidate.firstName} ${candidate.lastName}`;
   const roleName = candidate.primaryRole.name;
+
+  // PRO-134: defense-in-depth. The export route 403s on Employee Mode, but if a
+  // future caller bypasses the route guard the document itself refuses to render
+  // verdict / red-flag / cutline content. Renders a single info page instead.
+  if (isEmployeeMode(candidate.assessment)) {
+    return (
+      <Document
+        title={`ACI Scorecard — ${candidateName}`}
+        author="ACI Platform"
+        creator="ACI — Arklight Cognitive Index"
+      >
+        <Page size="A4" style={s.page}>
+          <Header candidateName={candidateName} roleName={roleName} />
+          <View style={[s.card, s.mt12]}>
+            <Text style={s.subTitle}>Not available in Employee Mode</Text>
+            <Text style={s.body}>
+              Candidate-mode scorecards are not generated for Employee Mode
+              assessments. Use the Employee Dossier in the dashboard for
+              developmental insights.
+            </Text>
+          </View>
+          <Footer />
+        </Page>
+      </Document>
+    );
+  }
 
   return (
     <Document

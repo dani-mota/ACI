@@ -7,6 +7,12 @@
  */
 
 import { CONSTRUCTS, LAYER_INFO, type LayerType } from "@/lib/constructs";
+import { containsForbiddenLanguage } from "./evaluative-vocabulary";
+
+// Re-export so existing call sites keep working.
+// Canonical home of FORBIDDEN_PATTERNS / containsForbiddenLanguage is now
+// `evaluative-vocabulary.ts` (PRO-134). New consumers should import from there.
+export { containsForbiddenLanguage };
 
 export interface SubtestScore {
   construct: string;
@@ -30,28 +36,10 @@ interface PromptPair {
   user: string;
 }
 
-// Bumped by PRO-134 when the rules tighten. Mismatched rows regenerate on next view.
-export const CURRENT_PROMPT_VERSION = 1;
-
-/**
- * AC's 8 forbidden phrases verbatim. Wider scrubbing belongs to PRO-134.
- * Known false-positive: "threshold" matches legitimate developmental uses like
- * "low threshold for ambiguity." Acceptable here; PRO-134 will need context-aware handling.
- */
-const FORBIDDEN_PATTERNS: RegExp[] = [
-  /\bred[ -]?flag\b/i,
-  /\bconcern\b/i, // matches "concern" / "concerns" but NOT "concerning" by design
-  /\brisk\b/i,
-  /\bnot[ -]?recommended\b/i,
-  /\bdecline\b/i,
-  /\bcutline\b/i,
-  /\bthreshold\b/i,
-  /\bpercentile\s+of\s+candidates\b/i,
-];
-
-export function containsForbiddenLanguage(text: string): boolean {
-  return FORBIDDEN_PATTERNS.some((re) => re.test(text));
-}
+// PRO-134: bumped to 2 when prompt rules tightened (wider soft-guidance list).
+// Existing v1 rows are regenerated on next view via the WHERE promptVersion < CURRENT
+// guards in the dossier read path and the cognitive-signature API route.
+export const CURRENT_PROMPT_VERSION = 2;
 
 /**
  * Convert raw subtestResults into ranked, friendly-named construct entries.
@@ -92,8 +80,9 @@ ABSOLUTE PROHIBITIONS (these phrases will be regex-blocked, output containing th
 - "percentile of candidates"
 
 AVOID (soft guidance — use neutral descriptive alternatives):
-- Evaluative vocabulary: "weak", "poor", "deficient", "worrying", "inadequate"
-- Use instead: "lower", "developing", "under-leveraged", "less practiced"
+- Evaluative vocabulary: "weak", "poor", "deficient", "worrying", "inadequate", "good", "bad", "excellent", "concerning"
+- Verdict framing: "this is right/wrong", "X is a problem", "needs improvement"
+- Use instead: "lower", "developing", "under-leveraged", "less practiced", "characteristic of", "tends to"
 
 REQUIRED STYLE:
 - 2–4 sentences. Plain English. No markdown, no headers, no bullets.

@@ -29,6 +29,10 @@ import {
 } from "recharts";
 import { CONSTRUCTS, type LayerType } from "@/lib/constructs";
 import { useTheme } from "@/components/theme-provider";
+import {
+  quartileLabel,
+  type OrgConstructDistribution,
+} from "@/lib/assessment/org-distribution";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -42,6 +46,10 @@ export interface ConstructMapEmployeeProps {
   subtestResults: { construct: string; percentile: number; layer: string | null }[];
   /** Phase 1: undefined (no role demand profile data yet). PRO-135 will populate. */
   roleDemandProfile?: RoleDemandProfileEntry[];
+  /** PRO-134: org-wide quartile breakpoints for the developmental "Top quartile
+   * in our company on X" tooltip line. Optional — when omitted or sample size
+   * is < 10, the tooltip falls back to "compared to your colleagues". */
+  orgDistributions?: OrgConstructDistribution[];
 }
 
 type GapDirection = "over" | "under" | "neutral" | "noProfile";
@@ -54,6 +62,9 @@ interface SpokeDatum {
   employeeScore: number;
   demandScore?: number;
   gapDirection: GapDirection;
+  /** PRO-134: pre-computed quartile label for the tooltip. Null when no
+   * orgDistributions prop was passed. */
+  quartileLabel: string | null;
 }
 
 // ─── Brand colors ────────────────────────────────────────────────────────────
@@ -107,6 +118,7 @@ function classifyGap(employeeScore: number, demandScore: number | undefined): Ga
 export function ConstructMapEmployee({
   subtestResults,
   roleDemandProfile,
+  orgDistributions,
 }: ConstructMapEmployeeProps) {
   const { theme } = useTheme();
   const colors = theme === "dark" ? ACI_COLORS_DARK : ACI_COLORS_LIGHT;
@@ -118,10 +130,14 @@ export function ConstructMapEmployee({
     const demandByConstruct = roleDemandProfile
       ? new Map(roleDemandProfile.map((r) => [r.construct, r.demandScore]))
       : null;
+    const distributionByConstruct = orgDistributions
+      ? new Map(orgDistributions.map((d) => [d.construct, d]))
+      : null;
 
     return Object.entries(CONSTRUCTS).map(([code, meta]) => {
       const employeeScore = employeeByConstruct.get(code) ?? 0;
       const demandScore = demandByConstruct?.get(code);
+      const distribution = distributionByConstruct?.get(code);
       return {
         construct: code,
         abbreviation: meta.abbreviation,
@@ -130,9 +146,12 @@ export function ConstructMapEmployee({
         employeeScore,
         demandScore,
         gapDirection: classifyGap(employeeScore, demandScore),
+        quartileLabel: distribution
+          ? quartileLabel(employeeScore, distribution)
+          : null,
       };
     });
-  }, [subtestResults, roleDemandProfile]);
+  }, [subtestResults, roleDemandProfile, orgDistributions]);
 
   // Empty state: no scores at all
   if (subtestResults.length === 0) {
@@ -294,6 +313,12 @@ function CustomTooltip({ active, payload, hasDemand }: CustomTooltipProps) {
           Role Demand
         </p>
       </div>
+      {/* PRO-134: developmental quartile label — replacement for forbidden
+       *  "X percentile of candidates" framing. Renders only when the org has
+       *  enough assessments to produce a meaningful distribution. */}
+      {spoke.quartileLabel && (
+        <p className="mt-1 text-[11px] text-foreground">{spoke.quartileLabel}</p>
+      )}
       {interpretation && (
         <p
           className={`mt-1 text-[10px] font-semibold uppercase tracking-wider ${
