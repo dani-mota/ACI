@@ -25,6 +25,10 @@ export interface FieldAccess {
   notes: boolean;
   pdfExport: boolean;
   bulkActions: boolean;
+  // PRO-135: write access to RoleDemandProfile (create/edit/delete profiles).
+  // Read access uses canAccessMode("employees") instead — resolution is server-side
+  // and the radar overlay is visible to anyone who can view employees.
+  roleProfiles: boolean;
 }
 
 const ACCESS_MAP: Record<AppUserRole, FieldAccess> = {
@@ -47,6 +51,7 @@ const ACCESS_MAP: Record<AppUserRole, FieldAccess> = {
     notes: false,
     pdfExport: false,
     bulkActions: false,
+    roleProfiles: false,
   },
   RECRUITER_COORDINATOR: {
     candidateStatus: true,
@@ -67,6 +72,7 @@ const ACCESS_MAP: Record<AppUserRole, FieldAccess> = {
     notes: true,
     pdfExport: false,
     bulkActions: true,
+    roleProfiles: false,
   },
   RECRUITING_MANAGER: {
     candidateStatus: true,
@@ -87,6 +93,7 @@ const ACCESS_MAP: Record<AppUserRole, FieldAccess> = {
     notes: true,
     pdfExport: true,
     bulkActions: true,
+    roleProfiles: false,
   },
   HIRING_MANAGER: {
     candidateStatus: true,
@@ -107,6 +114,7 @@ const ACCESS_MAP: Record<AppUserRole, FieldAccess> = {
     notes: true,
     pdfExport: true,
     bulkActions: false,
+    roleProfiles: false,
   },
   TA_LEADER: {
     candidateStatus: true,
@@ -127,6 +135,7 @@ const ACCESS_MAP: Record<AppUserRole, FieldAccess> = {
     notes: true,
     pdfExport: true,
     bulkActions: true,
+    roleProfiles: true,
   },
   ADMIN: {
     candidateStatus: true,
@@ -147,6 +156,7 @@ const ACCESS_MAP: Record<AppUserRole, FieldAccess> = {
     notes: true,
     pdfExport: true,
     bulkActions: true,
+    roleProfiles: true,
   },
 };
 
