@@ -7,6 +7,11 @@ import {
   type OrgConstructDistribution,
   quartileLabel,
 } from "@/lib/assessment/org-distribution";
+import {
+  type AuthoringScores,
+  type ResolvedRoleDemand,
+  expandTo100,
+} from "@/lib/assessment/role-demand-resolution";
 
 // Re-export so existing call sites keep importing from `@/lib/data`.
 export { quartileLabel };
@@ -510,4 +515,47 @@ export async function getDemoOrgId(industry?: string | null): Promise<string | n
     where: slug ? { slug, isDemo: true } : { isDemo: true },
   });
   return org?.id ?? null;
+}
+
+// ─── PRO-135: Role Demand Profile resolution ────────────────────────────────
+
+/**
+ * Resolve the active role demand profile for an employee, ready for the radar
+ * overlay. Single public read-path: this is the only function that converts
+ * the stored 1-10 authoring scores into the 0-100 radar scale (see
+ * `expandTo100`). Future radar consumers go through here, not the raw row.
+ *
+ * Case-insensitive `roleFamily` match per Dani — the combobox in PRO-178
+ * protects authoring; CSV imports / HRIS sync don't, so we resolve case-
+ * insensitively at the data layer. Postgres uses the functional partial index
+ * `RoleDemandProfile_orgId_lowerRoleFamily_idx` (created in the PRO-135
+ * migration) to keep this off a sequential scan.
+ *
+ * Multi-match resolution: if the org has multiple profiles for the same
+ * roleFamily, the most recently updated one wins.
+ *
+ * Returns `null` (NOT an empty object) when no profile resolves — the page
+ * passes `resolved?.demands` straight through, which becomes `undefined` and
+ * the component skips the overlay entirely.
+ */
+export async function resolveRoleDemandProfileForEmployee(
+  orgId: string,
+  roleFamily: string | null,
+): Promise<ResolvedRoleDemand | null> {
+  if (!roleFamily) return null;
+  const profile = await prisma.roleDemandProfile.findFirst({
+    where: {
+      orgId,
+      roleFamily: { equals: roleFamily, mode: "insensitive" },
+      isTemplate: false,
+    },
+    orderBy: { updatedAt: "desc" },
+    select: { id: true, updatedAt: true, constructScores: true },
+  });
+  if (!profile) return null;
+  return {
+    profileId: profile.id,
+    updatedAt: profile.updatedAt,
+    demands: expandTo100(profile.constructScores as AuthoringScores),
+  };
 }

@@ -33,18 +33,18 @@ import {
   quartileLabel,
   type OrgConstructDistribution,
 } from "@/lib/assessment/org-distribution";
+// PRO-135: type ownership moved to lib/ so PRO-136+ resolver consumers can
+// import without a `lib → components` dependency. Re-exported below for any
+// existing component-side consumers.
+import type { RoleDemandProfileEntry } from "@/lib/assessment/role-demand-resolution";
+export type { RoleDemandProfileEntry };
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export interface RoleDemandProfileEntry {
-  construct: string;
-  /** 0-100, same scale as subtestResults.percentile */
-  demandScore: number;
-}
-
 export interface ConstructMapEmployeeProps {
   subtestResults: { construct: string; percentile: number; layer: string | null }[];
-  /** Phase 1: undefined (no role demand profile data yet). PRO-135 will populate. */
+  /** Pass `undefined` (NOT `[]`) when no profile resolves — empty arrays would
+   *  render a degenerate collapsed overlay polygon at radius zero. PRO-135. */
   roleDemandProfile?: RoleDemandProfileEntry[];
   /** PRO-134: org-wide quartile breakpoints for the developmental "Top quartile
    * in our company on X" tooltip line. Optional — when omitted or sample size

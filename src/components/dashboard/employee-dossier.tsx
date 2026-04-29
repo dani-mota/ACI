@@ -4,6 +4,7 @@ import { CognitiveSignature } from "./cognitive-signature";
 import { ConstructMapEmployee } from "./construct-map-employee";
 import { EvidenceLayer } from "./evidence-layer";
 import type { EvidenceLayerEntry, OrgConstructDistribution } from "@/lib/data";
+import type { RoleDemandProfileEntry } from "@/lib/assessment/role-demand-resolution";
 
 interface EmployeeDossierProps {
   candidate: {
@@ -24,9 +25,17 @@ interface EmployeeDossierProps {
   };
   initialEvidence: EvidenceLayerEntry[];
   orgDistributions: OrgConstructDistribution[];
+  /** PRO-135: optional radar overlay. `undefined` means no role demand profile
+   *  resolved for this employee's roleFamily — the radar renders a single polygon. */
+  roleDemandProfile?: RoleDemandProfileEntry[];
 }
 
-export function EmployeeDossier({ candidate, initialEvidence, orgDistributions }: EmployeeDossierProps) {
+export function EmployeeDossier({
+  candidate,
+  initialEvidence,
+  orgDistributions,
+  roleDemandProfile,
+}: EmployeeDossierProps) {
   const { firstName, lastName, email, primaryRole, assessment } = candidate;
   const completed = assessment.completedAt
     ? new Date(assessment.completedAt).toLocaleDateString("en-US", {
@@ -83,6 +92,7 @@ export function EmployeeDossier({ candidate, initialEvidence, orgDistributions }
         <ConstructMapEmployee
           subtestResults={assessment.subtestResults}
           orgDistributions={orgDistributions}
+          roleDemandProfile={roleDemandProfile}
         />
       </section>
 
