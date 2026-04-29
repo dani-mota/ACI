@@ -3,6 +3,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { CognitiveSignature } from "./cognitive-signature";
 import { ConstructMapEmployee } from "./construct-map-employee";
 import { EvidenceLayer } from "./evidence-layer";
+import { RoleFitDeltaPanel } from "./role-fit-delta-panel";
 import type { EvidenceLayerEntry, OrgConstructDistribution } from "@/lib/data";
 import type { RoleDemandProfileEntry } from "@/lib/assessment/role-demand-resolution";
 
@@ -92,6 +93,17 @@ export function EmployeeDossier({
         <ConstructMapEmployee
           subtestResults={assessment.subtestResults}
           orgDistributions={orgDistributions}
+          roleDemandProfile={roleDemandProfile}
+        />
+      </section>
+
+      {/* PRO-136: Role Fit Delta — P0 insight, per-construct shape comparison */}
+      <section className="bg-card border border-border p-6">
+        <h2 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-4">
+          Role Fit Delta
+        </h2>
+        <RoleFitDeltaPanel
+          subtestResults={assessment.subtestResults}
           roleDemandProfile={roleDemandProfile}
         />
       </section>
