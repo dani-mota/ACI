@@ -31,6 +31,13 @@ export function RoleBuilderInputClient({ templates }: RoleBuilderInputClientProp
   const [tab, setTab] = useState<Tab>("jd");
   const [isPending, startTransition] = useTransition();
 
+  // Defense-in-depth dedupe by slug. The server-side query is already
+  // `distinct: ["slug"]` — this guards against any future fetch path that
+  // bypasses it, since `key={t.slug}` collides on duplicates.
+  const uniqueTemplates = templates.filter(
+    (t, i, arr) => arr.findIndex((x) => x.slug === t.slug) === i,
+  );
+
   // JD upload state
   const [jdText, setJdText] = useState("");
 
@@ -187,7 +194,7 @@ export function RoleBuilderInputClient({ templates }: RoleBuilderInputClientProp
                 Select ACI Default Role
               </label>
               <div className="grid grid-cols-1 gap-2">
-                {templates.map((t) => (
+                {uniqueTemplates.map((t) => (
                   <button
                     key={t.slug}
                     onClick={() => setSelectedTemplate(t.slug)}
