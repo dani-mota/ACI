@@ -37,9 +37,11 @@ const EMPLOYEE_MODE_SURFACES = [
   "src/components/dashboard/cognitive-signature.tsx",
   "src/components/dashboard/construct-map-employee.tsx",
   "src/components/dashboard/evidence-layer.tsx",
+  "src/components/dashboard/role-fit-delta-panel.tsx",
 
   // Server-side data shaping (text that flows into the UI)
   "src/lib/data.ts",
+  "src/lib/assessment/insights/role-fit-delta.ts",
 
   // Mode-aware shared UI
   "src/components/ui/status-badge.tsx",
