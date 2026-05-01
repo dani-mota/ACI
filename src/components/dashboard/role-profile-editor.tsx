@@ -159,7 +159,7 @@ export function RoleProfileEditor({ mode, initial }: RoleProfileEditorProps) {
               {mode === "create" ? "New Role Demand Profile" : "Edit Role Demand Profile"}
             </h1>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Score how much each construct matters for this role on a 1–10 scale. Skipped sliders count as "not yet scored."
+              Score how much each construct matters for this role on a 1–10 scale. Skipped sliders count as &ldquo;not yet scored.&rdquo;
             </p>
           </div>
           <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
@@ -192,7 +192,7 @@ export function RoleProfileEditor({ mode, initial }: RoleProfileEditorProps) {
                 className="mt-1"
               />
               <p className="text-[10px] text-muted-foreground mt-1">
-                Resolved case-insensitively against employees' role family.
+                Resolved case-insensitively against employees&apos; role family.
               </p>
             </div>
           </div>
