@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { Prisma } from "@/generated/prisma/client";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import prisma from "@/lib/prisma";
 import { withApiHandler } from "@/lib/api-handler";
+
+type InvitationWithOrg = Prisma.TeamInvitationGetPayload<{ include: { org: true } }>;
 
 /**
  * POST /api/onboarding
@@ -13,7 +16,13 @@ import { withApiHandler } from "@/lib/api-handler";
  * a CLI-provisioned user (already has a Prisma User with null supabaseId
  * that needs linking).
  *
- * Body: { firstName: string, lastName: string, roleTitle?: string }
+ * Body: { firstName: string, lastName: string, roleTitle?: string, token?: string }
+ *
+ * `token` is the per-invitation UUID emailed in the invite link. When supplied,
+ * it scopes the lookup to a single invitation, preventing cross-org hijack
+ * (PRO-168). When absent, the route falls back to email-only lookup but
+ * rejects ambiguous cases where multiple pending invitations exist for the
+ * same email — forcing the user to disambiguate via the invitation link.
  */
 export const POST = withApiHandler(
   async (req: NextRequest) => {
@@ -30,6 +39,12 @@ export const POST = withApiHandler(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const body = await req.json();
+    const firstName = String(body.firstName || "").trim();
+    const lastName = String(body.lastName || "").trim();
+    const inviteToken =
+      typeof body.token === "string" && body.token.length > 0 ? body.token : null;
+
     // Check if user already has a Prisma record
     const existingUser = await prisma.user.findUnique({
       where: { supabaseId: supabaseUser.id },
@@ -44,9 +59,14 @@ export const POST = withApiHandler(
       where: { email: supabaseUser.email },
     });
     if (cliUser && !cliUser.supabaseId) {
-      // CLI-provisioned user — still require a valid pending invitation
+      // PRO-168: Scope by cliUser.orgId so an attacker who controls a
+      // different org cannot hijack this CLI user via a newer PENDING invite.
       const cliInvitation = await prisma.teamInvitation.findFirst({
-        where: { email: supabaseUser.email!, status: "PENDING" },
+        where: {
+          email: supabaseUser.email!,
+          orgId: cliUser.orgId,
+          status: "PENDING",
+        },
         orderBy: { createdAt: "desc" },
       });
       if (!cliInvitation) {
@@ -61,11 +81,11 @@ export const POST = withApiHandler(
           { status: 410 }
         );
       }
-
-      // Link the CLI-provisioned user to this Supabase account + mark invitation accepted
-      const body = await req.json();
-      const firstName = String(body.firstName || "").trim();
-      const lastName = String(body.lastName || "").trim();
+      // Defense-in-depth: if a token was supplied, it must match the
+      // invitation we just resolved by orgId.
+      if (inviteToken && inviteToken !== cliInvitation.token) {
+        return NextResponse.json({ error: "No matching invitation found." }, { status: 403 });
+      }
 
       const updateData: Record<string, unknown> = {
         supabaseId: supabaseUser.id,
@@ -89,11 +109,7 @@ export const POST = withApiHandler(
       return NextResponse.json({ success: true, userId: cliUser.id });
     }
 
-    // Parse body
-    const body = await req.json();
-    const firstName = String(body.firstName || "").trim();
-    const lastName = String(body.lastName || "").trim();
-
+    // Standard OAuth / new-user path
     if (!firstName || !lastName) {
       return NextResponse.json(
         { error: "First name and last name are required" },
@@ -105,21 +121,48 @@ export const POST = withApiHandler(
       return NextResponse.json({ error: "Name is too long" }, { status: 400 });
     }
 
-    // Find a pending invitation for this email
-    const invitation = await prisma.teamInvitation.findFirst({
-      where: {
-        email: supabaseUser.email,
-        status: "PENDING",
-      },
-      include: { org: true },
-      orderBy: { createdAt: "desc" },
-    });
+    // PRO-168: prefer token-based lookup; fall back to email but reject when
+    // multiple pending invitations exist (cross-org hijack window).
+    let invitation: InvitationWithOrg | null = null;
 
-    if (!invitation) {
-      return NextResponse.json(
-        { error: "No pending invitation found for this email. Contact your administrator." },
-        { status: 403 }
-      );
+    if (inviteToken) {
+      invitation = await prisma.teamInvitation.findUnique({
+        where: { token: inviteToken },
+        include: { org: true },
+      });
+      if (!invitation || invitation.email !== supabaseUser.email) {
+        return NextResponse.json(
+          { error: "Invalid or expired invitation." },
+          { status: 403 }
+        );
+      }
+      if (invitation.status !== "PENDING") {
+        return NextResponse.json(
+          { error: "Invalid or expired invitation." },
+          { status: 410 }
+        );
+      }
+    } else {
+      const candidates = await prisma.teamInvitation.findMany({
+        where: { email: supabaseUser.email, status: "PENDING" },
+        include: { org: true },
+      });
+      if (candidates.length === 0) {
+        return NextResponse.json(
+          { error: "No pending invitation found for this email. Contact your administrator." },
+          { status: 403 }
+        );
+      }
+      if (candidates.length > 1) {
+        return NextResponse.json(
+          {
+            error:
+              "Multiple pending invitations exist for this email. Please use the link from your invitation email.",
+          },
+          { status: 409 }
+        );
+      }
+      invitation = candidates[0];
     }
 
     // Check if invitation is expired
@@ -134,7 +177,7 @@ export const POST = withApiHandler(
     const result = await prisma.$transaction(async (tx) => {
       // Re-check invitation status (guard against race conditions)
       const inv = await tx.teamInvitation.findUnique({
-        where: { id: invitation.id },
+        where: { id: invitation!.id },
       });
       if (!inv || inv.status !== "PENDING") {
         throw new Error("Invitation is no longer valid");
@@ -145,18 +188,18 @@ export const POST = withApiHandler(
           supabaseId: supabaseUser.id,
           email: supabaseUser.email!,
           name: `${firstName} ${lastName}`,
-          role: invitation.role,
-          orgId: invitation.orgId,
+          role: invitation!.role,
+          orgId: invitation!.orgId,
           isActive: true,
         },
       });
 
       await tx.teamInvitation.update({
-        where: { id: invitation.id },
+        where: { id: invitation!.id },
         data: { status: "ACCEPTED", acceptedAt: new Date() },
       });
 
-      return { userId: user.id, orgSlug: invitation.org.slug };
+      return { userId: user.id, orgSlug: invitation!.org.slug };
     });
 
     return NextResponse.json({ success: true, ...result });
