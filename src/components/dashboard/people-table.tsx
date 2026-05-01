@@ -39,6 +39,19 @@ const STATUS_RANK: Record<string, number> = {
   ACTIVE: 2,
 };
 
+function SortIcon({
+  field,
+  sortField,
+  sortDir,
+}: {
+  field: SortField;
+  sortField: SortField;
+  sortDir: "asc" | "desc";
+}) {
+  if (sortField !== field) return null;
+  return sortDir === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />;
+}
+
 export function PeopleTable({ employees }: PeopleTableProps) {
   const basePath = useBasePath();
   const [search, setSearch] = useState("");
@@ -143,11 +156,6 @@ export function PeopleTable({ employees }: PeopleTableProps) {
     }
   };
 
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) return null;
-    return sortDir === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />;
-  };
-
   const totalEmployees = employees.length;
 
   // Empty state: no employees in org at all
@@ -215,7 +223,7 @@ export function PeopleTable({ employees }: PeopleTableProps) {
             <tr className="border-b border-border bg-muted/40">
               <th className="text-left py-2 px-4 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                 <button onClick={() => handleSort("name")} className="flex items-center gap-1 hover:text-foreground transition-colors">
-                  Name <SortIcon field="name" />
+                  Name <SortIcon field="name" sortField={sortField} sortDir={sortDir} />
                 </button>
               </th>
               <th className="text-left py-2 px-4 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -226,7 +234,7 @@ export function PeopleTable({ employees }: PeopleTableProps) {
               </th>
               <th className="text-left py-2 px-4 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                 <button onClick={() => handleSort("assessmentDate")} className="flex items-center gap-1 hover:text-foreground transition-colors">
-                  Assessment Date <SortIcon field="assessmentDate" />
+                  Assessment Date <SortIcon field="assessmentDate" sortField={sortField} sortDir={sortDir} />
                 </button>
               </th>
               <th className="text-left py-2 px-4 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -237,7 +245,7 @@ export function PeopleTable({ employees }: PeopleTableProps) {
               </th>
               <th className="text-left py-2 px-4 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                 <button onClick={() => handleSort("status")} className="flex items-center gap-1 hover:text-foreground transition-colors">
-                  Status <SortIcon field="status" />
+                  Status <SortIcon field="status" sortField={sortField} sortDir={sortDir} />
                 </button>
               </th>
             </tr>
