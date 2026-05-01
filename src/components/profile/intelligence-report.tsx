@@ -29,6 +29,8 @@ interface IntelligenceReportProps {
 }
 
 export function IntelligenceReport({ subtestResults, roleName, assessmentMode }: IntelligenceReportProps) {
+  const [openPanels, setOpenPanels] = useState<Set<number>>(new Set([0]));
+
   // PRO-134: defensive guard against accidental import into Employee Mode surfaces.
   if (isEmployeeMode({ assessmentMode })) return null;
 
@@ -36,8 +38,6 @@ export function IntelligenceReport({ subtestResults, roleName, assessmentMode }:
     subtestResults.map((r: any) => ({ construct: r.construct, percentile: r.percentile })),
     roleName
   );
-
-  const [openPanels, setOpenPanels] = useState<Set<number>>(new Set([0]));
 
   const toggle = (index: number) => {
     const next = new Set(openPanels);
