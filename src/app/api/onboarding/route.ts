@@ -3,6 +3,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import prisma from "@/lib/prisma";
 import { withApiHandler } from "@/lib/api-handler";
+import { checkRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 
 type InvitationWithOrg = Prisma.TeamInvitationGetPayload<{ include: { org: true } }>;
 
@@ -37,6 +38,22 @@ export const POST = withApiHandler(
 
     if (!supabaseUser || !supabaseUser.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Rate limit: 5 requests per minute per supabase user — Redis-backed (PRO-170)
+    const limit = await checkRateLimitAsync(
+      `onboarding:${supabaseUser.id}`,
+      RATE_LIMITS.onboarding,
+      "onboarding",
+    );
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { error: "Too many requests. Please try again later." },
+        {
+          status: 429,
+          headers: { "Retry-After": String(Math.ceil(limit.retryAfterMs / 1000)) },
+        },
+      );
     }
 
     const body = await req.json();
