@@ -81,6 +81,10 @@ export const POST = withApiHandler(
       where: { email: supabaseUser.email },
     });
     if (cliUser && !cliUser.supabaseId) {
+      // PRO-172: never link a Supabase account to a deactivated CLI user.
+      if (!cliUser.isActive) {
+        return NextResponse.json({ error: "Account is not active" }, { status: 403 });
+      }
       // PRO-168: Scope by cliUser.orgId so an attacker who controls a
       // different org cannot hijack this CLI user via a newer PENDING invite.
       const cliInvitation = await prisma.teamInvitation.findFirst({

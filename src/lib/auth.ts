@@ -75,9 +75,13 @@ export type AuthStatus = "unauthenticated" | "needs_onboarding" | "authenticated
 
 /**
  * Check the full auth status of the current user.
- * - unauthenticated: no Supabase session
- * - needs_onboarding: Supabase session exists but no Prisma User record
+ * - unauthenticated: no Supabase session, OR Prisma user exists but is deactivated
+ * - needs_onboarding: Supabase session exists but no Prisma User record yet
  * - authenticated: Supabase session + active Prisma User
+ *
+ * PRO-172: deactivated users are treated as unauthenticated rather than as
+ * onboarding candidates — routing them to /onboarding contradicts the
+ * administrator's deactivation intent.
  */
 export async function getAuthStatus(): Promise<{ status: AuthStatus }> {
   const supabase = await createSupabaseServerClient();
@@ -94,6 +98,7 @@ export async function getAuthStatus(): Promise<{ status: AuthStatus }> {
   });
 
   if (user && user.isActive) return { status: "authenticated" };
+  if (user && !user.isActive) return { status: "unauthenticated" };
 
   return { status: "needs_onboarding" };
 }
