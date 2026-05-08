@@ -47,7 +47,7 @@ export const GET = withApiHandler(
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (!canAccessMode(session.user.role, "employees")) {
+    if (!canAccessMode(session, "employees")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

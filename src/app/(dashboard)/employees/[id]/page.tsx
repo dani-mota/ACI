@@ -18,8 +18,8 @@ export default async function EmployeeDossierPage({ params }: PageProps) {
   const session = await requireAuth();
 
   // RBAC: same gate as the Employees dashboard tab (PRO-128 MODE_ACCESS).
-  // TODO(PRO-133): expand canAccessMode to include PEOPLE_MANAGER and HR_TALENT_LEADER.
-  if (!canAccessMode(session.user.role, "employees")) {
+  // PRO-133: canAccessMode now takes session and checks both role + employeeRole.
+  if (!canAccessMode(session, "employees")) {
     redirect("/dashboard");
   }
 

@@ -12,8 +12,8 @@ export const GET = withApiHandler(
     }
 
     // Same gate as the Employees dashboard tab (PRO-128 MODE_ACCESS).
-    // TODO(PRO-133): expand to PEOPLE_MANAGER and HR_TALENT_LEADER once those roles land.
-    if (!canAccessMode(session.user.role, "employees")) {
+    // PRO-133: canAccessMode takes session, checks both role + employeeRole.
+    if (!canAccessMode(session, "employees")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

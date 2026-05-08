@@ -11,8 +11,9 @@
  * condition baked into WHERE so a second concurrent request finds count===0 and
  * falls through to the read path. No double Haiku calls.
  *
- * TODO(PRO-133): expand canAccessMode gate to include PEOPLE_MANAGER and
- * HR_TALENT_LEADER once those roles land.
+ * PRO-133: canAccessMode now takes session and checks both role +
+ * employeeRole additively. PEOPLE_MANAGER and HR_TALENT_LEADER access
+ * to this endpoint is governed by canViewAnyEmployee — see commit 3.
  */
 
 import { NextResponse } from "next/server";
@@ -46,7 +47,7 @@ export const POST = withApiHandler(
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (!canAccessMode(session.user.role, "employees")) {
+    if (!canAccessMode(session, "employees")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

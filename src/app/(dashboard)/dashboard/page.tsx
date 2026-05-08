@@ -26,7 +26,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   const orgId = session.user.orgId;
   const params = await searchParams;
 
-  const accessibleModes = getAccessibleModes(session.user.role);
+  const accessibleModes = getAccessibleModes(session);
   const requestedMode = params.mode as DashboardMode | undefined;
 
   if (!requestedMode || !accessibleModes.includes(requestedMode)) {

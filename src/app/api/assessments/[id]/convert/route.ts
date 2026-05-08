@@ -10,7 +10,10 @@ export const POST = withApiHandler(
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (!canConvertCandidate(session.user.role)) {
+    // PRO-133: session-based check covers both Candidate Mode (TA_LEADER /
+    // RECRUITING_MANAGER / ADMIN) and Employee Mode (PEOPLE_MANAGER /
+    // HR_TALENT_LEADER) authorities additively.
+    if (!canConvertCandidate(session)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

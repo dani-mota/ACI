@@ -11,8 +11,9 @@
  * this GET endpoint is here so the client can re-fetch after mutations
  * (e.g., after a per-construct POST returns) without a full page reload.
  *
- * TODO(PRO-133): expand canAccessMode gate to PEOPLE_MANAGER, HR_TALENT_LEADER,
- * and self-service.
+ * PRO-133: canAccessMode now takes session and checks both role +
+ * employeeRole additively. PEOPLE_MANAGER and HR_TALENT_LEADER access
+ * to this endpoint is governed by canViewAnyEmployee — see commit 3.
  */
 
 import { NextResponse } from "next/server";
@@ -29,7 +30,7 @@ export const GET = withApiHandler(
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (!canAccessMode(session.user.role, "employees")) {
+    if (!canAccessMode(session, "employees")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

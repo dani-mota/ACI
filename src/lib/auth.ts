@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import prisma from "@/lib/prisma";
-import type { AppUserRole } from "@/lib/rbac";
+import type { AppUserRole, AppEmployeeUserRole } from "@/lib/rbac";
 
 export interface AppSession {
   user: {
@@ -10,6 +10,12 @@ export interface AppSession {
     email: string;
     name: string;
     role: AppUserRole;
+    /**
+     * PRO-133: optional Employee Mode role assigned alongside Candidate Mode `role`.
+     * Additive — a user may hold both. Populated by `getSession()` from
+     * `User.employeeRole`. Null when the user has no Employee Mode role.
+     */
+    employeeRole: AppEmployeeUserRole | null;
     orgId: string;
   };
 }
@@ -42,6 +48,7 @@ export async function getSession(): Promise<AppSession | null> {
       email: user.email,
       name: user.name,
       role: user.role as AppUserRole,
+      employeeRole: (user.employeeRole as AppEmployeeUserRole | null) ?? null,
       orgId: user.orgId,
     },
   };
