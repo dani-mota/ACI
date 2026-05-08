@@ -83,7 +83,12 @@ export const POST = withApiHandler(
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (!canView(session.user.role, "roleProfiles")) {
+    // PRO-133: HR_TALENT_LEADER (Employee Mode) also gets write access here
+    // alongside the existing TA_LEADER + ADMIN (Candidate Mode) authority.
+    const allowedToWrite =
+      canView(session.user.role, "roleProfiles") ||
+      session.user.employeeRole === "HR_TALENT_LEADER";
+    if (!allowedToWrite) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

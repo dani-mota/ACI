@@ -20,6 +20,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { canAccessMode } from "@/lib/rbac";
+import { canViewAnyEmployee, PR2_PENDING_REASON } from "@/lib/employee-permissions";
 import { withApiHandler } from "@/lib/api-handler";
 import { getEvidenceLayerData } from "@/lib/data";
 import { CURRENT_PROMPT_VERSION } from "@/lib/assessment/prompts/evidence-annotation";
@@ -32,6 +33,12 @@ export const GET = withApiHandler(
     }
     if (!canAccessMode(session, "employees")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    if (!canViewAnyEmployee(session)) {
+      return NextResponse.json(
+        { error: "Forbidden", reason: PR2_PENDING_REASON },
+        { status: 403 },
+      );
     }
 
     const params = await ctx.params;

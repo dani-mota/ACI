@@ -53,13 +53,32 @@ export async function getSession(): Promise<AppSession | null> {
     },
   };
 
-  // Dev-mode role impersonation via cookie
+  // Dev-mode role impersonation via cookies.
+  // PRO-133: __dev_role accepts BOTH Candidate Mode (AppUserRole) and
+  // Employee Mode (AppEmployeeUserRole) values. Setting an Employee Mode
+  // value populates session.user.employeeRole instead of role.
+  // For cross-mode testing (TA_LEADER + HR_TALENT_LEADER simultaneously),
+  // also set __dev_employee_role to specify the Employee Mode slot
+  // independently — that overrides whatever __dev_role set.
   if (process.env.NODE_ENV === "development") {
     const { cookies } = await import("next/headers");
     const cookieStore = await cookies();
+    const rbac = await import("@/lib/rbac");
+    const candidateRoleKeys = Object.keys(rbac.MODE_ACCESS);
+    const employeeRoleKeys = Object.keys(rbac.EMPLOYEE_MODE_ACCESS);
+
     const devRole = cookieStore.get("__dev_role")?.value;
-    if (devRole && Object.keys(await import("@/lib/rbac").then((m) => m.ROLE_LEVEL)).includes(devRole)) {
-      session.user.role = devRole as AppUserRole;
+    if (devRole) {
+      if (candidateRoleKeys.includes(devRole)) {
+        session.user.role = devRole as AppUserRole;
+      } else if (employeeRoleKeys.includes(devRole)) {
+        session.user.employeeRole = devRole as AppEmployeeUserRole;
+      }
+    }
+
+    const devEmployeeRole = cookieStore.get("__dev_employee_role")?.value;
+    if (devEmployeeRole && employeeRoleKeys.includes(devEmployeeRole)) {
+      session.user.employeeRole = devEmployeeRole as AppEmployeeUserRole;
     }
   }
 

@@ -32,6 +32,7 @@ import * as Sentry from "@sentry/nextjs";
 import prisma from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { canAccessMode } from "@/lib/rbac";
+import { canViewAnyEmployee, PR2_PENDING_REASON } from "@/lib/employee-permissions";
 import { withApiHandler } from "@/lib/api-handler";
 import { AI_CONFIG } from "@/lib/assessment/config";
 import { sanitizeAriaOutput } from "@/lib/assessment/sanitize";
@@ -66,6 +67,12 @@ export const POST = withApiHandler(
     }
     if (!canAccessMode(session, "employees")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    if (!canViewAnyEmployee(session)) {
+      return NextResponse.json(
+        { error: "Forbidden", reason: PR2_PENDING_REASON },
+        { status: 403 },
+      );
     }
 
     const params = await ctx.params;
