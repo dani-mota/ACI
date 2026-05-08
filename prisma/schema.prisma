@@ -33,6 +33,12 @@ model User {
   email       String                @unique
   name        String
   role        UserRole
+  // PRO-133: optional Employee Mode role assigned alongside Candidate Mode `role`.
+  // Additive: a user can hold both (e.g., TA_LEADER + HR_TALENT_LEADER for an
+  // org admin who also runs talent development). EMPLOYEE/PEOPLE_MANAGER
+  // self-view + scoping ship in PRO-133 PR#2 (gated on Candidate.userId +
+  // User.managerId additions).
+  employeeRole EmployeeUserRole?
   orgId       String
   org         Organization          @relation(fields: [orgId], references: [id])
   isActive         Boolean               @default(true)
@@ -54,6 +60,16 @@ enum UserRole {
   HIRING_MANAGER
   TA_LEADER
   ADMIN
+}
+
+// PRO-133: Employee Mode roles (additive to UserRole). Two-enum approach
+// chosen over extending UserRole so the type system rejects nonsensical
+// combinations like `role=TA_LEADER + employeeRole=TA_LEADER`.
+enum EmployeeUserRole {
+  EMPLOYEE
+  PEOPLE_MANAGER
+  HR_TALENT_LEADER
+  EXECUTIVE
 }
 
 model TeamInvitation {
@@ -478,6 +494,18 @@ model Note {
   authorId    String
   author      User      @relation(fields: [authorId], references: [id])
   content     String
+  // PRO-133: per-row author-private flag. When true, only the author can
+  // read the note (enforced server-side via `canViewManagerNotes`). When
+  // false (default — backwards compatible with existing notes), public
+  // notes follow `canViewAnyEmployee`.
+  //
+  // PROD-DEPLOY GATE: re-run the Note table audit against production
+  // before this migration runs in prod. If any prod note contains
+  // sensitive content, ship a follow-up migration flipping the default
+  // to true before the column-add migration lands. Don't merge to prod
+  // without that audit. Dev-DB audit 2026-05-04 found 25 rows of benign
+  // TA_LEADER operational text only.
+  isPrivate   Boolean   @default(false)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 }
