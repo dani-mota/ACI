@@ -1,5 +1,8 @@
 -- PRO-133: Employee Mode RBAC — multi-role schema + Note privacy
 --
+-- ⚠️ DO NOT APPLY TO PROD WITHOUT FOLLOWING THE RUNBOOK:
+--    docs/runbooks/pro-133-prod-deploy.md
+--
 -- Three schema changes (atomic, in one migration):
 --   1. CREATE TYPE EmployeeUserRole — 4 Employee Mode role values
 --   2. ALTER TABLE User ADD COLUMN employeeRole — nullable; existing
