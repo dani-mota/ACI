@@ -23,7 +23,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
             {children}
           </main>
           {process.env.NODE_ENV === "development" && (
-            <DevRoleSwitcher actualRole={session.user.role} />
+            <DevRoleSwitcher
+              actualRole={session.user.role}
+              actualEmployeeRole={session.user.employeeRole}
+            />
           )}
         </div>
       </BasePathProvider>
