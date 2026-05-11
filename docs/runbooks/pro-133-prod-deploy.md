@@ -1,14 +1,22 @@
-# PRO-133 PR#1 — Prod-deploy runbook
+# PRO-133 — Prod-deploy runbook (covers PR#1 + PR#2)
 
-Concrete, copy-pasteable procedure for deploying `feat/pro-133-employee-mode-rbac` to production. Manual gates by design — there's no CI automation around this; the deployer is the human checkpoint.
+Concrete, copy-pasteable procedure for deploying the PRO-133 branches to production. Manual gates by design — there's no CI automation around this; the deployer is the human checkpoint.
+
+This runbook covers **both** PR#1 (`feat/pro-133-employee-mode-rbac`) and PR#2 (`feat/pro-133-pr2-employee-scoping`). PR#2 stacks on PR#1, so the deploy sequence applies both migrations in order.
 
 ## When to run
 
-Before `vercel --prod` (or the equivalent release step) for any release that includes the `feat/pro-133-employee-mode-rbac` branch. The branch ships:
+Before `vercel --prod` (or the equivalent release step) for any release that includes either the PR#1 or PR#2 branch. The branches ship:
 
+**PR#1 schema:**
 - New Prisma enum `EmployeeUserRole`
 - New `User.employeeRole` column (nullable)
 - New `Note.isPrivate` column (NOT NULL, default `false`)
+
+**PR#2 schema (additive on top of PR#1):**
+- New `Candidate.userId` column (nullable, unique FK to User)
+- New `User.managerId` column (nullable self-FK)
+- Indexes: `Candidate_userId_key` (unique), `User_managerId_idx`
 
 …and code that reads/writes those columns. Migrating the schema before deploying the code is non-negotiable — old code is forward-compatible with the new columns (additive only), but new code crashes against the old schema.
 
@@ -74,13 +82,31 @@ If the drift situation looks unfamiliar or you're unsure which migrations are sa
 
 ---
 
-## Step 3 — Apply the new migration
+## Step 3 — Apply the new migration(s)
 
 ```bash
 DATABASE_URL=$PROD_URL npx prisma migrate deploy
 ```
 
-Should apply only `20260507_pro_133_employee_mode_rbac` (Step 2 confirmed everything else is tracked). Output should report 1 migration applied.
+Should apply (in order) any pending PRO-133 migrations:
+- `20260507_pro_133_employee_mode_rbac` (PR#1)
+- `20260511_pro_133_pr2_employee_linkages` (PR#2, if deploying with PR#2 in the release)
+
+Step 2 confirmed everything else is tracked. Output should report the expected number of migrations applied (1 if only PR#1, 2 if both).
+
+**If you hit shadow-DB drift errors and have to fall back to `db execute`:**
+
+```bash
+# Apply PR#1 first
+DATABASE_URL=$PROD_URL npx prisma db execute --file prisma/migrations/20260507_pro_133_employee_mode_rbac/migration.sql
+DATABASE_URL=$PROD_URL npx prisma migrate resolve --applied 20260507_pro_133_employee_mode_rbac
+
+# Then PR#2 (only if deploying it in this release)
+DATABASE_URL=$PROD_URL npx prisma db execute --file prisma/migrations/20260511_pro_133_pr2_employee_linkages/migration.sql
+DATABASE_URL=$PROD_URL npx prisma migrate resolve --applied 20260511_pro_133_pr2_employee_linkages
+```
+
+PRO-181 tracks the recurring shadow-DB drift root cause. Once that ticket ships, this fallback is no longer needed.
 
 ---
 
@@ -95,6 +121,10 @@ This is a **hard gate**. The script exits non-zero on any discrepancy. Expected 
 ```
 ✅ PRO-133 schema verification PASSED
 ```
+
+The script covers **both PR#1 and PR#2** columns/enums:
+- PR#1: `EmployeeUserRole` enum, `User.employeeRole`, `Note.isPrivate`
+- PR#2: `Candidate.userId` + unique index, `User.managerId` + index
 
 If verification fails: STOP. Investigate the migration state. Do NOT proceed to Step 5. The app code expects these columns to exist; deploying it against a half-migrated schema is unsafe.
 

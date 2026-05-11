@@ -98,7 +98,61 @@ async function main() {
     }
   }
 
-  // 4. Sanity: existing Note rows can be queried with the new column
+  // 4. Candidate.userId column (PR#2)
+  const candidateUserIdCols = await prisma.$queryRaw<
+    Array<{ column_name: string; data_type: string; is_nullable: string }>
+  >`
+    SELECT column_name, data_type, is_nullable
+    FROM information_schema.columns
+    WHERE table_name = 'Candidate' AND column_name = 'userId'
+  `;
+  console.log(`Candidate.userId: ${JSON.stringify(candidateUserIdCols)}`);
+  if (candidateUserIdCols.length === 0) {
+    failures.push("Candidate.userId column does not exist (PR#2 migration not applied)");
+  } else {
+    const col = candidateUserIdCols[0];
+    if (col.is_nullable !== "YES") {
+      failures.push(`Candidate.userId expected nullable, got is_nullable=${col.is_nullable}`);
+    }
+  }
+
+  // 5. Candidate.userId unique index (PR#2)
+  const candidateUserIdIdx = await prisma.$queryRaw<Array<{ indexname: string }>>`
+    SELECT indexname FROM pg_indexes
+    WHERE tablename = 'Candidate' AND indexname = 'Candidate_userId_key'
+  `;
+  if (candidateUserIdIdx.length === 0) {
+    failures.push("Candidate_userId_key unique index does not exist (PR#2)");
+  }
+
+  // 6. User.managerId column (PR#2)
+  const userManagerIdCols = await prisma.$queryRaw<
+    Array<{ column_name: string; data_type: string; is_nullable: string }>
+  >`
+    SELECT column_name, data_type, is_nullable
+    FROM information_schema.columns
+    WHERE table_name = 'User' AND column_name = 'managerId'
+  `;
+  console.log(`User.managerId: ${JSON.stringify(userManagerIdCols)}`);
+  if (userManagerIdCols.length === 0) {
+    failures.push("User.managerId column does not exist (PR#2 migration not applied)");
+  } else {
+    const col = userManagerIdCols[0];
+    if (col.is_nullable !== "YES") {
+      failures.push(`User.managerId expected nullable, got is_nullable=${col.is_nullable}`);
+    }
+  }
+
+  // 7. User.managerId index (PR#2) — required for PEOPLE_MANAGER list query performance
+  const userManagerIdIdx = await prisma.$queryRaw<Array<{ indexname: string }>>`
+    SELECT indexname FROM pg_indexes
+    WHERE tablename = 'User' AND indexname = 'User_managerId_idx'
+  `;
+  if (userManagerIdIdx.length === 0) {
+    failures.push("User_managerId_idx index does not exist (PR#2; required for PEOPLE_MANAGER perf)");
+  }
+
+  // 8. Sanity: existing Note rows can be queried with the new column
   const sampleNoteCount = await prisma.note.count();
   console.log(`\nTotal Note rows readable post-migration: ${sampleNoteCount}`);
 
