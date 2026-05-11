@@ -21,7 +21,6 @@ import {
   isSelfView,
   isDirectReport,
   stripBlindSpotForVisibility,
-  PR2_PENDING_REASON,
   type EmployeeDataLayer,
   type EmployeeAccessContext,
 } from "@/lib/employee-permissions";
@@ -131,7 +130,7 @@ describe("Cross-mode collision — TA_LEADER + HR_TALENT_LEADER", () => {
 // canViewAnyEmployee per role
 // ────────────────────────────────────────────────────────────────
 
-describe("canViewAnyEmployee — PR#1 stub posture", () => {
+describe("canViewAnyEmployee — org-wide capability gate", () => {
   it.each(["TA_LEADER", "ADMIN", "HIRING_MANAGER"] as const)(
     "%s (Candidate Mode admin) → true",
     (role) => {
@@ -151,8 +150,12 @@ describe("canViewAnyEmployee — PR#1 stub posture", () => {
   });
 
   it.each(["EMPLOYEE", "PEOPLE_MANAGER", "EXECUTIVE"] as const)(
-    "%s (Employee Mode without HR) → false (PR#2 wires self-view + scoping)",
+    "%s (Employee Mode without HR) → false (their access is per-target, not org-wide)",
     (employeeRole) => {
+      // EMPLOYEE / PEOPLE_MANAGER access is gated per-target via
+      // getEmployeeDataVisibility's self-view / direct-report checks —
+      // not via this org-wide capability gate. EXECUTIVE has aggregated
+      // org-insights access only, not individual-employee read.
       // Use EXTERNAL_COLLABORATOR as the Candidate Mode slot to ensure the
       // false answer comes from the Employee Mode role, not from a permissive
       // Candidate Mode role.
@@ -193,7 +196,7 @@ describe("canEnterEmployeeMode — mode-level gate", () => {
 // Visibility matrix
 // ────────────────────────────────────────────────────────────────
 
-describe("getEmployeeDataVisibility — PR#1 matrix", () => {
+describe("getEmployeeDataVisibility — PR#2 matrix", () => {
   it.each(ALL_DATA_LAYERS)(
     "HR_TALENT_LEADER gets non-'none' visibility on %s",
     (layer) => {
@@ -215,15 +218,122 @@ describe("getEmployeeDataVisibility — PR#1 matrix", () => {
     expect(getEmployeeDataVisibility("developmentPlan", ctx)).toBe("none");
   });
 
-  it.each(["EMPLOYEE", "PEOPLE_MANAGER"] as const)(
-    "%s returns 'none' on every layer in PR#1 stub posture",
-    (employeeRole) => {
-      const session = userWithRoles({ role: "EXTERNAL_COLLABORATOR", employeeRole });
-      for (const layer of ALL_DATA_LAYERS) {
-        expect(getEmployeeDataVisibility(layer, { session })).toBe("none");
-      }
-    },
-  );
+  // ── EMPLOYEE: gated by isSelfView ──
+  describe("EMPLOYEE — self-view applicability gate", () => {
+    it.each(ALL_DATA_LAYERS)(
+      "EMPLOYEE viewing own dossier (userId matches) → matrix value on %s",
+      (layer) => {
+        const session = userWithRoles({
+          id: "user_emp_self",
+          role: "EXTERNAL_COLLABORATOR",
+          employeeRole: "EMPLOYEE",
+        });
+        const ctx: EmployeeAccessContext = {
+          session,
+          targetEmployeeUserId: "user_emp_self",
+        };
+        // Every layer's EMPLOYEE cell is "full" in the PR#2 matrix.
+        expect(getEmployeeDataVisibility(layer, ctx)).toBe("full");
+      },
+    );
+
+    it.each(ALL_DATA_LAYERS)(
+      "EMPLOYEE viewing someone else's dossier (userId mismatch) → 'none' on %s",
+      (layer) => {
+        const session = userWithRoles({
+          id: "user_emp_self",
+          role: "EXTERNAL_COLLABORATOR",
+          employeeRole: "EMPLOYEE",
+        });
+        const ctx: EmployeeAccessContext = {
+          session,
+          targetEmployeeUserId: "user_some_other_employee",
+        };
+        expect(getEmployeeDataVisibility(layer, ctx)).toBe("none");
+      },
+    );
+
+    it("EMPLOYEE on a Candidate with no User linkage (targetEmployeeUserId=null) → 'none'", () => {
+      const session = userWithRoles({
+        id: "user_emp_self",
+        role: "EXTERNAL_COLLABORATOR",
+        employeeRole: "EMPLOYEE",
+      });
+      const ctx: EmployeeAccessContext = { session, targetEmployeeUserId: null };
+      expect(getEmployeeDataVisibility("constructs", ctx)).toBe("none");
+    });
+  });
+
+  // ── PEOPLE_MANAGER: gated by isDirectReport ──
+  describe("PEOPLE_MANAGER — direct-report applicability gate", () => {
+    it("PEOPLE_MANAGER viewing direct report → matrix value (e.g. 'full' on constructs)", () => {
+      const session = userWithRoles({
+        id: "user_mgr_001",
+        role: "EXTERNAL_COLLABORATOR",
+        employeeRole: "PEOPLE_MANAGER",
+      });
+      const ctx: EmployeeAccessContext = {
+        session,
+        targetEmployeeManagerId: "user_mgr_001",
+      };
+      expect(getEmployeeDataVisibility("constructs", ctx)).toBe("full");
+    });
+
+    it("PEOPLE_MANAGER on blindSpots for direct report → 'summary' (raw confidence stripped)", () => {
+      const session = userWithRoles({
+        id: "user_mgr_001",
+        role: "EXTERNAL_COLLABORATOR",
+        employeeRole: "PEOPLE_MANAGER",
+      });
+      const ctx: EmployeeAccessContext = {
+        session,
+        targetEmployeeManagerId: "user_mgr_001",
+      };
+      expect(getEmployeeDataVisibility("blindSpots", ctx)).toBe("summary");
+    });
+
+    it.each(ALL_DATA_LAYERS)(
+      "PEOPLE_MANAGER viewing non-direct-report (managerId mismatch) → 'none' on %s",
+      (layer) => {
+        const session = userWithRoles({
+          id: "user_mgr_001",
+          role: "EXTERNAL_COLLABORATOR",
+          employeeRole: "PEOPLE_MANAGER",
+        });
+        const ctx: EmployeeAccessContext = {
+          session,
+          targetEmployeeManagerId: "user_some_other_manager",
+        };
+        expect(getEmployeeDataVisibility(layer, ctx)).toBe("none");
+      },
+    );
+
+    it("PEOPLE_MANAGER on Candidate with no User linkage (no managerId path) → 'none'", () => {
+      const session = userWithRoles({
+        id: "user_mgr_001",
+        role: "EXTERNAL_COLLABORATOR",
+        employeeRole: "PEOPLE_MANAGER",
+      });
+      const ctx: EmployeeAccessContext = { session, targetEmployeeManagerId: null };
+      expect(getEmployeeDataVisibility("constructs", ctx)).toBe("none");
+    });
+  });
+
+  it("Cross-mode TA_LEADER + EMPLOYEE on non-self dossier → still 'full' via HR-equivalent path", () => {
+    // Candidate-Mode admins bypass the self-view gate — their HR-equivalent
+    // visibility applies regardless of target. Confirms the admin path is
+    // independent of the new self-view check.
+    const session = userWithRoles({
+      id: "user_ta_emp",
+      role: "TA_LEADER",
+      employeeRole: "EMPLOYEE",
+    });
+    const ctx: EmployeeAccessContext = {
+      session,
+      targetEmployeeUserId: "user_some_other_employee",
+    };
+    expect(getEmployeeDataVisibility("constructs", ctx)).toBe("full");
+  });
 });
 
 // ────────────────────────────────────────────────────────────────
@@ -296,20 +406,62 @@ describe("canViewOrgInsights — EXECUTIVE positive (Dani guardrail #3)", () => 
 });
 
 // ────────────────────────────────────────────────────────────────
-// PR#1 stubs (PR#2 will replace)
+// isSelfView / isDirectReport — PR#2 real implementations
 // ────────────────────────────────────────────────────────────────
 
-describe("PR#1 stubs", () => {
-  it("isSelfView is false in PR#1 (PR#2 wires Candidate.userId)", () => {
-    expect(isSelfView({ session: employeeOnlyUser("EMPLOYEE") })).toBe(false);
+describe("isSelfView — Candidate.userId match", () => {
+  it("returns true when targetEmployeeUserId matches session user id", () => {
+    const session = employeeOnlyUser("EMPLOYEE", { id: "user_emp_xyz" });
+    expect(isSelfView({ session, targetEmployeeUserId: "user_emp_xyz" })).toBe(true);
   });
 
-  it("isDirectReport is false in PR#1 (PR#2 wires User.managerId)", () => {
-    expect(isDirectReport({ session: employeeOnlyUser("PEOPLE_MANAGER") })).toBe(false);
+  it("returns false when targetEmployeeUserId differs from session user id", () => {
+    const session = employeeOnlyUser("EMPLOYEE", { id: "user_emp_xyz" });
+    expect(isSelfView({ session, targetEmployeeUserId: "user_some_other" })).toBe(false);
   });
 
-  it("PR2_PENDING_REASON is grep-able for PR#2 to find stub-403 sites", () => {
-    expect(PR2_PENDING_REASON).toBe("PRO-133-PR2-pending");
+  it("returns false when targetEmployeeUserId is null (Candidate not linked to a User)", () => {
+    const session = employeeOnlyUser("EMPLOYEE");
+    expect(isSelfView({ session, targetEmployeeUserId: null })).toBe(false);
+  });
+
+  it("returns false when targetEmployeeUserId is undefined (route didn't populate context)", () => {
+    // Defensive: a route that forgets to populate the target context must
+    // NOT accidentally grant self-view via undefined-undefined equality.
+    const session = employeeOnlyUser("EMPLOYEE");
+    expect(isSelfView({ session })).toBe(false);
+  });
+});
+
+describe("isDirectReport — User.managerId match", () => {
+  it("returns true when targetEmployeeManagerId matches session user id", () => {
+    const session = employeeOnlyUser("PEOPLE_MANAGER", { id: "user_mgr_001" });
+    expect(isDirectReport({ session, targetEmployeeManagerId: "user_mgr_001" })).toBe(true);
+  });
+
+  it("returns false when targetEmployeeManagerId differs from session user id", () => {
+    const session = employeeOnlyUser("PEOPLE_MANAGER", { id: "user_mgr_001" });
+    expect(
+      isDirectReport({ session, targetEmployeeManagerId: "user_some_other_manager" }),
+    ).toBe(false);
+  });
+
+  it("returns false when targetEmployeeManagerId is null (employee has no manager)", () => {
+    const session = employeeOnlyUser("PEOPLE_MANAGER");
+    expect(isDirectReport({ session, targetEmployeeManagerId: null })).toBe(false);
+  });
+
+  it("returns false when targetEmployeeManagerId is undefined", () => {
+    const session = employeeOnlyUser("PEOPLE_MANAGER");
+    expect(isDirectReport({ session })).toBe(false);
+  });
+
+  it("single-hop only: a manager's manager is NOT a direct report", () => {
+    // Confirms no transitive walk. If user A manages B, and B manages C,
+    // A does NOT see C via isDirectReport (C.managerId = B, not A).
+    const sessionA = employeeOnlyUser("PEOPLE_MANAGER", { id: "user_A" });
+    // C's managerId is "user_B" — not user_A.
+    expect(isDirectReport({ session: sessionA, targetEmployeeManagerId: "user_B" })).toBe(false);
   });
 });
 
