@@ -57,7 +57,12 @@ export interface EmployeeAccessContext {
   targetEmployeeManagerId?: string | null;
 }
 
-/** Stub-403 marker for routes EMPLOYEE/PEOPLE_MANAGER hit pre-PR#2. */
+/**
+ * @deprecated PR#2 commit 5 removes this constant. It existed as a
+ * stub-403 discriminator for PR#1; no routes reference it anymore.
+ * Kept exported here only so tests still compile during the commit
+ * boundary between commit 3 (route changes) and commit 5 (test inversion).
+ */
 export const PR2_PENDING_REASON = "PRO-133-PR2-pending";
 
 // ─── Visibility matrix (Spec Section 6) ────────────────────────

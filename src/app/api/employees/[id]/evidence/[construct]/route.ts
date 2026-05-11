@@ -21,10 +21,10 @@
  * an in-process lock that survives across server instances.
  *
  * PRO-133: canAccessMode now takes session and checks both role +
- * employeeRole additively. Self-service (EMPLOYEE viewing own evidence)
- * is gated separately via canViewAnyEmployee in commit 3 — currently
- * stubs to 403 with `reason: "PRO-133-PR2-pending"` until PR#2 wires
- * Candidate.userId for the self-view linkage.
+ * employeeRole additively. Per-target capability is gated via
+ * `getEmployeeDataVisibility("evidence", ctx)` after fetching the
+ * Candidate's user linkage — EMPLOYEE generates only on their own
+ * dossier, PEOPLE_MANAGER only for direct reports.
  */
 
 import { NextResponse } from "next/server";
@@ -32,7 +32,7 @@ import * as Sentry from "@sentry/nextjs";
 import prisma from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { canAccessMode } from "@/lib/rbac";
-import { canViewAnyEmployee, PR2_PENDING_REASON } from "@/lib/employee-permissions";
+import { getEmployeeDataVisibility } from "@/lib/employee-permissions";
 import { withApiHandler } from "@/lib/api-handler";
 import { AI_CONFIG } from "@/lib/assessment/config";
 import { sanitizeAriaOutput } from "@/lib/assessment/sanitize";
@@ -68,12 +68,6 @@ export const POST = withApiHandler(
     if (!canAccessMode(session, "employees")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-    if (!canViewAnyEmployee(session)) {
-      return NextResponse.json(
-        { error: "Forbidden", reason: PR2_PENDING_REASON },
-        { status: 403 },
-      );
-    }
 
     const params = await ctx.params;
     const candidateId = params.id;
@@ -89,6 +83,7 @@ export const POST = withApiHandler(
 
     // Load assessment scoped to user's org with assessmentMode = EMPLOYEE.
     // 404 (not 403) for cross-org or non-EMPLOYEE — don't leak existence.
+    // PR#2: also fetch user-linkage context for the visibility gate.
     const candidate = await prisma.candidate.findFirst({
       where: {
         id: candidateId,
@@ -98,12 +93,24 @@ export const POST = withApiHandler(
       select: {
         firstName: true,
         assessment: { select: { id: true } },
+        userId: true,
+        user: { select: { managerId: true } },
       },
     });
     if (!candidate || !candidate.assessment) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
     const assessmentId = candidate.assessment.id;
+
+    // PR#2 per-target capability gate.
+    const visibility = getEmployeeDataVisibility("evidence", {
+      session,
+      targetEmployeeUserId: candidate.userId,
+      targetEmployeeManagerId: candidate.user?.managerId ?? null,
+    });
+    if (visibility === "none") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     // Find the top qualifying candidate message for this construct.
     // AIEvaluationRun.messageId is a loose string FK (no Prisma relation),

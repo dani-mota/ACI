@@ -357,6 +357,10 @@ export async function getEmployeeDossierData(employeeId: string, orgId: string) 
           subtestResults: { select: { construct: true, percentile: true, layer: true } },
         },
       },
+      // PRO-133 PR#2: linkage context needed for the per-target visibility
+      // gate on the dossier page. Cheap join — `userId` is on Candidate
+      // directly; `user.managerId` is a single FK hop.
+      user: { select: { id: true, managerId: true } },
     },
   });
   if (!candidate) return null;

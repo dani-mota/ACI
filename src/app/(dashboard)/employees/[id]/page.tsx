@@ -7,7 +7,7 @@ import {
   resolveRoleDemandProfileForEmployee,
 } from "@/lib/data";
 import { canAccessMode } from "@/lib/rbac";
-import { canViewAnyEmployee } from "@/lib/employee-permissions";
+import { getEmployeeDataVisibility } from "@/lib/employee-permissions";
 import { EmployeeDossier } from "@/components/dashboard/employee-dossier";
 import { CURRENT_PROMPT_VERSION as EVIDENCE_PROMPT_VERSION } from "@/lib/assessment/prompts/evidence-annotation";
 
@@ -22,18 +22,27 @@ export default async function EmployeeDossierPage({ params }: PageProps) {
   if (!canAccessMode(session, "employees")) {
     redirect("/dashboard");
   }
-  // PRO-133 capability gate. EMPLOYEE / PEOPLE_MANAGER stub-403 (redirect
-  // for a server component) until PR#2 wires Candidate.userId +
-  // User.managerId. EXECUTIVE has no individual-dossier access at all.
-  if (!canViewAnyEmployee(session)) {
-    redirect("/dashboard");
-  }
 
   const { id } = await params;
   const data = await getEmployeeDossierData(id, session.user.orgId);
 
   // 404 (not 403) for cross-org or non-EMPLOYEE — don't leak existence
   if (!data) notFound();
+
+  // PRO-133 PR#2 per-target capability gate. EMPLOYEE sees only their own
+  // dossier (Candidate.userId === session.user.id); PEOPLE_MANAGER sees
+  // only direct reports (User.managerId === session.user.id); HR/TA/ADMIN
+  // see org-wide. "none" = redirect to dashboard.
+  // Known UX gap (follow-up): a friendly "you don't have access" page
+  // would be clearer than a silent redirect. Out of scope for PR#2.
+  const visibility = getEmployeeDataVisibility("constructs", {
+    session,
+    targetEmployeeUserId: data.user?.id ?? null,
+    targetEmployeeManagerId: data.user?.managerId ?? null,
+  });
+  if (visibility === "none") {
+    redirect("/dashboard");
+  }
 
   // PRO-132: per-construct evidence map.
   // PRO-134: org-wide quartile breakpoints for the developmental "Top quartile
