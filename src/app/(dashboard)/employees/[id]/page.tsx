@@ -7,6 +7,7 @@ import {
   resolveRoleDemandProfileForEmployee,
 } from "@/lib/data";
 import { canAccessMode } from "@/lib/rbac";
+import { canViewAnyEmployee } from "@/lib/employee-permissions";
 import { EmployeeDossier } from "@/components/dashboard/employee-dossier";
 import { CURRENT_PROMPT_VERSION as EVIDENCE_PROMPT_VERSION } from "@/lib/assessment/prompts/evidence-annotation";
 
@@ -17,9 +18,14 @@ interface PageProps {
 export default async function EmployeeDossierPage({ params }: PageProps) {
   const session = await requireAuth();
 
-  // RBAC: same gate as the Employees dashboard tab (PRO-128 MODE_ACCESS).
-  // TODO(PRO-133): expand canAccessMode to include PEOPLE_MANAGER and HR_TALENT_LEADER.
-  if (!canAccessMode(session.user.role, "employees")) {
+  // PRO-133 mode-level gate.
+  if (!canAccessMode(session, "employees")) {
+    redirect("/dashboard");
+  }
+  // PRO-133 capability gate. EMPLOYEE / PEOPLE_MANAGER stub-403 (redirect
+  // for a server component) until PR#2 wires Candidate.userId +
+  // User.managerId. EXECUTIVE has no individual-dossier access at all.
+  if (!canViewAnyEmployee(session)) {
     redirect("/dashboard");
   }
 

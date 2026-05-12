@@ -11,14 +11,16 @@
  * this GET endpoint is here so the client can re-fetch after mutations
  * (e.g., after a per-construct POST returns) without a full page reload.
  *
- * TODO(PRO-133): expand canAccessMode gate to PEOPLE_MANAGER, HR_TALENT_LEADER,
- * and self-service.
+ * PRO-133: canAccessMode now takes session and checks both role +
+ * employeeRole additively. PEOPLE_MANAGER and HR_TALENT_LEADER access
+ * to this endpoint is governed by canViewAnyEmployee — see commit 3.
  */
 
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { canAccessMode } from "@/lib/rbac";
+import { canViewAnyEmployee, PR2_PENDING_REASON } from "@/lib/employee-permissions";
 import { withApiHandler } from "@/lib/api-handler";
 import { getEvidenceLayerData } from "@/lib/data";
 import { CURRENT_PROMPT_VERSION } from "@/lib/assessment/prompts/evidence-annotation";
@@ -29,8 +31,14 @@ export const GET = withApiHandler(
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (!canAccessMode(session.user.role, "employees")) {
+    if (!canAccessMode(session, "employees")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    if (!canViewAnyEmployee(session)) {
+      return NextResponse.json(
+        { error: "Forbidden", reason: PR2_PENDING_REASON },
+        { status: 403 },
+      );
     }
 
     const params = await ctx.params;

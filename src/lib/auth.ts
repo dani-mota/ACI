@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import prisma from "@/lib/prisma";
-import type { AppUserRole } from "@/lib/rbac";
+import type { AppUserRole, AppEmployeeUserRole } from "@/lib/rbac";
 
 export interface AppSession {
   user: {
@@ -10,6 +10,12 @@ export interface AppSession {
     email: string;
     name: string;
     role: AppUserRole;
+    /**
+     * PRO-133: optional Employee Mode role assigned alongside Candidate Mode `role`.
+     * Additive — a user may hold both. Populated by `getSession()` from
+     * `User.employeeRole`. Null when the user has no Employee Mode role.
+     */
+    employeeRole: AppEmployeeUserRole | null;
     orgId: string;
   };
 }
@@ -42,17 +48,37 @@ export async function getSession(): Promise<AppSession | null> {
       email: user.email,
       name: user.name,
       role: user.role as AppUserRole,
+      employeeRole: (user.employeeRole as AppEmployeeUserRole | null) ?? null,
       orgId: user.orgId,
     },
   };
 
-  // Dev-mode role impersonation via cookie
+  // Dev-mode role impersonation via cookies.
+  // PRO-133: __dev_role accepts BOTH Candidate Mode (AppUserRole) and
+  // Employee Mode (AppEmployeeUserRole) values. Setting an Employee Mode
+  // value populates session.user.employeeRole instead of role.
+  // For cross-mode testing (TA_LEADER + HR_TALENT_LEADER simultaneously),
+  // also set __dev_employee_role to specify the Employee Mode slot
+  // independently — that overrides whatever __dev_role set.
   if (process.env.NODE_ENV === "development") {
     const { cookies } = await import("next/headers");
     const cookieStore = await cookies();
+    const rbac = await import("@/lib/rbac");
+    const candidateRoleKeys = Object.keys(rbac.MODE_ACCESS);
+    const employeeRoleKeys = Object.keys(rbac.EMPLOYEE_MODE_ACCESS);
+
     const devRole = cookieStore.get("__dev_role")?.value;
-    if (devRole && Object.keys(await import("@/lib/rbac").then((m) => m.ROLE_LEVEL)).includes(devRole)) {
-      session.user.role = devRole as AppUserRole;
+    if (devRole) {
+      if (candidateRoleKeys.includes(devRole)) {
+        session.user.role = devRole as AppUserRole;
+      } else if (employeeRoleKeys.includes(devRole)) {
+        session.user.employeeRole = devRole as AppEmployeeUserRole;
+      }
+    }
+
+    const devEmployeeRole = cookieStore.get("__dev_employee_role")?.value;
+    if (devEmployeeRole && employeeRoleKeys.includes(devEmployeeRole)) {
+      session.user.employeeRole = devEmployeeRole as AppEmployeeUserRole;
     }
   }
 

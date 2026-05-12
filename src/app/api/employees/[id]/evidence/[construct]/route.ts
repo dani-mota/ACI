@@ -20,8 +20,11 @@
  * integrity (one row); two API calls are paid. Pennies/year. Not worth
  * an in-process lock that survives across server instances.
  *
- * TODO(PRO-133): expand canAccessMode gate to PEOPLE_MANAGER, HR_TALENT_LEADER,
- * and the self-service path (employee viewing their own evidence).
+ * PRO-133: canAccessMode now takes session and checks both role +
+ * employeeRole additively. Self-service (EMPLOYEE viewing own evidence)
+ * is gated separately via canViewAnyEmployee in commit 3 — currently
+ * stubs to 403 with `reason: "PRO-133-PR2-pending"` until PR#2 wires
+ * Candidate.userId for the self-view linkage.
  */
 
 import { NextResponse } from "next/server";
@@ -29,6 +32,7 @@ import * as Sentry from "@sentry/nextjs";
 import prisma from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { canAccessMode } from "@/lib/rbac";
+import { canViewAnyEmployee, PR2_PENDING_REASON } from "@/lib/employee-permissions";
 import { withApiHandler } from "@/lib/api-handler";
 import { AI_CONFIG } from "@/lib/assessment/config";
 import { sanitizeAriaOutput } from "@/lib/assessment/sanitize";
@@ -61,8 +65,14 @@ export const POST = withApiHandler(
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (!canAccessMode(session.user.role, "employees")) {
+    if (!canAccessMode(session, "employees")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    if (!canViewAnyEmployee(session)) {
+      return NextResponse.json(
+        { error: "Forbidden", reason: PR2_PENDING_REASON },
+        { status: 403 },
+      );
     }
 
     const params = await ctx.params;
