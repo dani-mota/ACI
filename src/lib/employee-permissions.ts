@@ -44,7 +44,8 @@ export type EmployeeDataLayer =
   | "developmentPlan"
   | "evidence"
   | "cognitiveSignature"
-  | "roleFitRadar";
+  | "roleFitRadar"
+  | "trajectoryReadiness";
 
 export type Visibility = "full" | "summary" | "aggregated" | "none";
 
@@ -105,6 +106,16 @@ const VISIBILITY_MATRIX: Record<EmployeeDataLayer, Record<AppEmployeeUserRole, V
     EXECUTIVE: "aggregated",
   },
   roleFitRadar: {
+    EMPLOYEE: "full",
+    PEOPLE_MANAGER: "full",
+    HR_TALENT_LEADER: "full",
+    EXECUTIVE: "aggregated",
+  },
+  // PRO-138: AC says "not EXECUTIVE" — "aggregated" picked over "none"
+  // for forward-compat with PRO-145's eventual aggregated-executive view.
+  // Functionally equivalent today (no individual panel renders for
+  // EXECUTIVE; the page-level render gate checks for "full").
+  trajectoryReadiness: {
     EMPLOYEE: "full",
     PEOPLE_MANAGER: "full",
     HR_TALENT_LEADER: "full",
