@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import { Lock, Unlock, RotateCcw, Info } from "lucide-react";
 import { CONSTRUCTS, LAYER_INFO, type LayerType } from "@/lib/constructs";
+import { CONSTRUCT_BENCHMARKS } from "@/lib/role-builder/construct-benchmarks";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -315,25 +316,36 @@ export function WeightVisualizer({ weights, recommendations, onChange, evidence,
 
                     {/* Value + PRO-89 PR#1 confidence badge (when provided).
                         Tooltip on the badge gives the H/M/L meaning since the
-                        single letter isn't self-explanatory. */}
-                    <div className="flex items-center justify-end gap-1.5">
-                      <span className="text-[11px] font-mono font-semibold" style={{ color: isLocked ? "var(--muted-foreground)" : layerInfo.color }}>
-                        {value}%
-                      </span>
-                      {confidence && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Badge
-                              variant={CONFIDENCE_BADGE_VARIANT[confidence]}
-                              className="text-[9px] px-1 py-0 h-4 leading-none cursor-help"
-                            >
-                              {CONFIDENCE_LETTER[confidence]}
-                            </Badge>
-                          </TooltipTrigger>
-                          <TooltipContent side="left" className="text-xs">
-                            {CONFIDENCE_LABEL[confidence]}
-                          </TooltipContent>
-                        </Tooltip>
+                        single letter isn't self-explanatory.
+                        PRO-89 PR#2 sub-task 4: benchmark band below the value
+                        gives the recruiter an external frame of reference for
+                        what "normal" weights look like across ACI's five
+                        validated role templates. */}
+                    <div className="flex flex-col items-end gap-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] font-mono font-semibold" style={{ color: isLocked ? "var(--muted-foreground)" : layerInfo.color }}>
+                          {value}%
+                        </span>
+                        {confidence && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Badge
+                                variant={CONFIDENCE_BADGE_VARIANT[confidence]}
+                                className="text-[9px] px-1 py-0 h-4 leading-none cursor-help"
+                              >
+                                {CONFIDENCE_LETTER[confidence]}
+                              </Badge>
+                            </TooltipTrigger>
+                            <TooltipContent side="left" className="text-xs">
+                              {CONFIDENCE_LABEL[confidence]}
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                      </div>
+                      {CONSTRUCT_BENCHMARKS[constructId] && (
+                        <span className="text-[9px] text-muted-foreground font-mono leading-none">
+                          「{CONSTRUCT_BENCHMARKS[constructId].low}–{CONSTRUCT_BENCHMARKS[constructId].high}%」
+                        </span>
                       )}
                     </div>
 
