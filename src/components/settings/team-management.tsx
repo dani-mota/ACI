@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { UserPlus, MoreHorizontal, RefreshCw, UserX, UserCheck, Shield, ExternalLink } from "lucide-react";
+import { UserPlus, MoreHorizontal, RefreshCw, UserX, UserCheck, Shield, ExternalLink, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -37,6 +37,8 @@ import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { getRoleLabel, getAssignableRoles } from "@/lib/rbac";
 import type { AppUserRole } from "@/lib/rbac";
+import { EditManagerModal } from "@/components/team/edit-manager-modal";
+import { BulkReassignModal } from "@/components/team/bulk-reassign-modal";
 
 interface TeamMember {
   id: string;
@@ -45,6 +47,8 @@ interface TeamMember {
   role: AppUserRole;
   isActive: boolean;
   createdAt: string;
+  // PRO-184: optional; populated by GET /api/team since this PR.
+  managerId?: string | null;
 }
 
 interface PendingInvite {
@@ -89,6 +93,16 @@ export function TeamManagement({
     userName: string;
     newRole?: AppUserRole;
   } | null>(null);
+  // PRO-184: per-user edit-manager modal target. null = closed.
+  const [editManagerTarget, setEditManagerTarget] = useState<{
+    id: string;
+    name: string;
+    currentManagerId: string | null;
+  } | null>(null);
+  // PRO-184: multi-select state for bulk reassignment. A Set keeps
+  // membership checks O(1) regardless of selection size.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkReassignOpen, setBulkReassignOpen] = useState(false);
 
   const assignableRoles = getAssignableRoles(currentUser.role);
 
@@ -148,6 +162,19 @@ export function TeamManagement({
     }
   };
 
+  // PRO-184: multi-select toggle. Excludes self (can't reassign your
+  // own manager via this page) and ADMIN rows (guard mirrors API).
+  const toggleSelected = (memberId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(memberId)) next.delete(memberId);
+      else next.add(memberId);
+      return next;
+    });
+  };
+
+  const selectedMembers = members.filter((m) => selectedIds.has(m.id));
+
   return (
     <TooltipProvider>
       <div className="px-6 py-8 space-y-8">
@@ -167,13 +194,28 @@ export function TeamManagement({
 
         {/* Team Members Table */}
         <div>
-          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">
-            Team Members ({members.length})
-          </h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+              Team Members ({members.length})
+            </h2>
+            {/* PRO-184: bulk-reassign action toolbar. Visible when 2+ rows are selected. */}
+            {selectedIds.size >= 2 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setBulkReassignOpen(true)}
+                className="gap-1.5 text-xs"
+              >
+                <Users className="w-3.5 h-3.5" />
+                Reassign {selectedIds.size} reports to…
+              </Button>
+            )}
+          </div>
           <div className="border border-border rounded-none overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-[40px]" />
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Role</TableHead>
@@ -185,21 +227,37 @@ export function TeamManagement({
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                       Loading...
                     </TableCell>
                   </TableRow>
                 ) : members.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                       No team members yet.
                     </TableCell>
                   </TableRow>
                 ) : (
                   members.map((member) => {
                     const isSelf = member.id === currentUser.id;
+                    // PRO-184: only non-self, non-ADMIN active rows are
+                    // selectable for bulk reassignment — mirrors the API
+                    // guards so the user can't queue a request that would
+                    // 403 server-side.
+                    const isSelectable = !isSelf && member.role !== "ADMIN" && member.isActive;
+                    const isSelected = selectedIds.has(member.id);
                     return (
                       <TableRow key={member.id} className={!member.isActive ? "opacity-50" : ""}>
+                        <TableCell>
+                          {isSelectable ? (
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleSelected(member.id)}
+                              aria-label={`Select ${member.name} for bulk reassignment`}
+                            />
+                          ) : null}
+                        </TableCell>
                         <TableCell className="font-medium">
                           {member.name}
                           {isSelf && (
@@ -290,6 +348,22 @@ export function TeamManagement({
                                       Change to {getRoleLabel(r)}
                                     </DropdownMenuItem>
                                   ))}
+                                {/* PRO-184: edit-manager entry. ADMINs are
+                                    excluded (API guard mirrors). */}
+                                {member.role !== "ADMIN" && (
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      setEditManagerTarget({
+                                        id: member.id,
+                                        name: member.name,
+                                        currentManagerId: member.managerId ?? null,
+                                      })
+                                    }
+                                  >
+                                    <Users className="w-4 h-4 mr-2" />
+                                    Edit manager
+                                  </DropdownMenuItem>
+                                )}
                                 {member.isActive ? (
                                   <DropdownMenuItem
                                     className="text-destructive"
@@ -419,6 +493,30 @@ export function TeamManagement({
           onClose={() => setInviteOpen(false)}
           assignableRoles={assignableRoles}
           onSuccess={fetchTeam}
+        />
+
+        {/* PRO-184: Edit-manager modal */}
+        <EditManagerModal
+          open={!!editManagerTarget}
+          onClose={() => setEditManagerTarget(null)}
+          target={editManagerTarget}
+          members={members}
+          onSaved={fetchTeam}
+        />
+
+        {/* PRO-184: Bulk-reassign modal */}
+        <BulkReassignModal
+          open={bulkReassignOpen}
+          onClose={() => setBulkReassignOpen(false)}
+          selectedUsers={selectedMembers}
+          members={members}
+          onSaved={() => {
+            // Bulk path refetches and clears multi-selection; per the plan
+            // (Risk #4), this is the correct pattern for bulk vs the
+            // optimistic in-place update used by single-user changes.
+            setSelectedIds(new Set());
+            fetchTeam();
+          }}
         />
 
         {/* Confirm Action Dialog */}
