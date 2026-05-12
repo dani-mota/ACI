@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback, useState } from "react";
 import { LAYER_INFO } from "@/lib/constructs";
 
 export interface CutlineValues {
@@ -38,14 +39,27 @@ const DIMENSIONS = [
 ];
 
 export function CutlineControls({ cutlines, recommendations, onChange }: CutlineControlsProps) {
-  const handleChange = (key: keyof CutlineValues, value: number) => {
-    onChange({ ...cutlines, [key]: value });
-  };
+  // PRO-89 PR#1: defer commit until slider release, mirroring PRO-88's
+  // pattern on WeightVisualizer. Without this, dragging fires onChange
+  // per pixel, which breaks PRO-89's undo (which snapshots before each
+  // onChange) — Undo would only revert the last pixel of the drag
+  // rather than the entire gesture. Same fix shape as PRO-88: local
+  // draft state holds the in-flight value, commit on release.
+  const [draft, setDraft] = useState<{ key: keyof CutlineValues; value: number } | null>(null);
+
+  const commitDraft = useCallback(() => {
+    if (draft) {
+      onChange({ ...cutlines, [draft.key]: draft.value });
+      setDraft(null);
+    }
+  }, [draft, cutlines, onChange]);
 
   return (
     <div className="space-y-5">
       {DIMENSIONS.map(({ key, label, sublabel, color }) => {
-        const value = cutlines[key] ?? 50;
+        const committedValue = cutlines[key] ?? 50;
+        // Render the in-flight draft while this row's slider is being dragged.
+        const value = draft?.key === key ? draft.value : committedValue;
         const rec = recommendations[key] ?? 50;
         const diff = value - rec;
 
@@ -108,7 +122,15 @@ export function CutlineControls({ cutlines, recommendations, onChange }: Cutline
                 max={90}
                 step={1}
                 value={value}
-                onChange={(e) => handleChange(key, Number(e.target.value))}
+                // PRO-89 PR#1: stage draft on change (no parent notification)
+                onChange={(e) => setDraft({ key, value: Number(e.target.value) })}
+                // Commit on every input-mode release: pointer, touch, keyboard
+                onPointerUp={commitDraft}
+                onTouchEnd={commitDraft}
+                onKeyUp={commitDraft}
+                // Defensive: if focus leaves mid-drag, commit so the move
+                // isn't lost.
+                onBlur={commitDraft}
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
               />
             </div>

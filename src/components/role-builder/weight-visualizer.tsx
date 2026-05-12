@@ -1,9 +1,16 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { Lock, Unlock, RotateCcw } from "lucide-react";
+import { Lock, Unlock, RotateCcw, Info } from "lucide-react";
 import { CONSTRUCTS, LAYER_INFO, type LayerType } from "@/lib/constructs";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const LAYER_ORDER: LayerType[] = ["COGNITIVE_CORE", "TECHNICAL_APTITUDE", "BEHAVIORAL_INTEGRITY"];
 const CONSTRUCTS_BY_LAYER: Record<LayerType, string[]> = {
@@ -12,13 +19,45 @@ const CONSTRUCTS_BY_LAYER: Record<LayerType, string[]> = {
   BEHAVIORAL_INTEGRITY: ["PROCEDURAL_RELIABILITY", "ETHICAL_JUDGMENT"],
 };
 
+// PRO-89 PR#1: per-construct confidence H/M/L → Badge variant mapping.
+// HIGH→green, MEDIUM→amber, LOW→red-muted. The Badge primitive's existing
+// variants align with PRO-89 AC color spec. "LOW=red" is AC-prescribed —
+// flagged for Dani's review in the PR description (`aci-red-muted` here
+// is slightly softer than pure aci-red, naturally reducing alarm framing).
+type ConfidenceLevel = "HIGH" | "MEDIUM" | "LOW";
+const CONFIDENCE_BADGE_VARIANT: Record<ConfidenceLevel, "recommended" | "review" | "doNotAdvance"> = {
+  HIGH: "recommended",
+  MEDIUM: "review",
+  LOW: "doNotAdvance",
+};
+const CONFIDENCE_LETTER: Record<ConfidenceLevel, string> = {
+  HIGH: "H",
+  MEDIUM: "M",
+  LOW: "L",
+};
+const CONFIDENCE_LABEL: Record<ConfidenceLevel, string> = {
+  HIGH: "High confidence",
+  MEDIUM: "Medium confidence",
+  LOW: "Low confidence",
+};
+
 export interface WeightVisualizerProps {
   weights: Record<string, number>; // constructId → 0–100
   recommendations: Record<string, number>; // ACI-generated baseline
   onChange: (weights: Record<string, number>) => void;
+  // PRO-89 PR#1: per-construct AI rationale string. Lives in
+  // `GeneratedWeights.weightEvidence` (pipeline.ts:48). When provided,
+  // the construct row label area renders an info icon + tooltip with
+  // the rationale. Optional — graceful degradation when undefined or
+  // missing for a specific construct.
+  evidence?: Record<string, string>;
+  // PRO-89 PR#1: per-construct AI confidence rating. Lives in
+  // `GeneratedWeights.confidenceScores` (pipeline.ts:47). When provided,
+  // an H/M/L colored badge renders next to the % value.
+  confidenceScores?: Record<string, ConfidenceLevel>;
 }
 
-export function WeightVisualizer({ weights, recommendations, onChange }: WeightVisualizerProps) {
+export function WeightVisualizer({ weights, recommendations, onChange, evidence, confidenceScores }: WeightVisualizerProps) {
   const [locked, setLocked] = useState<Set<string>>(new Set());
   // PRO-88: defer rebalance until the slider drag/keyboard input commits.
   // Native <input type="range"> fires onChange continuously, so a +5 drag
@@ -129,6 +168,11 @@ export function WeightVisualizer({ weights, recommendations, onChange }: WeightV
   const allLocked = locked.size >= Object.keys(weights).length - 1;
 
   return (
+    // PRO-89 PR#1: Tooltip primitives need a provider wrapping the tree.
+    // App layout doesn't have a global TooltipProvider; scope it here so
+    // the construct-row evidence tooltips work without touching layout.tsx.
+    // delayDuration=200 matches the AC's ≤200ms appearance target.
+    <TooltipProvider delayDuration={200}>
     <div className="space-y-1">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
@@ -183,12 +227,34 @@ export function WeightVisualizer({ weights, recommendations, onChange }: WeightV
                 const rec = recommendations[constructId] ?? 0;
                 const isLocked = locked.has(constructId);
                 const diff = value - rec;
+                // PRO-89 PR#1: per-construct evidence + confidence (optional).
+                const evidenceText = evidence?.[constructId];
+                const confidence = confidenceScores?.[constructId];
 
                 return (
-                  <div key={constructId} className="grid grid-cols-[140px_1fr_44px_24px] items-center gap-2">
-                    {/* Label */}
+                  // PRO-89 PR#1: value column widened (44→72px) to fit the
+                  // H/M/L confidence badge inline with the % value.
+                  <div key={constructId} className="grid grid-cols-[140px_1fr_72px_24px] items-center gap-2">
+                    {/* Label — wrapped in Tooltip when evidence is provided.
+                        Trigger scoped to the name span only (not the whole
+                        row) so the slider area can be hovered/dragged
+                        without firing the tooltip. */}
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[11px] text-foreground">{meta.name}</span>
+                      {evidenceText ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="text-[11px] text-foreground inline-flex items-center gap-1 cursor-help">
+                              {meta.name}
+                              <Info className="w-3 h-3 text-muted-foreground" />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="right" className="max-w-xs text-xs">
+                            {evidenceText}
+                          </TooltipContent>
+                        </Tooltip>
+                      ) : (
+                        <span className="text-[11px] text-foreground">{meta.name}</span>
+                      )}
                       {diff !== 0 && (
                         <span
                           className={`text-[9px] font-mono ${diff > 0 ? "text-aci-green" : "text-aci-red"}`}
@@ -247,10 +313,29 @@ export function WeightVisualizer({ weights, recommendations, onChange }: WeightV
                       />
                     </div>
 
-                    {/* Value */}
-                    <span className="text-[11px] font-mono text-right font-semibold" style={{ color: isLocked ? "var(--muted-foreground)" : layerInfo.color }}>
-                      {value}%
-                    </span>
+                    {/* Value + PRO-89 PR#1 confidence badge (when provided).
+                        Tooltip on the badge gives the H/M/L meaning since the
+                        single letter isn't self-explanatory. */}
+                    <div className="flex items-center justify-end gap-1.5">
+                      <span className="text-[11px] font-mono font-semibold" style={{ color: isLocked ? "var(--muted-foreground)" : layerInfo.color }}>
+                        {value}%
+                      </span>
+                      {confidence && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Badge
+                              variant={CONFIDENCE_BADGE_VARIANT[confidence]}
+                              className="text-[9px] px-1 py-0 h-4 leading-none cursor-help"
+                            >
+                              {CONFIDENCE_LETTER[confidence]}
+                            </Badge>
+                          </TooltipTrigger>
+                          <TooltipContent side="left" className="text-xs">
+                            {CONFIDENCE_LABEL[confidence]}
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
 
                     {/* Lock */}
                     <button
@@ -268,5 +353,6 @@ export function WeightVisualizer({ weights, recommendations, onChange }: WeightV
         );
       })}
     </div>
+    </TooltipProvider>
   );
 }
