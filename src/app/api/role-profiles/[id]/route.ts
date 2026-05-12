@@ -14,6 +14,7 @@ import { getSession } from "@/lib/auth";
 import { canAccessMode, canView } from "@/lib/rbac";
 import { withApiHandler } from "@/lib/api-handler";
 import { CONSTRUCTS } from "@/lib/constructs";
+import { batchInvalidateByRoleFamily } from "@/lib/assessment/insights/employee-insights-persistence";
 
 interface UpdateBody {
   name?: unknown;
@@ -121,6 +122,12 @@ export const PUT = withApiHandler(
         constructScores: validated.scores,
       },
     });
+
+    // PRO-137: invalidate cached under-leverage scores for every employee
+    // in this (orgId, roleFamily). Lazy recompute fires on next dossier
+    // read. People Table sort uses stale scores until then — documented
+    // sort-accuracy trade-off; mitigation via refresh cron is out of scope.
+    await batchInvalidateByRoleFamily(session.user.orgId, body.roleFamily.trim());
 
     return NextResponse.json({ ok: true });
   },

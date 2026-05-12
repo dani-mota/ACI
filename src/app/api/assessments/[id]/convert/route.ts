@@ -3,6 +3,9 @@ import prisma from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { canConvertCandidate } from "@/lib/rbac";
 import { withApiHandler } from "@/lib/api-handler";
+import { resolveRoleDemandProfileForEmployee } from "@/lib/data";
+import { computeRoleFitDelta } from "@/lib/assessment/insights/role-fit-delta";
+import { computeUnderLeverageScore } from "@/lib/assessment/insights/under-leverage";
 
 export const POST = withApiHandler(
   async (req, ctx) => {
@@ -108,6 +111,47 @@ export const POST = withApiHandler(
         });
         linkedUserId = linkedUser.id;
       }
+
+      // PRO-137: compute under-leverage inline at conversion. The freshly-
+      // set roleFamily makes this the first point where the role-demand
+      // profile is resolvable for this assessment. Uses tx for read-your-
+      // writes consistency on the assessmentId we just flipped to EMPLOYEE
+      // mode. The role-demand profile resolution itself reads from a
+      // separate table that the txn doesn't mutate, so the global prisma
+      // client is safe to call here.
+      const resolved = await resolveRoleDemandProfileForEmployee(
+        session.user.orgId,
+        roleFamily,
+      );
+      const subtestResults = await tx.subtestResult.findMany({
+        where: { assessmentId },
+        select: { construct: true, percentile: true },
+      });
+      const deltas = resolved
+        ? computeRoleFitDelta(subtestResults, resolved.demands)
+        : [];
+      const underLeverageScore = resolved
+        ? computeUnderLeverageScore(deltas)
+        : null;
+
+      await tx.employeeInsights.upsert({
+        where: { assessmentId },
+        create: {
+          assessmentId,
+          underLeverageScore,
+          orgId: session.user.orgId,
+          roleFamily,
+          profileId: resolved?.profileId ?? null,
+          profileUpdatedAt: resolved?.updatedAt ?? null,
+        },
+        update: {
+          underLeverageScore,
+          orgId: session.user.orgId,
+          roleFamily,
+          profileId: resolved?.profileId ?? null,
+          profileUpdatedAt: resolved?.updatedAt ?? null,
+        },
+      });
 
       // Soft-archive evaluative outputs. updateMany is no-op-safe when zero rows match.
       await tx.redFlag.updateMany({

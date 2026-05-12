@@ -340,6 +340,10 @@ model Assessment {
   aiEvaluationRuns  AIEvaluationRun[]
   // PRO-132: per-construct evidence annotations (lazy-generated on dossier expand)
   evidenceAnnotations EvidenceAnnotation[]
+  // PRO-137: derived employee insights (under-leverage score + future siblings).
+  // Optional 1:1 — only present once the row has been touched by conversion,
+  // profile save, or a dossier read (lazy population).
+  insights        EmployeeInsights?
   // Cost tracking
   scoringCostUsd    Float?
   scoringTokensIn   Int?
@@ -801,6 +805,49 @@ model EvidenceAnnotation {
 
   @@unique([assessmentId, construct])
   @@index([assessmentId])
+}
+
+// ──────────────────────────────────────────────
+// EMPLOYEE INSIGHTS (PRO-137 → PRO-139)
+// ──────────────────────────────────────────────
+// Per-employee derived scores. Sibling Int? columns get added by PRO-138
+// (Trajectory Readiness) and PRO-139 (Fit Panels). Single row per assessment
+// so multiple insights co-locate without each ticket adding its own table.
+//
+// orgId + roleFamily are denormalized from Assessment.candidate.orgId and
+// Assessment.roleFamily — the duplication avoids a 3-table JOIN inside the
+// batch-invalidation UPDATE that PRO-137 runs on role-demand profile save.
+// (Prisma can't compose multi-table UPDATEs cleanly; Postgres can't index
+// across tables.)
+//
+// profileId + profileUpdatedAt are the staleness signal: PRO-135's
+// ResolvedRoleDemand carries the same pair, so lazy-on-read checks
+// equality and recomputes if mismatched. Set to NULL on profile save to
+// force the next dossier read to recompute.
+
+model EmployeeInsights {
+  id                  String     @id @default(cuid())
+  assessmentId        String     @unique
+  assessment          Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  // PRO-137: under-leverage score (0-100). Null when no resolvable
+  // role-demand profile, or insufficient SubtestResult data.
+  underLeverageScore  Int?
+
+  // Denormalized for batch invalidation. See header comment.
+  orgId               String
+  roleFamily          String?
+
+  // Staleness signal (compared against ResolvedRoleDemand on dossier read).
+  // NULL after profile save = forces lazy recompute on next read.
+  profileId           String?
+  profileUpdatedAt    DateTime?
+
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  @@index([orgId, roleFamily])             // batch invalidation hot path
+  @@index([orgId, underLeverageScore])     // list sort hot path
 }
 
 // ──────────────────────────────────────────────
