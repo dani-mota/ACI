@@ -145,4 +145,18 @@ describe("GET /api/employees — gate behavior", () => {
     const call = vi.mocked(prisma.candidate.findMany).mock.calls.at(-1)?.[0];
     expect(call?.where).not.toHaveProperty("userId");
   });
+
+  // PRO-137: list response includes EmployeeInsights.underLeverageScore.
+  it("includes assessment.insights.underLeverageScore in the findMany include shape", async () => {
+    vi.mocked(getSession).mockResolvedValue(candidateOnlyUser("TA_LEADER"));
+    const res = await invokeRoute(GET);
+    expect(res.status).toBe(200);
+    const call = vi.mocked(prisma.candidate.findMany).mock.calls.at(-1)?.[0];
+    // The include path is assessment.select.insights.select.underLeverageScore.
+    // Walk the structure with optional chaining; missing path = test fails.
+    const assessmentSelect = (call?.include as Record<string, unknown>)?.assessment;
+    const select = (assessmentSelect as Record<string, unknown>)?.select;
+    const insights = (select as Record<string, unknown>)?.insights;
+    expect(insights).toMatchObject({ select: { underLeverageScore: true } });
+  });
 });

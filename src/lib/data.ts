@@ -314,6 +314,9 @@ export async function getEmployeesData(
           department: true,
           roleFamily: true,
           employeeStatus: true,
+          // PRO-137: under-leverage cached score for the People Table chip.
+          // Single LEFT JOIN via @unique back-relation — no N+1.
+          insights: { select: { underLeverageScore: true } },
         },
       },
     },
@@ -374,6 +377,16 @@ export async function getEmployeeDossierData(employeeId: string, orgId: string) 
           // triggers regeneration on mount (skeleton, never v1 evaluative text).
           cognitiveSignaturePromptVersion: true,
           subtestResults: { select: { construct: true, percentile: true, layer: true } },
+          // PRO-137: under-leverage cached score + staleness signal. Page
+          // component does the lazy-on-read comparison against the resolved
+          // demand profile and recomputes if mismatched.
+          insights: {
+            select: {
+              underLeverageScore: true,
+              profileId: true,
+              profileUpdatedAt: true,
+            },
+          },
         },
       },
       // PRO-133 PR#2: linkage context needed for the per-target visibility
