@@ -10,9 +10,12 @@ export default async function NewRolePage() {
   if (!session) redirect("/login");
   if (!["TA_LEADER", "ADMIN"].includes(session.user.role)) redirect("/roles");
 
-  // Fetch only system default templates for the Clone tab
+  // `distinct: ["slug"]` guards against duplicate-slug rows that a re-run
+  // dev seed can leave behind — without it, the client's `key={t.slug}`
+  // would collide and React would silently drop renders.
   const templates = await prisma.role.findMany({
     where: { isCustom: false },
+    distinct: ["slug"],
     select: { id: true, slug: true, name: true, description: true },
     orderBy: { name: "asc" },
   });
