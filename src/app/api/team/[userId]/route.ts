@@ -16,7 +16,17 @@ export const PATCH = withApiHandler(
 
     const { userId } = await ctx.params;
     const body = await req.json();
-    const { role, active } = body as { role?: string; active?: boolean };
+    // PRO-184: extends existing role/active PATCH with optional managerId.
+    // `managerId === undefined` means "not in body, don't change";
+    // `managerId === null` means "explicitly unassign manager"; a string
+    // means "set to this user". Three-state distinction is load-bearing —
+    // conflating undefined and null would null the manager on any PATCH
+    // that didn't include it.
+    const { role, active, managerId } = body as {
+      role?: string;
+      active?: boolean;
+      managerId?: string | null;
+    };
 
     // Find the target user
     const targetUser = await prisma.user.findUnique({ where: { id: userId } });
@@ -131,6 +141,57 @@ export const PATCH = withApiHandler(
       }
     }
 
+    // PRO-184: managerId change. Has its own guards — see the existing
+    // guards above (self-mod, ADMIN target, ROLE_LEVEL hierarchy) which
+    // already apply to any team-management mutation. The additive guards
+    // here cover managerId-specific failure modes.
+    let oldManagerId: string | null = null;
+    if (managerId !== undefined) {
+      oldManagerId = targetUser.managerId;
+
+      if (managerId === null) {
+        // Explicit unassign — valid, no further validation needed.
+        updates.managerId = null;
+        logActions.push("MANAGER_CHANGED");
+      } else if (typeof managerId === "string" && managerId.length > 0) {
+        if (managerId === targetUser.id) {
+          return NextResponse.json(
+            { error: "A user cannot be their own manager" },
+            { status: 400 }
+          );
+        }
+        const proposedManager = await prisma.user.findUnique({
+          where: { id: managerId },
+          select: { id: true, orgId: true, isActive: true, role: true },
+        });
+        if (!proposedManager || proposedManager.orgId !== session.user.orgId) {
+          return NextResponse.json(
+            { error: "Proposed manager not found in this organization" },
+            { status: 400 }
+          );
+        }
+        if (!proposedManager.isActive) {
+          return NextResponse.json(
+            { error: "Proposed manager is inactive" },
+            { status: 400 }
+          );
+        }
+        if (proposedManager.role === "EXTERNAL_COLLABORATOR") {
+          return NextResponse.json(
+            { error: "External collaborators cannot be assigned as managers" },
+            { status: 400 }
+          );
+        }
+        updates.managerId = managerId;
+        logActions.push("MANAGER_CHANGED");
+      } else {
+        return NextResponse.json(
+          { error: "Invalid managerId value" },
+          { status: 400 }
+        );
+      }
+    }
+
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: "No changes specified" }, { status: 400 });
     }
@@ -143,13 +204,26 @@ export const PATCH = withApiHandler(
 
     // Log the action(s)
     for (const action of logActions) {
+      // PRO-184: MANAGER_CHANGED carries before/after managerId + null
+      // bulkOperationId to distinguish from bulk operations (which set
+      // a non-null bulkOperationId in their own audit rows).
+      const metadata =
+        action === "MANAGER_CHANGED"
+          ? {
+              targetEmail: targetUser.email,
+              orgId: session.user.orgId,
+              oldManagerId,
+              newManagerId: (updates.managerId as string | null | undefined) ?? null,
+              bulkOperationId: null,
+            }
+          : { targetEmail: targetUser.email, orgId: session.user.orgId };
       await prisma.activityLog.create({
         data: {
           entityType: "User",
           entityId: userId,
           action,
           actorId: session.user.id,
-          metadata: { targetEmail: targetUser.email, orgId: session.user.orgId },
+          metadata,
         },
       });
     }

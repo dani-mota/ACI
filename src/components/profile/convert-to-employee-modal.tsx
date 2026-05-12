@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { TaxonomyCombobox } from "./taxonomy-combobox";
+import { ManagerSelect } from "@/components/team/manager-select";
 
 interface TeamMember {
   id: string;
@@ -180,20 +181,13 @@ export function ConvertToEmployeeModal({
             <label htmlFor="managerId" className="text-xs font-medium text-foreground">
               Manager <span className="text-muted-foreground">(optional)</span>
             </label>
-            <select
+            <ManagerSelect
               id="managerId"
               value={managerId}
-              onChange={(e) => setManagerId(e.target.value)}
+              onChange={setManagerId}
+              members={members}
               disabled={submitting || !teamLoaded || !matchedByEmail}
-              className="w-full h-8 px-2 text-xs bg-background border border-border rounded-sm disabled:opacity-50"
-            >
-              <option value="">— No manager assigned —</option>
-              {members.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name} ({m.email})
-                </option>
-              ))}
-            </select>
+            />
           </div>
 
           {/* PRO-133 PR#2: User-match indicator. Surfaces lazy email-match

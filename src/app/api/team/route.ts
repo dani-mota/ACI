@@ -34,6 +34,9 @@ export const GET = withApiHandler(
           role: true,
           isActive: true,
           createdAt: true,
+          // PRO-184: managerId needed by the team-management UI to
+          // default the edit-manager modal to the current value.
+          managerId: true,
         },
         orderBy: { createdAt: "asc" },
       }),
