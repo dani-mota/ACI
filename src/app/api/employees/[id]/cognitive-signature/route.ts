@@ -12,8 +12,10 @@
  * falls through to the read path. No double Haiku calls.
  *
  * PRO-133: canAccessMode now takes session and checks both role +
- * employeeRole additively. PEOPLE_MANAGER and HR_TALENT_LEADER access
- * to this endpoint is governed by canViewAnyEmployee — see commit 3.
+ * employeeRole additively. Per-target capability is gated via
+ * `getEmployeeDataVisibility("cognitiveSignature", ctx)` after fetching
+ * the Candidate's user linkage — EMPLOYEE generates only on their own
+ * dossier, PEOPLE_MANAGER only for direct reports.
  */
 
 import { NextResponse } from "next/server";
@@ -21,7 +23,7 @@ import * as Sentry from "@sentry/nextjs";
 import prisma from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { canAccessMode } from "@/lib/rbac";
-import { canViewAnyEmployee, PR2_PENDING_REASON } from "@/lib/employee-permissions";
+import { getEmployeeDataVisibility } from "@/lib/employee-permissions";
 import { withApiHandler } from "@/lib/api-handler";
 import { AI_CONFIG } from "@/lib/assessment/config";
 import { sanitizeAriaOutput } from "@/lib/assessment/sanitize";
@@ -51,12 +53,6 @@ export const POST = withApiHandler(
     if (!canAccessMode(session, "employees")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-    if (!canViewAnyEmployee(session)) {
-      return NextResponse.json(
-        { error: "Forbidden", reason: PR2_PENDING_REASON },
-        { status: 403 },
-      );
-    }
 
     const params = await ctx.params;
     const candidateId = params.id;
@@ -66,6 +62,7 @@ export const POST = withApiHandler(
 
     // Load the candidate's employee assessment within the user's org.
     // 404 (not 403) for cross-org or non-EMPLOYEE — don't leak existence.
+    // PR#2: also fetch user-linkage context for the visibility gate.
     const candidate = await prisma.candidate.findFirst({
       where: {
         id: candidateId,
@@ -74,6 +71,8 @@ export const POST = withApiHandler(
       },
       select: {
         firstName: true,
+        userId: true,
+        user: { select: { managerId: true } },
         assessment: {
           select: {
             id: true,
@@ -88,6 +87,16 @@ export const POST = withApiHandler(
 
     if (!candidate || !candidate.assessment) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
+    // PR#2 per-target capability gate.
+    const visibility = getEmployeeDataVisibility("cognitiveSignature", {
+      session,
+      targetEmployeeUserId: candidate.userId,
+      targetEmployeeManagerId: candidate.user?.managerId ?? null,
+    });
+    if (visibility === "none") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const a = candidate.assessment;

@@ -15,8 +15,8 @@ import {
   candidateOnlyUser,
   employeeOnlyUser,
   crossModeUser,
+  userWithRoles,
 } from "@/lib/__tests__/test-helpers/fixtures";
-import { PR2_PENDING_REASON } from "@/lib/employee-permissions";
 
 vi.mock("@/lib/auth", () => ({
   getSession: vi.fn(),
@@ -32,6 +32,7 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 import { getSession } from "@/lib/auth";
+import prisma from "@/lib/prisma";
 import { GET } from "@/app/api/employees/route";
 
 describe("GET /api/employees — gate behavior", () => {
@@ -56,58 +57,92 @@ describe("GET /api/employees — gate behavior", () => {
       vi.mocked(getSession).mockResolvedValue(candidateOnlyUser(role));
       const res = await invokeRoute(GET);
       expect(res.status).toBe(403);
-      const body = await res.json();
-      // Mode-level 403 — no PR2_PENDING_REASON
-      expect(body.reason).toBeUndefined();
     },
   );
 
   it.each(["HIRING_MANAGER", "TA_LEADER", "ADMIN"] as const)(
-    "%s (Candidate Mode admin) → 200",
+    "%s (Candidate Mode admin) → 200, org-wide query (no scoping filter)",
     async (role) => {
       vi.mocked(getSession).mockResolvedValue(candidateOnlyUser(role));
       const res = await invokeRoute(GET);
       expect(res.status).toBe(200);
+      // Org-wide viewers: where clause has no userId / managerId filter.
+      const call = vi.mocked(prisma.candidate.findMany).mock.calls.at(-1)?.[0];
+      expect(call?.where).not.toHaveProperty("userId");
+      expect(call?.where).not.toHaveProperty("user");
     },
   );
 
-  it("HR_TALENT_LEADER (Employee Mode) → 200", async () => {
+  it("HR_TALENT_LEADER (Employee Mode) → 200, org-wide query", async () => {
     vi.mocked(getSession).mockResolvedValue(employeeOnlyUser("HR_TALENT_LEADER"));
     const res = await invokeRoute(GET);
     expect(res.status).toBe(200);
+    const call = vi.mocked(prisma.candidate.findMany).mock.calls.at(-1)?.[0];
+    expect(call?.where).not.toHaveProperty("userId");
+    expect(call?.where).not.toHaveProperty("user");
   });
 
-  it.each(["EMPLOYEE", "PEOPLE_MANAGER", "EXECUTIVE"] as const)(
-    "%s (Employee Mode without HR/admin) → 403 with PR2_PENDING_REASON",
-    async (employeeRole) => {
-      // Pair with EXTERNAL_COLLABORATOR so Candidate Mode doesn't grant access.
-      vi.mocked(getSession).mockResolvedValue({
-        user: {
-          id: "user_test",
-          supabaseId: "supa_test",
-          email: "test@example.com",
-          name: "Test User",
-          role: "EXTERNAL_COLLABORATOR",
-          employeeRole,
-          orgId: "org_test",
-        },
-      });
-      const res = await invokeRoute(GET);
-      // EMPLOYEE/PEOPLE_MANAGER hit canEnterEmployeeMode → true (Employee
-      // Mode role grants), then canViewAnyEmployee → false → stub-403.
-      // EXECUTIVE same path.
-      // EXTERNAL_COLLABORATOR base role would 403 at mode-level, but
-      // since employeeRole grants employees mode, we pass the mode gate
-      // and hit the capability gate instead.
-      expect(res.status).toBe(403);
-      const body = await res.json();
-      expect(body.reason).toBe(PR2_PENDING_REASON);
-    },
-  );
+  // PR#2: EMPLOYEE and PEOPLE_MANAGER now get scoped 200s, not blanket 403s.
+  it("EMPLOYEE → 200 with userId-scoped query (own dossier only)", async () => {
+    vi.mocked(getSession).mockResolvedValue(
+      userWithRoles({
+        id: "user_emp_self",
+        role: "EXTERNAL_COLLABORATOR",
+        employeeRole: "EMPLOYEE",
+      }),
+    );
+    const res = await invokeRoute(GET);
+    expect(res.status).toBe(200);
+    const call = vi.mocked(prisma.candidate.findMany).mock.calls.at(-1)?.[0];
+    expect(call?.where).toMatchObject({ userId: "user_emp_self" });
+  });
 
-  it("Cross-mode user (TA_LEADER + HR_TALENT_LEADER) → 200", async () => {
+  it("PEOPLE_MANAGER → 200 with managerId-scoped query (direct reports only)", async () => {
+    vi.mocked(getSession).mockResolvedValue(
+      userWithRoles({
+        id: "user_mgr_001",
+        role: "EXTERNAL_COLLABORATOR",
+        employeeRole: "PEOPLE_MANAGER",
+      }),
+    );
+    const res = await invokeRoute(GET);
+    expect(res.status).toBe(200);
+    const call = vi.mocked(prisma.candidate.findMany).mock.calls.at(-1)?.[0];
+    expect(call?.where).toMatchObject({ user: { managerId: "user_mgr_001" } });
+  });
+
+  it("EXECUTIVE → 403 (no individual-list access; aggregated only via /api/org/insights)", async () => {
+    vi.mocked(getSession).mockResolvedValue(
+      userWithRoles({
+        id: "user_exec",
+        role: "EXTERNAL_COLLABORATOR",
+        employeeRole: "EXECUTIVE",
+      }),
+    );
+    const res = await invokeRoute(GET);
+    expect(res.status).toBe(403);
+  });
+
+  it("Cross-mode user (TA_LEADER + HR_TALENT_LEADER) → 200, org-wide query", async () => {
     vi.mocked(getSession).mockResolvedValue(crossModeUser());
     const res = await invokeRoute(GET);
     expect(res.status).toBe(200);
+    const call = vi.mocked(prisma.candidate.findMany).mock.calls.at(-1)?.[0];
+    expect(call?.where).not.toHaveProperty("userId");
+  });
+
+  it("Cross-mode EMPLOYEE + TA_LEADER → 200, org-wide query (admin bypasses self-scope)", async () => {
+    // canViewAnyEmployee picks up TA_LEADER, so the scoping branch is skipped.
+    vi.mocked(getSession).mockResolvedValue(
+      userWithRoles({
+        id: "user_ta_emp",
+        role: "TA_LEADER",
+        employeeRole: "EMPLOYEE",
+      }),
+    );
+    const res = await invokeRoute(GET);
+    expect(res.status).toBe(200);
+    const call = vi.mocked(prisma.candidate.findMany).mock.calls.at(-1)?.[0];
+    expect(call?.where).not.toHaveProperty("userId");
   });
 });

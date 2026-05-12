@@ -439,6 +439,7 @@ export function ProfileClient({ candidate, allRoles, cutlines, userRole, suggest
         <ConvertToEmployeeModal
           assessmentId={candidate.assessment.id}
           candidateName={`${candidate.firstName} ${candidate.lastName}`}
+          candidateEmail={candidate.email}
           open={convertModalOpen}
           onOpenChange={setConvertModalOpen}
           suggestions={suggestions ?? { departments: [], roleFamilies: [] }}

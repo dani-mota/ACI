@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import type { Prisma } from "@/generated/prisma/client";
 import { type AppUserRole, filterCandidateForRole } from "@/lib/rbac";
 import { CONSTRUCTS } from "@/lib/constructs";
 import type { Construct } from "@/generated/prisma/enums";
@@ -275,16 +276,34 @@ export async function getRoleDetailData(slug: string, orgId: string) {
 
 /**
  * PRO-129: People Table data fetcher.
- * Returns all converted employees for an org. Client filters/sorts via useMemo.
+ * Returns converted employees for an org.
+ *
+ * PRO-133 PR#2: optional `scope` parameter applies role-based filtering for
+ * EMPLOYEE / PEOPLE_MANAGER viewers. Without a scope, all employees in the
+ * org are returned (used by HR / admin / org-wide viewers). The caller is
+ * responsible for computing the scope from the session — this helper trusts
+ * the input. Mirrors the same scoping logic in /api/employees/route.ts so
+ * server-rendered pages and API list reads stay consistent. The trust
+ * contract is non-negotiable: an EMPLOYEE must not see a roster of
+ * coworkers in the Employees tab.
  */
-export async function getEmployeesData(orgId: string) {
+export async function getEmployeesData(
+  orgId: string,
+  scope?: { userId?: string; managerId?: string },
+) {
+  const baseWhere: Prisma.CandidateWhereInput = {
+    orgId,
+    assessment: { assessmentMode: "EMPLOYEE" },
+  };
+  let where: Prisma.CandidateWhereInput = baseWhere;
+  if (scope?.userId) {
+    where = { ...baseWhere, userId: scope.userId };
+  } else if (scope?.managerId) {
+    where = { ...baseWhere, user: { managerId: scope.managerId } };
+  }
+
   const employees = await prisma.candidate.findMany({
-    where: {
-      orgId,
-      assessment: {
-        assessmentMode: "EMPLOYEE",
-      },
-    },
+    where,
     include: {
       primaryRole: { select: { name: true, slug: true } },
       assessment: {
@@ -357,6 +376,10 @@ export async function getEmployeeDossierData(employeeId: string, orgId: string) 
           subtestResults: { select: { construct: true, percentile: true, layer: true } },
         },
       },
+      // PRO-133 PR#2: linkage context needed for the per-target visibility
+      // gate on the dossier page. Cheap join — `userId` is on Candidate
+      // directly; `user.managerId` is a single FK hop.
+      user: { select: { id: true, managerId: true } },
     },
   });
   if (!candidate) return null;

@@ -39,6 +39,13 @@ model User {
   // self-view + scoping ship in PRO-133 PR#2 (gated on Candidate.userId +
   // User.managerId additions).
   employeeRole EmployeeUserRole?
+  // PRO-133 PR#2: nullable self-FK for PEOPLE_MANAGER direct-report scoping.
+  // A User points at their manager via this column; PEOPLE_MANAGER queries
+  // filter by `User.managerId === session.user.id` to find direct reports.
+  // Single-hop only (no recursive team tree).
+  managerId    String?
+  manager      User?                 @relation("UserManager", fields: [managerId], references: [id])
+  directReports User[]               @relation("UserManager")
   orgId       String
   org         Organization          @relation(fields: [orgId], references: [id])
   isActive         Boolean               @default(true)
@@ -50,7 +57,13 @@ model User {
   assessmentsConverted Assessment[]           @relation("AssessmentConverter")
   // PRO-135: profiles authored by this user.
   roleDemandProfilesCreated RoleDemandProfile[] @relation("RoleDemandProfileAuthor")
+  // PRO-133 PR#2: back-relation. When a Candidate has been converted to an
+  // Employee and lazy-linked to this User account (User.email matched
+  // Candidate.email at conversion time), this populates.
+  linkedCandidate Candidate?            @relation("CandidateUser")
   createdAt            DateTime              @default(now())
+
+  @@index([managerId])
 }
 
 enum UserRole {
@@ -244,6 +257,12 @@ model Candidate {
   notes         Note[]
   outcomes      OutcomeRecord[]
   assignments   CandidateAssignment[]
+  // PRO-133 PR#2: nullable FK to User. Populated at conversion time IF a
+  // User exists with matching email + orgId (lazy email-match). Stays null
+  // for external hires until PRO-182 ships auto-create-User-on-convert.
+  // Unique because one Candidate maps to at most one User account.
+  userId        String?               @unique
+  user          User?                 @relation("CandidateUser", fields: [userId], references: [id])
   resultsEmailSentAt DateTime?
   createdAt     DateTime              @default(now())
   updatedAt     DateTime              @updatedAt

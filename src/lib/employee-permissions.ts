@@ -10,12 +10,15 @@
  * filterCandidateForRole stays Candidate-Mode-only and is never
  * invoked by Employee Mode routes.
  *
- * PR#1 stub posture: EMPLOYEE and PEOPLE_MANAGER cells in the
- * VISIBILITY_MATRIX return "none" because their data linkages
- * (Candidate.userId for self-view, User.managerId for direct-report
- * scoping) ship in PR#2. Routes hit by those roles return 403 with
- * `reason: PR2_PENDING_REASON` — grep that string to find the
- * intentional stubs PR#2 will replace.
+ * The applicability gate (self-view for EMPLOYEE, direct-report for
+ * PEOPLE_MANAGER) lives in `getEmployeeDataVisibility` — VISIBILITY_MATRIX
+ * returns the visibility level IF the role applies; the helper enforces
+ * applicability.
+ *
+ * Routes call `getEmployeeDataVisibility(layer, ctx)` and treat a
+ * return of "none" as 403 / redirect. Routes that need per-row note
+ * privacy use `canViewManagerNotes(ctx, note)` separately — notes are
+ * NOT in the visibility matrix.
  */
 
 import type { AppSession } from "@/lib/auth";
@@ -47,63 +50,63 @@ export type Visibility = "full" | "summary" | "aggregated" | "none";
 
 export interface EmployeeAccessContext {
   session: AppSession;
-  /** PR#2: Candidate.userId — populated for self-view checks. */
+  /** Candidate.userId — populated for self-view checks. */
   targetEmployeeUserId?: string | null;
-  /** PR#2: User.managerId — populated for direct-report-scoping checks. */
+  /** User.managerId — populated for direct-report-scoping checks. */
   targetEmployeeManagerId?: string | null;
 }
-
-/** Stub-403 marker for routes EMPLOYEE/PEOPLE_MANAGER hit pre-PR#2. */
-export const PR2_PENDING_REASON = "PRO-133-PR2-pending";
 
 // ─── Visibility matrix (Spec Section 6) ────────────────────────
 
 /**
  * Spec-to-code translation as a literal const so the matrix is auditable
- * at a glance. PR#1 ships this matrix; PR#2 unlocks the EMPLOYEE and
- * PEOPLE_MANAGER cells once their data linkages exist (Candidate.userId
- * + User.managerId).
+ * at a glance.
+ *
+ * EMPLOYEE / PEOPLE_MANAGER cells return real visibility values, but
+ * the matrix itself is unconditional — `getEmployeeDataVisibility`
+ * gates these roles via `isSelfView` / `isDirectReport` before reading
+ * the matrix. Applicability check lives in the helper, not here.
  */
 const VISIBILITY_MATRIX: Record<EmployeeDataLayer, Record<AppEmployeeUserRole, Visibility>> = {
   constructs: {
-    EMPLOYEE: "none",         // PR#2: → "full" (self-view)
-    PEOPLE_MANAGER: "none",   // PR#2: → "full" (own reports)
+    EMPLOYEE: "full",
+    PEOPLE_MANAGER: "full",
     HR_TALENT_LEADER: "full",
     EXECUTIVE: "aggregated",
   },
   compositeScores: {
-    EMPLOYEE: "none",
-    PEOPLE_MANAGER: "none",
+    EMPLOYEE: "full",
+    PEOPLE_MANAGER: "full",
     HR_TALENT_LEADER: "full",
     EXECUTIVE: "aggregated",
   },
   blindSpots: {
-    EMPLOYEE: "none",         // PR#2: → "full" (gentle framing for self)
-    PEOPLE_MANAGER: "none",   // PR#2: → "summary" (no raw confidence)
-    HR_TALENT_LEADER: "summary", // ← PR#1 active. PRO-143 must call stripBlindSpotForVisibility.
+    EMPLOYEE: "full",            // gentle framing for self (consumer obligation: PRO-143)
+    PEOPLE_MANAGER: "summary",   // no raw confidence — strip at API layer
+    HR_TALENT_LEADER: "summary", // PRO-143 must call stripBlindSpotForVisibility
     EXECUTIVE: "none",
   },
   developmentPlan: {
-    EMPLOYEE: "none",
-    PEOPLE_MANAGER: "none",
+    EMPLOYEE: "full",
+    PEOPLE_MANAGER: "full",
     HR_TALENT_LEADER: "full",
     EXECUTIVE: "none",
   },
   evidence: {
-    EMPLOYEE: "none",
-    PEOPLE_MANAGER: "none",
+    EMPLOYEE: "full",
+    PEOPLE_MANAGER: "full",
     HR_TALENT_LEADER: "full",
     EXECUTIVE: "aggregated",
   },
   cognitiveSignature: {
-    EMPLOYEE: "none",
-    PEOPLE_MANAGER: "none",
+    EMPLOYEE: "full",
+    PEOPLE_MANAGER: "full",
     HR_TALENT_LEADER: "full",
     EXECUTIVE: "aggregated",
   },
   roleFitRadar: {
-    EMPLOYEE: "none",
-    PEOPLE_MANAGER: "none",
+    EMPLOYEE: "full",
+    PEOPLE_MANAGER: "full",
     HR_TALENT_LEADER: "full",
     EXECUTIVE: "aggregated",
   },
@@ -150,17 +153,32 @@ export function getEmployeeDataVisibility(
   layer: EmployeeDataLayer,
   ctx: EmployeeAccessContext,
 ): Visibility {
-  const employeeRole = ctx.session.user.employeeRole;
-  const candidateAsEmp: AppEmployeeUserRole | null =
-    (CANDIDATE_MODE_ADMINS_AS_HR as readonly string[]).includes(ctx.session.user.role)
-      ? "HR_TALENT_LEADER"
-      : null;
-
   const candidates: Visibility[] = [];
-  if (employeeRole) candidates.push(VISIBILITY_MATRIX[layer][employeeRole]);
-  if (candidateAsEmp) candidates.push(VISIBILITY_MATRIX[layer][candidateAsEmp]);
+
+  // Candidate-Mode admins (TA_LEADER, ADMIN, HIRING_MANAGER) act as
+  // HR-equivalent. No self-view / direct-report gating — they have org-wide
+  // read by virtue of their Candidate Mode role.
+  if ((CANDIDATE_MODE_ADMINS_AS_HR as readonly string[]).includes(ctx.session.user.role)) {
+    candidates.push(VISIBILITY_MATRIX[layer]["HR_TALENT_LEADER"]);
+  }
+
+  // Employee Mode role with applicability gates:
+  // - HR_TALENT_LEADER and EXECUTIVE: matrix value applies unconditionally
+  //   (org-wide / aggregated authority — no per-target check)
+  // - EMPLOYEE: matrix value applies ONLY when viewing own dossier
+  // - PEOPLE_MANAGER: matrix value applies ONLY when target is a direct report
+  const empRole = ctx.session.user.employeeRole;
+  if (empRole === "HR_TALENT_LEADER" || empRole === "EXECUTIVE") {
+    candidates.push(VISIBILITY_MATRIX[layer][empRole]);
+  } else if (empRole === "EMPLOYEE") {
+    if (isSelfView(ctx)) candidates.push(VISIBILITY_MATRIX[layer]["EMPLOYEE"]);
+  } else if (empRole === "PEOPLE_MANAGER") {
+    if (isDirectReport(ctx)) candidates.push(VISIBILITY_MATRIX[layer]["PEOPLE_MANAGER"]);
+  }
+
   if (candidates.length === 0) return "none";
 
+  // Highest visibility wins across the additive role slots.
   return candidates.reduce<Visibility>(
     (best, v) => (VISIBILITY_RANK[v] > VISIBILITY_RANK[best] ? v : best),
     "none",
@@ -182,13 +200,13 @@ const ALLOWED_EMPLOYEE_VIEWERS = [
 ] as const;
 
 /**
- * Capability gate: can this user view ANY employee's data right now
- * (org-wide read, with note-author filter applied separately)?
+ * Capability gate: can this user view ANY employee's data org-wide
+ * (with note-author filter applied separately)?
  *
- * PR#1 posture:
  *   - true:  TA_LEADER, ADMIN, HIRING_MANAGER, HR_TALENT_LEADER
- *   - false: EMPLOYEE (PR#2 wires Candidate.userId for self-view),
- *            PEOPLE_MANAGER (PR#2 wires User.managerId for scoping),
+ *   - false: EMPLOYEE / PEOPLE_MANAGER (their access is per-target
+ *            via getEmployeeDataVisibility's self-view / direct-report
+ *            checks, not org-wide),
  *            EXECUTIVE (no individual-level access; aggregated only),
  *            EXTERNAL_COLLABORATOR / RECRUITER_COORDINATOR / RECRUITING_MANAGER
  *            (no Employee Mode access at all)
@@ -207,8 +225,9 @@ const ALLOWED_ORG_INSIGHTS_VIEWERS = [
 
 /**
  * Capability gate for the org-aggregated insights endpoint.
- * EXECUTIVE gets access here (and ONLY here in PR#1) — that's the
- * paired positive Dani's guardrail #3 calls for.
+ * EXECUTIVE gets access here (and ONLY here for individual-content vs
+ * aggregated separation) — that's the paired positive Dani's guardrail
+ * #3 calls for.
  */
 export function canViewOrgInsights(session: AppSession): boolean {
   const roles = getUserRoles(session);
@@ -240,22 +259,35 @@ export function canViewManagerNotes(
   return ctx.session.user.id === note.authorId;
 }
 
-// ─── PR#2 stubs ────────────────────────────────────────────────
+// ─── Self-view + direct-report checks ──────────────────────────
 
 /**
- * PR#1 stub. PR#2 wires this to compare ctx.session.user.id against
- * a Candidate.userId looked up at the call site.
+ * True when the session's user is viewing their own dossier — i.e., the
+ * target Candidate.userId matches session.user.id. Null-safe: returns
+ * false if either side is missing (no User linkage for the Candidate, or
+ * unauthenticated session).
+ *
+ * Populated by routes that have a Candidate ID: fetch
+ * `candidate.userId` and pass it as `ctx.targetEmployeeUserId`.
  */
-export function isSelfView(_ctx: EmployeeAccessContext): boolean {
-  return false;
+export function isSelfView(ctx: EmployeeAccessContext): boolean {
+  if (!ctx.targetEmployeeUserId) return false;
+  return ctx.targetEmployeeUserId === ctx.session.user.id;
 }
 
 /**
- * PR#1 stub. PR#2 wires this to walk the User.managerId chain
- * (single hop initially; team-tree support later if needed).
+ * True when the session's user is the direct manager of the target
+ * employee — i.e., the target User.managerId matches session.user.id.
+ * Single-hop only (no recursive team tree; a manager's manager is NOT
+ * a direct report). Null-safe.
+ *
+ * Populated by routes that have a Candidate ID: fetch
+ * `candidate.user?.managerId` (walk Candidate → User → managerId) and
+ * pass it as `ctx.targetEmployeeManagerId`.
  */
-export function isDirectReport(_ctx: EmployeeAccessContext): boolean {
-  return false;
+export function isDirectReport(ctx: EmployeeAccessContext): boolean {
+  if (!ctx.targetEmployeeManagerId) return false;
+  return ctx.targetEmployeeManagerId === ctx.session.user.id;
 }
 
 // ─── Blind-spot stripping wrapper (Dani guardrail #4) ──────────
@@ -298,13 +330,14 @@ export function stripBlindSpotForVisibility<T extends { confidence?: number; raw
 
 /**
  * Re-export of `canAccessMode` semantics keyed to the Employee Mode
- * surface. Call sites use this paired with `canViewAnyEmployee`:
+ * surface. Call sites use this paired with getEmployeeDataVisibility:
  *
  *   if (!canEnterEmployeeMode(session)) return 403;          // mode gate
- *   if (!canViewAnyEmployee(session)) return 403 PR2_PENDING; // capability gate
+ *   if (getEmployeeDataVisibility(layer, ctx) === "none") return 403;  // capability gate
  *
- * Two checks, two intents: "are you allowed in this surface?" vs.
- * "can you actually see employee data, or are you a PR#2-pending stub?"
+ * Two checks, two intents: "are you allowed in this surface?" vs. "can
+ * you see this specific target's data (with self-view / direct-report
+ * gating where applicable)?"
  *
  * Implemented as a thin wrapper to keep `rbac.ts` clean of Employee
  * Mode semantics — `canAccessMode` takes (session, mode) and answers
