@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, AlertTriangle, CheckCircle, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { WeightVisualizer } from "./weight-visualizer";
+import { WeightRadarChart } from "./weight-radar-chart";
 import { WeightExplainer } from "./weight-explainer";
 import { CutlineControls } from "./cutline-controls";
 import { CutlineExplainer } from "./cutline-explainer";
@@ -188,6 +189,14 @@ export function ReviewClient({ result, saveEndpoint = "/api/roles", redirectPath
         {/* Section B — Construct Weights */}
         <section>
           <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">B. Construct Weights</p>
+          {/* PRO-89 PR#2 sub-task 3: weight-shape gestalt above the
+              slider panel. Single source of truth: the `weights` state
+              already drives WeightVisualizer; passing it as a prop here
+              gives the chart the same live updates with no extra state
+              or handlers. */}
+          <div className="bg-card border border-border p-4 mb-4">
+            <WeightRadarChart weights={weights} />
+          </div>
           <WeightExplainer />
           <div className="bg-card border border-border p-4">
             <WeightVisualizer
