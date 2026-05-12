@@ -20,6 +20,21 @@ export interface WeightVisualizerProps {
 
 export function WeightVisualizer({ weights, recommendations, onChange }: WeightVisualizerProps) {
   const [locked, setLocked] = useState<Set<string>>(new Set());
+  // PRO-88: defer rebalance until the slider drag/keyboard input commits.
+  // Native <input type="range"> fires onChange continuously, so a +5 drag
+  // becomes 5 sequential single-unit rebalances. Each single-unit rebalance
+  // concentrates the entire delta on the currently-highest-weighted
+  // construct (the largest-remainder algorithm's intrinsic property:
+  // highest-weight rows have the smallest fractional remainder, so the +1
+  // distribution loop fills back every other construct first and leaves
+  // the heaviest one short). Net effect: a +5 drag drops 5 from whichever
+  // construct happens to be on top. The algorithm is correct per-call;
+  // the bug is in the input-event flow.
+  //
+  // Fix: hold the slider's in-flight value in local state during the
+  // drag, only call handleChange once on release. A +5 gesture becomes
+  // a single +5 rebalance, which the algorithm distributes correctly.
+  const [draft, setDraft] = useState<{ id: string; value: number } | null>(null);
 
   const total = Object.values(weights).reduce((s, v) => s + v, 0);
   const isValid = Math.abs(total - 100) <= 1;
@@ -87,6 +102,16 @@ export function WeightVisualizer({ weights, recommendations, onChange }: WeightV
     [locked, weights, onChange]
   );
 
+  // PRO-88: commit the in-flight draft value (one rebalance for the whole
+  // gesture). Called on pointer release + keyboard release. Safe if no
+  // drag is in progress — clears nothing.
+  const commitDraft = useCallback(() => {
+    if (draft) {
+      handleChange(draft.id, draft.value);
+      setDraft(null);
+    }
+  }, [draft, handleChange]);
+
   const toggleLock = useCallback((constructId: string) => {
     setLocked((prev) => {
       const next = new Set(prev);
@@ -150,7 +175,11 @@ export function WeightVisualizer({ weights, recommendations, onChange }: WeightV
               {constructIds.map((constructId) => {
                 const meta = CONSTRUCTS[constructId];
                 if (!meta) return null;
-                const value = weights[constructId] ?? 0;
+                const committedValue = weights[constructId] ?? 0;
+                // PRO-88: render the in-flight draft value while this slider
+                // is being dragged. `commitDraft` (on release) flushes the
+                // draft through `handleChange`, producing a single rebalance.
+                const value = draft?.id === constructId ? draft.value : committedValue;
                 const rec = recommendations[constructId] ?? 0;
                 const isLocked = locked.has(constructId);
                 const diff = value - rec;
@@ -201,7 +230,19 @@ export function WeightVisualizer({ weights, recommendations, onChange }: WeightV
                         step={1}
                         value={value}
                         disabled={isLocked}
-                        onChange={(e) => handleChange(constructId, Number(e.target.value))}
+                        // PRO-88: onChange stages the value, doesn't rebalance
+                        onChange={(e) =>
+                          setDraft({ id: constructId, value: Number(e.target.value) })
+                        }
+                        // Commit on every input-mode release: pointer, touch,
+                        // keyboard. Without these the slider's local draft
+                        // would never flush.
+                        onPointerUp={commitDraft}
+                        onTouchEnd={commitDraft}
+                        onKeyUp={commitDraft}
+                        // Defensive: if focus leaves mid-drag (e.g., tab),
+                        // still commit so the user doesn't lose their move.
+                        onBlur={commitDraft}
                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
                       />
                     </div>
