@@ -10,6 +10,7 @@ import { canAccessMode } from "@/lib/rbac";
 import { getEmployeeDataVisibility } from "@/lib/employee-permissions";
 import { EmployeeDossier } from "@/components/dashboard/employee-dossier";
 import { CURRENT_PROMPT_VERSION as EVIDENCE_PROMPT_VERSION } from "@/lib/assessment/prompts/evidence-annotation";
+import { recomputeUnderLeverageForAssessment } from "@/lib/assessment/insights/employee-insights-persistence";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -55,6 +56,31 @@ export default async function EmployeeDossierPage({ params }: PageProps) {
     resolveRoleDemandProfileForEmployee(session.user.orgId, data.assessment.roleFamily),
   ]);
 
+  // PRO-137: lazy-on-read under-leverage staleness check. Compare cached
+  // (profileId, profileUpdatedAt) against the just-resolved demand profile.
+  // If mismatched (profile was edited since last cache, never computed, or
+  // batch-invalidated by a profile save), recompute synchronously and use
+  // the fresh score. Concurrent stale-recompute requests converge on the
+  // same value because the compute is pure of its inputs — see
+  // employee-insights-persistence.ts docstring.
+  let underLeverageScore = data.assessment.insights?.underLeverageScore ?? null;
+  const cachedProfileId = data.assessment.insights?.profileId ?? null;
+  const cachedProfileUpdatedAt = data.assessment.insights?.profileUpdatedAt
+    ? new Date(data.assessment.insights.profileUpdatedAt).getTime()
+    : null;
+  const resolvedProfileId = resolvedDemand?.profileId ?? null;
+  const resolvedProfileUpdatedAt = resolvedDemand?.updatedAt?.getTime() ?? null;
+  const stale =
+    cachedProfileId !== resolvedProfileId ||
+    cachedProfileUpdatedAt !== resolvedProfileUpdatedAt;
+  if (stale && data.assessment.roleFamily) {
+    underLeverageScore = await recomputeUnderLeverageForAssessment(
+      data.assessment.id,
+      session.user.orgId,
+      data.assessment.roleFamily,
+    );
+  }
+
   // PRO-135: pass `undefined` (NOT `[]`) when no profile resolves — empty
   // arrays would render a degenerate collapsed overlay polygon at radius zero.
   return (
@@ -63,6 +89,7 @@ export default async function EmployeeDossierPage({ params }: PageProps) {
       initialEvidence={evidence}
       orgDistributions={orgDistributions}
       roleDemandProfile={resolvedDemand?.demands}
+      underLeverageScore={underLeverageScore}
     />
   );
 }

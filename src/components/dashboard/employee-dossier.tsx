@@ -4,6 +4,7 @@ import { CognitiveSignature } from "./cognitive-signature";
 import { ConstructMapEmployee } from "./construct-map-employee";
 import { EvidenceLayer } from "./evidence-layer";
 import { RoleFitDeltaPanel } from "./role-fit-delta-panel";
+import { UnderLeverageChip, underLeverageDescription } from "./under-leverage-chip";
 import type { EvidenceLayerEntry, OrgConstructDistribution } from "@/lib/data";
 import type { RoleDemandProfileEntry } from "@/lib/assessment/role-demand-resolution";
 
@@ -29,6 +30,10 @@ interface EmployeeDossierProps {
   /** PRO-135: optional radar overlay. `undefined` means no role demand profile
    *  resolved for this employee's roleFamily — the radar renders a single polygon. */
   roleDemandProfile?: RoleDemandProfileEntry[];
+  /** PRO-137: under-leverage score, 0-100 or null. Page component does the
+   *  lazy-on-read recompute against the resolved demand profile before
+   *  passing the fresh value down. */
+  underLeverageScore: number | null;
 }
 
 export function EmployeeDossier({
@@ -36,6 +41,7 @@ export function EmployeeDossier({
   initialEvidence,
   orgDistributions,
   roleDemandProfile,
+  underLeverageScore,
 }: EmployeeDossierProps) {
   const { firstName, lastName, email, primaryRole, assessment } = candidate;
   const completed = assessment.completedAt
@@ -65,6 +71,21 @@ export function EmployeeDossier({
               </div>
               {assessment.employeeStatus && (
                 <StatusBadge status={assessment.employeeStatus} size="sm" mode="employee" />
+              )}
+            </div>
+            {/* PRO-137: Under-Leverage headline. Prominent row above the
+                existing field grid — this is a P0 insight per AC. Plain `—`
+                when no resolvable role-demand profile (no comparison to
+                surface). PRO-134 vocabulary-clean copy. */}
+            <div className="mt-4 flex items-baseline gap-4">
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                Under-Leverage
+              </span>
+              <UnderLeverageChip score={underLeverageScore} variant="prominent" />
+              {underLeverageScore != null && (
+                <span className="text-xs text-muted-foreground">
+                  {underLeverageDescription(underLeverageScore)}
+                </span>
               )}
             </div>
             <dl className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">

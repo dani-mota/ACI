@@ -38,6 +38,10 @@ const EMPLOYEE_MODE_SURFACES = [
   "src/components/dashboard/construct-map-employee.tsx",
   "src/components/dashboard/evidence-layer.tsx",
   "src/components/dashboard/role-fit-delta-panel.tsx",
+  // PRO-137: under-leverage chip + developmental descriptions. Source-of-
+  // truth strings live in this file (employee-dossier.tsx imports the
+  // description helper); guard the strings at the source.
+  "src/components/dashboard/under-leverage-chip.tsx",
 
   // Server-side data shaping (text that flows into the UI)
   "src/lib/data.ts",

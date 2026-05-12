@@ -9,6 +9,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { InitialsBadge } from "@/components/ui/initials-badge";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { formatRelativeDate } from "@/lib/format";
+import { UnderLeverageChip } from "./under-leverage-chip";
 
 export interface EmployeeRow {
   id: string;
@@ -23,6 +24,9 @@ export interface EmployeeRow {
     department: string | null;
     roleFamily: string | null;
     employeeStatus: "ACTIVE" | "REASSESSMENT_DUE" | "IN_TRANSITION" | null;
+    // PRO-137: under-leverage score (cached). Null when no resolvable
+    // role-demand profile exists for this employee's roleFamily.
+    insights?: { underLeverageScore: number | null } | null;
   };
 }
 
@@ -30,7 +34,7 @@ interface PeopleTableProps {
   employees: EmployeeRow[];
 }
 
-type SortField = "name" | "assessmentDate" | "status";
+type SortField = "name" | "assessmentDate" | "status" | "underLeverage";
 
 // Custom Status sort order: most-needs-attention first.
 const STATUS_RANK: Record<string, number> = {
@@ -138,6 +142,18 @@ export function PeopleTable({ employees }: PeopleTableProps) {
         const bT = b.assessment?.completedAt ? new Date(b.assessment.completedAt).getTime() : 0;
         return (aT - bT) * dir;
       }
+      if (sortField === "underLeverage") {
+        // PRO-137: NULLS LAST in both directions. Employees without a
+        // resolvable role-demand profile (score = null) always sink to the
+        // bottom — they convey no signal for the comparison the sort is
+        // surfacing.
+        const aVal = a.assessment?.insights?.underLeverageScore ?? null;
+        const bVal = b.assessment?.insights?.underLeverageScore ?? null;
+        if (aVal == null && bVal == null) return 0;
+        if (aVal == null) return 1;
+        if (bVal == null) return -1;
+        return (aVal - bVal) * dir;
+      }
       // Status: explicit rank order, not alphabetical
       const aRank = STATUS_RANK[a.assessment?.employeeStatus ?? "ACTIVE"] ?? 99;
       const bRank = STATUS_RANK[b.assessment?.employeeStatus ?? "ACTIVE"] ?? 99;
@@ -238,7 +254,9 @@ export function PeopleTable({ employees }: PeopleTableProps) {
                 </button>
               </th>
               <th className="text-left py-2 px-4 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Under-Leverage
+                <button onClick={() => handleSort("underLeverage")} className="flex items-center gap-1 hover:text-foreground transition-colors">
+                  Under-Leverage <SortIcon field="underLeverage" sortField={sortField} sortDir={sortDir} />
+                </button>
               </th>
               <th className="text-left py-2 px-4 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Role Fit
@@ -272,7 +290,9 @@ export function PeopleTable({ employees }: PeopleTableProps) {
                     ? formatRelativeDate(new Date(employee.assessment.completedAt))
                     : "—"}
                 </td>
-                <td className="py-2.5 px-4 text-xs text-muted-foreground">—</td>
+                <td className="py-2.5 px-4 text-xs">
+                  <UnderLeverageChip score={employee.assessment?.insights?.underLeverageScore ?? null} />
+                </td>
                 <td className="py-2.5 px-4 text-xs text-muted-foreground">—</td>
                 <td className="py-2.5 px-4">
                   <StatusBadge status={employee.assessment?.employeeStatus ?? "ACTIVE"} size="sm" />

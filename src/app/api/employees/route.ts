@@ -54,6 +54,9 @@ export const GET = withApiHandler(
             department: true,
             roleFamily: true,
             employeeStatus: true,
+            // PRO-137: under-leverage cached score for the People Table chip.
+            // Single LEFT JOIN via @unique back-relation — no N+1.
+            insights: { select: { underLeverageScore: true } },
           },
         },
       },
