@@ -16,6 +16,8 @@ import { PeopleTable } from "@/components/dashboard/people-table";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { getAccessibleModes, type DashboardMode, type AppUserRole } from "@/lib/rbac";
+import { canViewAnyEmployee } from "@/lib/employee-permissions";
+import type { AppSession } from "@/lib/auth";
 
 interface PageProps {
   searchParams: Promise<{ mode?: string }>;
@@ -62,13 +64,29 @@ export default async function DashboardPage({ searchParams }: PageProps) {
       {activeMode === "candidates" && (
         <CandidatesContent orgId={orgId} userId={session.user.id} role={session.user.role} canCreateRole={canCreateRole} />
       )}
-      {activeMode === "employees" && <EmployeesContent orgId={orgId} />}
+      {activeMode === "employees" && <EmployeesContent orgId={orgId} session={session} />}
     </div>
   );
 }
 
-async function EmployeesContent({ orgId }: { orgId: string }) {
-  const employees = await getEmployeesData(orgId);
+async function EmployeesContent({ orgId, session }: { orgId: string; session: AppSession }) {
+  // PRO-133 PR#2: role-scoped list. Mirrors /api/employees/route.ts so the
+  // server-rendered Employees tab stays consistent with the API. EMPLOYEE
+  // sees only their own dossier; PEOPLE_MANAGER sees direct reports;
+  // EXECUTIVE (without admin) gets bounced to candidates — they have no
+  // individual-list access per spec, only aggregated org-insights.
+  let scope: { userId?: string; managerId?: string } | undefined;
+  if (!canViewAnyEmployee(session)) {
+    const empRole = session.user.employeeRole;
+    if (empRole === "EMPLOYEE") {
+      scope = { userId: session.user.id };
+    } else if (empRole === "PEOPLE_MANAGER") {
+      scope = { managerId: session.user.id };
+    } else {
+      redirect("/dashboard?mode=candidates");
+    }
+  }
+  const employees = await getEmployeesData(orgId, scope);
   return <PeopleTable employees={employees} />;
 }
 
