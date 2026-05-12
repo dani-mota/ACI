@@ -32,6 +32,12 @@ const txMock = {
     findFirst: vi.fn(),
     update: vi.fn(),
   },
+  subtestResult: {
+    findMany: vi.fn(),
+  },
+  employeeInsights: {
+    upsert: vi.fn(),
+  },
   redFlag: {
     updateMany: vi.fn(),
   },
@@ -46,8 +52,17 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+// PRO-137: convert route calls resolveRoleDemandProfileForEmployee
+// (from @/lib/data) to compute under-leverage inline. Mock it so each
+// test controls whether a matching profile resolves.
+vi.mock("@/lib/data", () => ({
+  resolveRoleDemandProfileForEmployee: vi.fn(),
+}));
+
 import { getSession } from "@/lib/auth";
+import { resolveRoleDemandProfileForEmployee } from "@/lib/data";
 import { POST } from "@/app/api/assessments/[id]/convert/route";
+import { CONSTRUCTS } from "@/lib/constructs";
 
 const ASSESSMENT_ID = "asmt_test_001";
 const CANDIDATE_ID = "cand_test_001";
@@ -63,7 +78,14 @@ function setupSuccessfulAssessmentUpdate(candidateEmail = "match@example.com") {
   txMock.user.update.mockResolvedValue({});
   txMock.redFlag.updateMany.mockResolvedValue({ count: 0 });
   txMock.prediction.updateMany.mockResolvedValue({ count: 0 });
+  // PRO-137 defaults: no matching profile + no subtest results.
+  // Tests that exercise inline compute override these.
+  txMock.subtestResult.findMany.mockResolvedValue([]);
+  txMock.employeeInsights.upsert.mockResolvedValue({});
+  vi.mocked(resolveRoleDemandProfileForEmployee).mockResolvedValue(null);
 }
+
+const ALL_CONSTRUCT_KEYS = Object.keys(CONSTRUCTS);
 
 describe("POST /api/assessments/[id]/convert — Candidate↔User linkage (PRO-133 PR#2)", () => {
   beforeEach(() => {
@@ -272,5 +294,118 @@ describe("POST /api/assessments/[id]/convert — Candidate↔User linkage (PRO-1
     expect(res.status).toBe(409);
     // No User lookup should have happened — short-circuited.
     expect(txMock.user.findFirst).not.toHaveBeenCalled();
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// PRO-137: inline under-leverage compute at conversion
+// ──────────────────────────────────────────────────────────────────
+
+describe("POST /api/assessments/[id]/convert — PRO-137 under-leverage compute", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getSession).mockResolvedValue(
+      candidateOnlyUser("TA_LEADER", {
+        id: "user_converter",
+        orgId: SESSION_ORG,
+      }),
+    );
+  });
+
+  it("resolvable profile + 12 subtest results → upserts non-null score", async () => {
+    setupSuccessfulAssessmentUpdate("match@example.com");
+    txMock.user.findFirst.mockResolvedValue(null);
+
+    // Profile resolves with low demands (20 on 0-100). 12 subtest results
+    // at percentile 80. Deltas = +60 each. After /10: 12 × 6 = 72.
+    // (72 / 120) × 100 = 60.
+    vi.mocked(resolveRoleDemandProfileForEmployee).mockResolvedValue({
+      profileId: "profile_001",
+      updatedAt: new Date("2026-05-12T00:00:00Z"),
+      demands: ALL_CONSTRUCT_KEYS.map((construct) => ({ construct, demandScore: 20 })),
+    });
+    txMock.subtestResult.findMany.mockResolvedValue(
+      ALL_CONSTRUCT_KEYS.map((construct) => ({ construct, percentile: 80 })),
+    );
+
+    const res = await invokeRoute(POST, {
+      method: "POST",
+      params: { id: ASSESSMENT_ID },
+      body: { department: "Engineering", roleFamily: "Software" },
+    });
+
+    expect(res.status).toBe(200);
+    expect(txMock.employeeInsights.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { assessmentId: ASSESSMENT_ID },
+        create: expect.objectContaining({
+          assessmentId: ASSESSMENT_ID,
+          underLeverageScore: 60,
+          orgId: SESSION_ORG,
+          roleFamily: "Software",
+          profileId: "profile_001",
+        }),
+      }),
+    );
+  });
+
+  it("no resolvable profile → upserts null score with null profile fields", async () => {
+    setupSuccessfulAssessmentUpdate("nomatch@example.com");
+    txMock.user.findFirst.mockResolvedValue(null);
+    // resolveRoleDemandProfileForEmployee defaults to null via setup.
+
+    const res = await invokeRoute(POST, {
+      method: "POST",
+      params: { id: ASSESSMENT_ID },
+      body: { department: "Engineering", roleFamily: "UnmatchedFamily" },
+    });
+
+    expect(res.status).toBe(200);
+    expect(txMock.employeeInsights.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          assessmentId: ASSESSMENT_ID,
+          underLeverageScore: null,
+          orgId: SESSION_ORG,
+          roleFamily: "UnmatchedFamily",
+          profileId: null,
+          profileUpdatedAt: null,
+        }),
+      }),
+    );
+  });
+
+  it("resolvable profile resolution is scoped to session.user.orgId", async () => {
+    // Cross-org safeguard: the resolve call must use the session's orgId,
+    // not any value from the request body. Defensive against a future
+    // refactor that mis-threads orgId.
+    setupSuccessfulAssessmentUpdate("match@example.com");
+    txMock.user.findFirst.mockResolvedValue(null);
+
+    await invokeRoute(POST, {
+      method: "POST",
+      params: { id: ASSESSMENT_ID },
+      body: { department: "Engineering", roleFamily: "Software" },
+    });
+
+    expect(resolveRoleDemandProfileForEmployee).toHaveBeenCalledWith(
+      SESSION_ORG,
+      "Software",
+    );
+  });
+
+  it("under-leverage upsert is NOT called when conversion is rejected (409)", async () => {
+    setupSuccessfulAssessmentUpdate();
+    txMock.assessment.updateMany.mockResolvedValue({ count: 0 });
+
+    const res = await invokeRoute(POST, {
+      method: "POST",
+      params: { id: ASSESSMENT_ID },
+      body: { department: "Engineering", roleFamily: "Software" },
+    });
+
+    expect(res.status).toBe(409);
+    expect(txMock.employeeInsights.upsert).not.toHaveBeenCalled();
+    expect(resolveRoleDemandProfileForEmployee).not.toHaveBeenCalled();
   });
 });

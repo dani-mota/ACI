@@ -18,6 +18,7 @@ import { ITEM_BANK } from "../item-bank";
 import { AI_CONFIG } from "../config";
 import type { AdaptiveLoopState, LayerBScore, ConsistencyResult, ConstructLayeredScore } from "../types";
 import { createLogger } from "../logger";
+import { recomputeUnderLeverageForAssessment } from "@/lib/assessment/insights/employee-insights-persistence";
 
 const log = createLogger("scoring-pipeline");
 
@@ -671,6 +672,19 @@ export async function runScoringPipeline(assessmentId: string, orgId?: string) {
       },
     });
   });
+
+  // PRO-137: re-assessment trigger. Fresh SubtestResults imply a fresh
+  // under-leverage score. Gated on EMPLOYEE mode + resolvable roleFamily;
+  // skipped for CANDIDATE-mode assessments (under-leverage is an Employee
+  // Mode insight). Runs OUTSIDE the scoring transaction — the txn above
+  // already runs long, and the recompute is read-mostly + a single upsert.
+  if (assessment.assessmentMode === "EMPLOYEE" && assessment.roleFamily) {
+    await recomputeUnderLeverageForAssessment(
+      assessmentId,
+      assessment.candidate.orgId,
+      assessment.roleFamily,
+    );
+  }
 
   const totalMs = Date.now() - pipelineStart;
   log.info("Pipeline completed", {

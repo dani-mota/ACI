@@ -21,6 +21,7 @@ import { getSession } from "@/lib/auth";
 import { canAccessMode, canView } from "@/lib/rbac";
 import { withApiHandler } from "@/lib/api-handler";
 import { CONSTRUCTS } from "@/lib/constructs";
+import { batchInvalidateByRoleFamily } from "@/lib/assessment/insights/employee-insights-persistence";
 
 interface CreateBody {
   name?: unknown;
@@ -119,6 +120,13 @@ export const POST = withApiHandler(
       },
       select: { id: true },
     });
+
+    // PRO-137: defensive batch invalidation on create. Usually a new
+    // profile won't match any existing EmployeeInsights rows (this
+    // roleFamily had no profile before, so cached scores are null/
+    // empty), but the UPDATE is cheap and keeps the two endpoints
+    // symmetric.
+    await batchInvalidateByRoleFamily(session.user.orgId, body.roleFamily.trim());
 
     return NextResponse.json({ id: profile.id }, { status: 201 });
   },
