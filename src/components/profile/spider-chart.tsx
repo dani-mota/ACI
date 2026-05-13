@@ -389,8 +389,13 @@ export function SpiderChart({ subtestResults, roleWeights, cutline, roleSlug, ro
                   />
                 </div>
                 <span
-                  className="w-8 text-[10px] font-mono font-medium tabular-nums text-right"
+                  className="w-8 text-[10px] font-mono font-medium tabular-nums text-right cursor-help"
                   style={{ color: tier.color }}
+                  onMouseEnter={(e) => {
+                    setHoveredLabel(d.construct);
+                    setLabelPos({ x: e.clientX, y: e.clientY });
+                  }}
+                  onMouseLeave={() => setHoveredLabel(null)}
                 >
                   {d.percentile}
                 </span>
