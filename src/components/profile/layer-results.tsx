@@ -194,7 +194,7 @@ export function LayerResults({ subtestResults, aiInteractions, roleSlug }: Layer
                             <span className={`text-[9px] font-mono font-medium uppercase tracking-wider ${tier.color} px-1.5 py-0.5`}>
                               {tier.label}
                             </span>
-                            <span className="text-xs font-semibold font-mono tabular-nums" style={{ color: info.color }}>
+                            <span className={`text-xs font-semibold font-mono tabular-nums ${tier.color}`}>
                               {result.percentile}
                             </span>
                             <div className="w-16">

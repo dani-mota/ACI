@@ -6,6 +6,7 @@ import {
   ResponsiveContainer, useChartWidth, useChartHeight, useOffset,
 } from "recharts";
 import { CONSTRUCTS, LAYER_INFO, type LayerType } from "@/lib/constructs";
+import { getScoreTier } from "@/lib/format";
 
 // ─── types shared by overlay components ──────────────────────────────────────
 type SpiderDataItem = {
@@ -227,12 +228,16 @@ export function SpiderChart({ subtestResults, roleWeights, cutline, roleSlug, ro
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showAnimation, weightDiffs]);
 
-  // Axis labels — red when below benchmark
+  // PRO-197: Axis labels render in layer color always so they
+  // communicate layer identity (Cognitive Core / Technical Aptitude /
+  // Behavioral Integrity), matching the layer-results.tsx:190 pattern
+  // already established in the LAYER-BY-LAYER section. Below-benchmark
+  // signal is conveyed structurally — dashed benchmark polygon + red
+  // radial spokes (LayerOverlay) + red diamond dots (CustomDot).
   const CustomTick = useCallback((props: any) => {
     const { x, y, payload } = props;
     const d = data.find((item) => item.construct === payload.value);
-    const belowBenchmark = d && d.benchmark > 0 && d.percentile < d.benchmark;
-    const baseColor = belowBenchmark ? "#DC2626" : (d?.layerColor ?? "var(--muted-foreground)");
+    const baseColor = d?.layerColor ?? "var(--muted-foreground)";
     const diff = showAnimation && weightDiffs && d ? weightDiffs[d.key] : 0;
     const animColor = diff > 0 ? "#059669" : diff < 0 ? "#D97706" : null;
     const color = animColor ?? baseColor;
@@ -351,12 +356,15 @@ export function SpiderChart({ subtestResults, roleWeights, cutline, roleSlug, ro
           {data.map((d) => {
             const diff = showAnimation && weightDiffs ? weightDiffs[d.key] : 0;
             const animClass = diff > 0 ? "animate-pulse-green" : diff < 0 ? "animate-pulse-amber" : "";
-            const belowBenchmark = d.benchmark > 0 && d.percentile < d.benchmark;
+            // PRO-197: letter + bar fill = layer color (identity); only
+            // the score number uses tier color (performance) — matches
+            // the layer-by-layer numeric treatment via getScoreTier.
+            const tier = getScoreTier(d.percentile);
             return (
               <div key={d.construct} className={`flex items-center gap-3 ${animClass}`}>
                 <span
                   className={`w-7 text-[10px] font-mono font-medium text-right cursor-help ${diff > 0 ? "animate-pulse-green-text" : diff < 0 ? "animate-pulse-amber-text" : ""}`}
-                  style={{ color: belowBenchmark ? "#DC2626" : d.layerColor }}
+                  style={{ color: d.layerColor }}
                   onMouseEnter={(e) => {
                     setHoveredLabel(d.construct);
                     setLabelPos({ x: e.clientX, y: e.clientY });
@@ -370,7 +378,7 @@ export function SpiderChart({ subtestResults, roleWeights, cutline, roleSlug, ro
                     className="h-full transition-all duration-500"
                     style={{
                       width: `${d.percentile}%`,
-                      backgroundColor: belowBenchmark ? "#DC2626" : d.layerColor,
+                      backgroundColor: d.layerColor,
                       opacity: 0.8,
                     }}
                   />
@@ -382,7 +390,7 @@ export function SpiderChart({ subtestResults, roleWeights, cutline, roleSlug, ro
                 </div>
                 <span
                   className="w-8 text-[10px] font-mono font-medium tabular-nums text-right"
-                  style={{ color: belowBenchmark ? "#DC2626" : d.layerColor }}
+                  style={{ color: tier.color }}
                 >
                   {d.percentile}
                 </span>
@@ -407,7 +415,11 @@ export function SpiderChart({ subtestResults, roleWeights, cutline, roleSlug, ro
             <div className="w-2 h-2" style={{ backgroundColor: hoveredData.layerColor }} />
             <p className="font-semibold text-xs text-foreground uppercase tracking-wider">{hoveredData.fullName}</p>
           </div>
-          <p className="text-lg font-bold font-mono mb-1" style={{ color: hoveredData.layerColor }}>
+          {/* PRO-197: score number uses tier color to match the bar
+              view's score column and layer-by-layer numbers. Layer
+              identity is already shown via the colored dot + name
+              above; doubling it on the score adds no info. */}
+          <p className="text-lg font-bold font-mono mb-1" style={{ color: getScoreTier(hoveredData.percentile).color }}>
             {hoveredData.percentile}<span className="text-[10px] font-normal text-muted-foreground ml-0.5">scaled score</span>
           </p>
           <p className="text-[10px] text-muted-foreground font-mono mb-2">
