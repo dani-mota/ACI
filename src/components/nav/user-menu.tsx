@@ -44,7 +44,7 @@ export function UserMenu() {
           </div>
           <button
             className="w-full flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-            onClick={() => { setOpen(false); }}
+            onClick={() => { setOpen(false); router.push("/profile"); }}
           >
             <User className="w-3.5 h-3.5" /> Profile
           </button>

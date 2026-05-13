@@ -16,6 +16,12 @@ export interface AppSession {
      * `User.employeeRole`. Null when the user has no Employee Mode role.
      */
     employeeRole: AppEmployeeUserRole | null;
+    /**
+     * PRO-189: the User.managerId FK exposed on the session so any
+     * "who's my manager" surface (profile page, etc.) doesn't need an
+     * extra Prisma lookup. Single-hop only — no recursive team tree.
+     */
+    managerId: string | null;
     orgId: string;
   };
 }
@@ -49,6 +55,7 @@ export async function getSession(): Promise<AppSession | null> {
       name: user.name,
       role: user.role as AppUserRole,
       employeeRole: (user.employeeRole as AppEmployeeUserRole | null) ?? null,
+      managerId: user.managerId,
       orgId: user.orgId,
     },
   };
