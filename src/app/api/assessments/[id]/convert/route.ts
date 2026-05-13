@@ -165,6 +165,15 @@ export const POST = withApiHandler(
       });
 
       return { converted: true as const, linkedUserId };
+    }, {
+      // PRO-186: raise from Prisma's 5s default to 15s. Nine DB
+      // roundtrips inside this transaction (mode flip, candidate
+      // update, PR#2 user linkage, PRO-137 inline compute, soft-
+      // archive) cumulatively exceed 5s on Neon's pooled connection
+      // under typical latency variance. Defensive bump — txn body
+      // unchanged. If latency stays a problem after this, future
+      // ticket can move PRO-137's compute to a post-commit hook.
+      timeout: 15_000,
     });
 
     if (!result.converted) {
