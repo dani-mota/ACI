@@ -112,16 +112,24 @@ export const POST = withApiHandler(
         linkedUserId = linkedUser.id;
       }
 
-      // PRO-137: compute under-leverage inline at conversion. The freshly-
-      // set roleFamily makes this the first point where the role-demand
-      // profile is resolvable for this assessment. Uses tx for read-your-
-      // writes consistency on the assessmentId we just flipped to EMPLOYEE
-      // mode. The role-demand profile resolution itself reads from a
-      // separate table that the txn doesn't mutate, so the global prisma
-      // client is safe to call here.
+      // PRO-137 + PRO-194: compute under-leverage inline at conversion.
+      // The freshly-set roleFamily makes this the first point where
+      // the role-demand profile is resolvable for this assessment.
+      //
+      // IMPORTANT: pass `tx` (not the global `prisma`) into the resolver
+      // even though the resolver reads from a separate table the txn
+      // doesn't mutate. The convert transaction is holding a connection
+      // from a small pool (max: 5 in prod, 10 in dev); calling the
+      // resolver with the outer client would attempt to grab a *second*
+      // connection from the same pool. Under load — concurrent tabs,
+      // HMR re-imports, anything that uses a connection while convert
+      // is running — that deadlocks and throws "timeout exceeded when
+      // trying to connect" after 5s. PRO-194 fixed this leak; the
+      // `tx` thread is load-bearing — do not undo.
       const resolved = await resolveRoleDemandProfileForEmployee(
         session.user.orgId,
         roleFamily,
+        tx,
       );
       const subtestResults = await tx.subtestResult.findMany({
         where: { assessmentId },
