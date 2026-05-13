@@ -1,6 +1,11 @@
 "use client";
 
 import { BarChart3, CheckCircle2, XCircle } from "lucide-react";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
 
 interface CompositeScore {
   roleSlug: string;
@@ -58,9 +63,20 @@ export function RoleFitRankings({ compositeScores, roles }: RoleFitRankingsProps
             </span>
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between mb-0.5">
-                <span className="text-[11px] font-medium text-foreground truncate">
-                  {r.roleName}
-                </span>
+                {/* PRO-193: same hover-to-reveal pattern as the email
+                    on identity-card. Long role names get clipped in
+                    this ranked list; HoverCard surfaces the full name
+                    while keeping the row compact. */}
+                <HoverCard openDelay={150} closeDelay={200}>
+                  <HoverCardTrigger asChild>
+                    <span className="text-[11px] font-medium text-foreground truncate cursor-default">
+                      {r.roleName}
+                    </span>
+                  </HoverCardTrigger>
+                  <HoverCardContent className="w-auto p-2 text-xs">
+                    {r.roleName}
+                  </HoverCardContent>
+                </HoverCard>
                 <div className="flex items-center gap-1.5">
                   {r.passed ? (
                     <CheckCircle2 className="w-3 h-3 text-aci-green" />
