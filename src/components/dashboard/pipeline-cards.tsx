@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Users, TrendingUp } from "lucide-react";
 import { useBasePath } from "@/components/base-path-provider";
+import { TruncateWithHover } from "@/components/ui/truncate-with-hover";
 
 interface RolePipeline {
   slug: string;
@@ -33,9 +34,16 @@ export function PipelineCards({ roles }: PipelineCardsProps) {
           >
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-1.5 min-w-0">
-                <h3 className="text-xs font-medium text-foreground truncate uppercase tracking-wider group-hover:text-aci-gold transition-colors">
-                  {role.name}
-                </h3>
+                {/* PRO-195: role-tile labels visibly clip with "..." on the
+                    pipeline cards. Reusing the PRO-193 primitive. The <h3>
+                    sits inside the outer <Link>, but HoverCardContent
+                    renders in a Radix portal — clicks inside the hover
+                    card don't bubble through the Link, so select+copy
+                    works without navigating. */}
+                <TruncateWithHover
+                  text={role.name}
+                  className="text-xs font-medium text-foreground uppercase tracking-wider group-hover:text-aci-gold transition-colors"
+                />
                 {role.isCustom && (
                   <span className="text-[8px] font-bold uppercase tracking-wider px-1 py-0.5 rounded-sm bg-aci-gold/15 text-aci-gold shrink-0">
                     Custom
