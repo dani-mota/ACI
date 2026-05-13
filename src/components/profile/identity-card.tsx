@@ -1,11 +1,7 @@
 "use client";
 
 import { InitialsBadge } from "@/components/ui/initials-badge";
-import {
-  HoverCard,
-  HoverCardContent,
-  HoverCardTrigger,
-} from "@/components/ui/hover-card";
+import { TruncateWithHover } from "@/components/ui/truncate-with-hover";
 import { Mail, Phone, Calendar } from "lucide-react";
 import { formatRelativeDate } from "@/lib/format";
 
@@ -27,19 +23,11 @@ export function IdentityCard({ candidate }: IdentityCardProps) {
       <div className="mt-3 pt-3 border-t border-border space-y-2">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Mail className="w-3.5 h-3.5 shrink-0" />
-          {/* PRO-193: keep truncate on the trigger to preserve the
-              compact identity-card layout; surface the full email in
-              the HoverCard so it stays selectable + copyable. */}
-          <HoverCard openDelay={150} closeDelay={200}>
-            <HoverCardTrigger asChild>
-              <span className="truncate font-mono text-[11px] cursor-default">
-                {candidate.email}
-              </span>
-            </HoverCardTrigger>
-            <HoverCardContent className="w-auto p-2 font-mono text-xs">
-              {candidate.email}
-            </HoverCardContent>
-          </HoverCard>
+          <TruncateWithHover
+            text={candidate.email}
+            className="font-mono text-[11px]"
+            contentClassName="font-mono"
+          />
         </div>
         {candidate.phone && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
