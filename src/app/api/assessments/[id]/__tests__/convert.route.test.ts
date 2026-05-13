@@ -391,7 +391,31 @@ describe("POST /api/assessments/[id]/convert — PRO-137 under-leverage compute"
     expect(resolveRoleDemandProfileForEmployee).toHaveBeenCalledWith(
       SESSION_ORG,
       "Software",
+      // PRO-194: convert route must pass tx as the third arg so the
+      // helper runs on the transaction's connection instead of grabbing
+      // a second one from the pool. Asserted explicitly below.
+      expect.anything(),
     );
+  });
+
+  it("threads tx into resolveRoleDemandProfileForEmployee (PRO-194 regression)", async () => {
+    // Unit tests can't reproduce pool deadlocks (vitest mocks have no
+    // real pool). This guards against the regression where someone
+    // removes the `tx` argument and reintroduces the leak that broke
+    // convert under `max: 1` in PRO-194 — see convert/route.ts for
+    // the rationale. Don't remove this test as "argument-only check."
+    setupSuccessfulAssessmentUpdate("match@example.com");
+    txMock.user.findFirst.mockResolvedValue(null);
+
+    await invokeRoute(POST, {
+      method: "POST",
+      params: { id: ASSESSMENT_ID },
+      body: { department: "Engineering", roleFamily: "Software" },
+    });
+
+    expect(resolveRoleDemandProfileForEmployee).toHaveBeenCalled();
+    const args = vi.mocked(resolveRoleDemandProfileForEmployee).mock.calls[0];
+    expect(args[2]).toBe(txMock);
   });
 
   it("under-leverage upsert is NOT called when conversion is rejected (409)", async () => {

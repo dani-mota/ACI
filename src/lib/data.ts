@@ -577,9 +577,18 @@ export async function getDemoOrgId(industry?: string | null): Promise<string | n
 export async function resolveRoleDemandProfileForEmployee(
   orgId: string,
   roleFamily: string | null,
+  // PRO-194: accept an optional Prisma transaction client so callers
+  // running inside `prisma.$transaction(async (tx) => { ... })` can
+  // share the transaction's connection. Calling this helper from
+  // inside a transaction without passing `tx` would attempt to grab
+  // a second connection from a pool that may be at its `max` limit
+  // (we ship with `max: 5` in prod, `max: 10` in dev) — deadlock.
+  // Outside-transaction callers omit the arg and default to the
+  // global prisma client.
+  client: Prisma.TransactionClient | typeof prisma = prisma,
 ): Promise<ResolvedRoleDemand | null> {
   if (!roleFamily) return null;
-  const profile = await prisma.roleDemandProfile.findFirst({
+  const profile = await client.roleDemandProfile.findFirst({
     where: {
       orgId,
       roleFamily: { equals: roleFamily, mode: "insensitive" },
