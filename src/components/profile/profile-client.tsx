@@ -269,6 +269,7 @@ export function ProfileClient({ candidate, allRoles, cutlines, userRole, suggest
               isViewerTheConverter={
                 !!currentUserId && currentUserId === candidate.assessment.convertedBy
               }
+              converterName={candidate.assessment.converter?.name ?? null}
               department={candidate.assessment.department}
               roleFamily={candidate.assessment.roleFamily}
               employeeHref={
@@ -564,12 +565,17 @@ function PdfExportButton({
 function ConvertedEmployeeCard({
   convertedAt,
   isViewerTheConverter,
+  converterName,
   department,
   roleFamily,
   employeeHref,
 }: {
   convertedAt: string | Date;
   isViewerTheConverter: boolean;
+  /** PRO-203: converter's name from the User relation on the assessment.
+   *  Null when the converter User row was deleted or never linked —
+   *  card renders the date alone (no "by undefined"). */
+  converterName: string | null;
   department: string | null;
   roleFamily: string | null;
   /** Null when the viewer can't access employee mode — link is hidden so the
@@ -593,7 +599,11 @@ function ConvertedEmployeeCard({
         <Calendar className="w-3.5 h-3.5 shrink-0" />
         <span>
           {formattedDate}
-          {isViewerTheConverter && <span> by you</span>}
+          {isViewerTheConverter ? (
+            <span> by you</span>
+          ) : converterName ? (
+            <span> by {converterName}</span>
+          ) : null}
         </span>
       </div>
       {(department || roleFamily) && (
