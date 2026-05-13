@@ -110,6 +110,11 @@ export async function getCandidateData(id: string, orgId: string, opts?: { userI
           predictions: { where: { archivedAt: null } },
           redFlags: { where: { archivedAt: null } },
           aiInteractions: true,
+          // PRO-203: surface converter name on the post-hire card
+          // for non-self viewers. orgId selected only for the cross-
+          // org defensive strip below (Prisma can't filter to-one
+          // relations via `where` in include).
+          converter: { select: { id: true, name: true, orgId: true } },
         },
       },
       outcomes: {
@@ -122,6 +127,18 @@ export async function getCandidateData(id: string, orgId: string, opts?: { userI
 
   // Verify candidate belongs to the requesting org
   if (candidate.orgId !== orgId) return null;
+
+  // PRO-203: defensive cross-org strip on the converter. The convert
+  // route only writes session.user.orgId values to `convertedBy`, so
+  // in practice the converter is always intra-org. This belt-and-
+  // suspenders check prevents a converter name from leaking if that
+  // invariant ever breaks (manual SQL, future feature, etc.).
+  if (
+    candidate.assessment?.converter &&
+    candidate.assessment.converter.orgId !== orgId
+  ) {
+    candidate.assessment.converter = null;
+  }
 
   // External collaborators can only view candidates assigned to them
   if (opts?.role === "EXTERNAL_COLLABORATOR" && opts?.userId) {
