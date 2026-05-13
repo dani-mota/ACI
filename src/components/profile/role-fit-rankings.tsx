@@ -1,6 +1,7 @@
 "use client";
 
 import { BarChart3, CheckCircle2, XCircle } from "lucide-react";
+import { TruncateWithHover } from "@/components/ui/truncate-with-hover";
 
 interface CompositeScore {
   roleSlug: string;
@@ -58,9 +59,11 @@ export function RoleFitRankings({ compositeScores, roles }: RoleFitRankingsProps
             </span>
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between mb-0.5">
-                <span className="text-[11px] font-medium text-foreground truncate">
-                  {r.roleName}
-                </span>
+                <TruncateWithHover
+                  text={r.roleName}
+                  className="text-[11px] font-medium text-foreground"
+                />
+
                 <div className="flex items-center gap-1.5">
                   {r.passed ? (
                     <CheckCircle2 className="w-3 h-3 text-aci-green" />

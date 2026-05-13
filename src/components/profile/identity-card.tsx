@@ -1,6 +1,7 @@
 "use client";
 
 import { InitialsBadge } from "@/components/ui/initials-badge";
+import { TruncateWithHover } from "@/components/ui/truncate-with-hover";
 import { Mail, Phone, Calendar } from "lucide-react";
 import { formatRelativeDate } from "@/lib/format";
 
@@ -21,8 +22,12 @@ export function IdentityCard({ candidate }: IdentityCardProps) {
 
       <div className="mt-3 pt-3 border-t border-border space-y-2">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Mail className="w-3.5 h-3.5" />
-          <span className="truncate font-mono text-[11px]">{candidate.email}</span>
+          <Mail className="w-3.5 h-3.5 shrink-0" />
+          <TruncateWithHover
+            text={candidate.email}
+            className="font-mono text-[11px]"
+            contentClassName="font-mono"
+          />
         </div>
         {candidate.phone && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
