@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState, useRef, useEffect, useCallback } from "react";
+import Link from "next/link";
+import { useBasePath } from "@/components/base-path-provider";
 import { IdentityCard } from "./identity-card";
 import { DecisionSummary } from "./decision-summary";
 import { SpiderChart } from "./spider-chart";
@@ -12,7 +14,7 @@ import { RoleSwitcher } from "./role-switcher";
 import { InterviewGuide } from "./interview-guide";
 import { RoleMismatch } from "./role-mismatch";
 import { CONSTRUCTS, LAYER_INFO, type LayerType } from "@/lib/constructs";
-import { AlertTriangle, TrendingUp, TrendingDown, Shield, FileDown, FileText, ClipboardList, UserPlus } from "lucide-react";
+import { AlertTriangle, TrendingUp, TrendingDown, Shield, FileDown, FileText, ClipboardList, UserPlus, UserCheck, Calendar, Network, Briefcase } from "lucide-react";
 import { RecordOutcomeForm } from "./record-outcome-form";
 import { RoleFitRankings } from "./role-fit-rankings";
 import { ConvertToEmployeeModal } from "./convert-to-employee-modal";
@@ -33,6 +35,10 @@ interface ProfileClientProps {
   cutlines: any[];
   userRole?: string;
   suggestions?: { departments: string[]; roleFamilies: string[] };
+  /** PRO-202: current viewer's user ID, used to derive "by you" on the converted-employee card. */
+  currentUserId?: string;
+  /** PRO-202: whether the viewer can access /employees/[id] — gates the "View employee profile" link. */
+  canViewEmployeeProfile?: boolean;
 }
 
 function generateExecutiveSummary(
@@ -142,7 +148,8 @@ function generateExecutiveSummary(
   };
 }
 
-export function ProfileClient({ candidate, allRoles, cutlines, userRole, suggestions }: ProfileClientProps) {
+export function ProfileClient({ candidate, allRoles, cutlines, userRole, suggestions, currentUserId, canViewEmployeeProfile }: ProfileClientProps) {
+  const basePath = useBasePath();
   const [selectedRoleSlug, setSelectedRoleSlug] = useState(candidate.primaryRole.slug);
   const [showAnimation, setShowAnimation] = useState(false);
   const [convertModalOpen, setConvertModalOpen] = useState(false);
@@ -249,11 +256,26 @@ export function ProfileClient({ candidate, allRoles, cutlines, userRole, suggest
             compositeScore={compositeScore}
             roleName={selectedRole?.name}
           />
-          {/* Quick Actions — hide the entire panel when nothing's
-              actionable (e.g., post-conversion candidate with both
-              PDF exports + Mark as Hired gone). Avoids an empty
-              "ACTIONS" header card. */}
-          {(showPdfExports || showConvertButton) && (
+          {/* Quick Actions — three-state slot:
+              - Employee mode: ConvertedEmployeeCard (PRO-202) replaces
+                the hidden Actions panel with a "Hired on [date] →
+                View employee profile" link.
+              - Candidate mode with affordances: original Actions panel.
+              - Candidate mode with no affordances (rare): nothing
+                renders. */}
+          {inEmployeeMode ? (
+            <ConvertedEmployeeCard
+              convertedAt={candidate.assessment.convertedAt}
+              isViewerTheConverter={
+                !!currentUserId && currentUserId === candidate.assessment.convertedBy
+              }
+              department={candidate.assessment.department}
+              roleFamily={candidate.assessment.roleFamily}
+              employeeHref={
+                canViewEmployeeProfile ? `${basePath}/employees/${candidate.id}` : null
+              }
+            />
+          ) : (showPdfExports || showConvertButton) && (
           <div className="bg-card border border-border p-4" data-tutorial="profile-pdf-export">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium mb-2">Actions</p>
             {showPdfExports && (
@@ -533,5 +555,72 @@ function PdfExportButton({
       </TooltipTrigger>
       <TooltipContent>{disabledReason}</TooltipContent>
     </Tooltip>
+  );
+}
+
+// PRO-202: replaces the (hidden) Actions panel on converted candidates
+// with conversion metadata + a link to the employee profile. Lives at
+// the same slot in the layout per PRO-201's three-state conditional.
+function ConvertedEmployeeCard({
+  convertedAt,
+  isViewerTheConverter,
+  department,
+  roleFamily,
+  employeeHref,
+}: {
+  convertedAt: string | Date;
+  isViewerTheConverter: boolean;
+  department: string | null;
+  roleFamily: string | null;
+  /** Null when the viewer can't access employee mode — link is hidden so the
+   *  affordance doesn't surface a server-side redirect on click. */
+  employeeHref: string | null;
+}) {
+  // Absolute date — the hire date is a load-bearing fact (tenure
+  // tracking, HR docs), not a freshness cue, so render exactly.
+  const formattedDate = new Date(convertedAt).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+
+  return (
+    <div className="bg-card border border-border p-4">
+      <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium mb-2">
+        Hired
+      </p>
+      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+        <Calendar className="w-3.5 h-3.5 shrink-0" />
+        <span>
+          {formattedDate}
+          {isViewerTheConverter && <span> by you</span>}
+        </span>
+      </div>
+      {(department || roleFamily) && (
+        <div className="space-y-0.5 mb-3">
+          {department && (
+            <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+              <Network className="w-3.5 h-3.5 shrink-0" />
+              <span>Department: {department}</span>
+            </div>
+          )}
+          {roleFamily && (
+            <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+              <Briefcase className="w-3.5 h-3.5 shrink-0" />
+              <span>Role family: {roleFamily}</span>
+            </div>
+          )}
+        </div>
+      )}
+      {employeeHref && (
+        <Link
+          href={employeeHref}
+          className="flex items-center gap-2 w-full px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-aci-blue border border-aci-blue/30 hover:bg-aci-blue/10 transition-colors"
+        >
+          <UserCheck className="w-3.5 h-3.5" />
+          View employee profile
+        </Link>
+      )}
+    </div>
   );
 }
