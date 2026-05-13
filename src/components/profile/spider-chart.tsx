@@ -355,8 +355,13 @@ export function SpiderChart({ subtestResults, roleWeights, cutline, roleSlug, ro
             return (
               <div key={d.construct} className={`flex items-center gap-3 ${animClass}`}>
                 <span
-                  className={`w-7 text-[10px] font-mono font-medium text-right ${diff > 0 ? "animate-pulse-green-text" : diff < 0 ? "animate-pulse-amber-text" : ""}`}
+                  className={`w-7 text-[10px] font-mono font-medium text-right cursor-help ${diff > 0 ? "animate-pulse-green-text" : diff < 0 ? "animate-pulse-amber-text" : ""}`}
                   style={{ color: belowBenchmark ? "#DC2626" : d.layerColor }}
+                  onMouseEnter={(e) => {
+                    setHoveredLabel(d.construct);
+                    setLabelPos({ x: e.clientX, y: e.clientY });
+                  }}
+                  onMouseLeave={() => setHoveredLabel(null)}
                 >
                   {d.construct}
                 </span>
