@@ -1,5 +1,6 @@
 import { getCandidateData, getOrgDepartmentsAndRoleFamilies } from "@/lib/data";
 import { requireAuth } from "@/lib/auth";
+import { canAccessMode } from "@/lib/rbac";
 import { notFound } from "next/navigation";
 import { ProfileClient } from "@/components/profile/profile-client";
 
@@ -22,5 +23,13 @@ export default async function CandidateProfilePage({ params }: PageProps) {
 
   if (!data) notFound();
 
-  return <ProfileClient {...data} suggestions={suggestions} userRole={userRole} />;
+  return (
+    <ProfileClient
+      {...data}
+      suggestions={suggestions}
+      userRole={userRole}
+      currentUserId={session.user.id}
+      canViewEmployeeProfile={canAccessMode(session, "employees")}
+    />
+  );
 }
