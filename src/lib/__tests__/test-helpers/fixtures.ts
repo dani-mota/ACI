@@ -19,6 +19,8 @@ interface UserFixtureOpts {
   role: AppUserRole;
   /** Employee Mode role — optional. Cross-mode case is when both are set. */
   employeeRole?: AppEmployeeUserRole | null;
+  /** PRO-189: optional manager FK. Defaults to null. */
+  managerId?: string | null;
 }
 
 export function userWithRoles(opts: UserFixtureOpts): AppSession {
@@ -30,6 +32,7 @@ export function userWithRoles(opts: UserFixtureOpts): AppSession {
       name: opts.name ?? "Test User",
       role: opts.role,
       employeeRole: opts.employeeRole ?? null,
+      managerId: opts.managerId ?? null,
       orgId: opts.orgId ?? "org_test_001",
     },
   };
