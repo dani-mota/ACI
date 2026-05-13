@@ -17,7 +17,13 @@ import { RecordOutcomeForm } from "./record-outcome-form";
 import { RoleFitRankings } from "./role-fit-rankings";
 import { ConvertToEmployeeModal } from "./convert-to-employee-modal";
 import { canConvertCandidate, type AppUserRole } from "@/lib/rbac";
-import { isCandidateMode } from "@/lib/assessment/mode-utils";
+import { isCandidateMode, isEmployeeMode } from "@/lib/assessment/mode-utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const OUTCOME_ROLES = ["RECRUITING_MANAGER", "TA_LEADER", "ADMIN"];
 
@@ -207,6 +213,26 @@ export function ProfileClient({ candidate, allRoles, cutlines, userRole, suggest
     [candidate.assessment?.redFlags]
   );
 
+  // PRO-201: PDF export UI splits the two server-side gates by
+  // recoverability of the state:
+  // - Employee Mode (permanent — buttons will never come back for
+  //   this person): hide entirely, matching the /employees/[id]
+  //   convention of not rendering export affordances at all.
+  // - No assessment data (transient — buttons return once data lands):
+  //   render disabled with an explanatory tooltip so the recruiter
+  //   knows the feature exists and what's blocking it.
+  // Banner check on subtestResults is stricter than the route's
+  // !assessment (catches assessment-exists-but-empty), keeping
+  // banner-says-incomplete and buttons-disabled in lockstep.
+  const hasAssessmentData = subtestResults.length > 0;
+  const inEmployeeMode =
+    !!candidate.assessment && isEmployeeMode(candidate.assessment);
+  const showPdfExports = !inEmployeeMode;
+  const pdfExportDisabled = !hasAssessmentData;
+  const pdfBlockReason = pdfExportDisabled
+    ? "PDF exports will be available once the assessment is complete."
+    : "";
+
   const summary = useMemo(
     () => generateExecutiveSummary(candidate, compositeScore, selectedRole?.name, subtestResults, predictions, redFlags),
     [candidate, compositeScore, selectedRole, subtestResults, predictions, redFlags]
@@ -223,45 +249,43 @@ export function ProfileClient({ candidate, allRoles, cutlines, userRole, suggest
             compositeScore={compositeScore}
             roleName={selectedRole?.name}
           />
-          {/* Quick Actions */}
+          {/* Quick Actions — hide the entire panel when nothing's
+              actionable (e.g., post-conversion candidate with both
+              PDF exports + Mark as Hired gone). Avoids an empty
+              "ACTIONS" header card. */}
+          {(showPdfExports || showConvertButton) && (
           <div className="bg-card border border-border p-4" data-tutorial="profile-pdf-export">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium mb-2">Actions</p>
-            <button
-              onClick={() => {
-                const a = document.createElement("a");
-                a.href = `/api/export/pdf/${candidate.id}`;
-                a.download = `${candidate.firstName}_${candidate.lastName}_Scorecard.pdf`;
-                a.click();
-              }}
-              className="flex items-center gap-2 w-full px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-aci-gold border border-aci-gold/30 hover:bg-aci-gold/10 transition-colors"
-            >
-              <FileDown className="w-3.5 h-3.5" />
-              Export PDF Scorecard
-            </button>
-            <button
-              onClick={() => {
-                const a = document.createElement("a");
-                a.href = `/api/export/pdf/${candidate.id}/one-pager`;
-                a.download = `${candidate.firstName}_${candidate.lastName}_OnePager.pdf`;
-                a.click();
-              }}
-              className="flex items-center gap-2 w-full px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-aci-gold border border-aci-gold/30 hover:bg-aci-gold/10 transition-colors mt-2"
-            >
-              <FileText className="w-3.5 h-3.5" />
-              HM One-Pager
-            </button>
-            <button
-              onClick={() => {
-                const a = document.createElement("a");
-                a.href = `/api/export/pdf/${candidate.id}/interview-kit`;
-                a.download = `${candidate.firstName}_${candidate.lastName}_InterviewKit.pdf`;
-                a.click();
-              }}
-              className="flex items-center gap-2 w-full px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-aci-gold border border-aci-gold/30 hover:bg-aci-gold/10 transition-colors mt-2"
-            >
-              <ClipboardList className="w-3.5 h-3.5" />
-              Interview Kit PDF
-            </button>
+            {showPdfExports && (
+              <TooltipProvider delayDuration={150}>
+                <PdfExportButton
+                  Icon={FileDown}
+                  label="Export PDF Scorecard"
+                  href={`/api/export/pdf/${candidate.id}`}
+                  filename={`${candidate.firstName}_${candidate.lastName}_Scorecard.pdf`}
+                  disabled={pdfExportDisabled}
+                  disabledReason={pdfBlockReason}
+                />
+                <PdfExportButton
+                  Icon={FileText}
+                  label="HM One-Pager"
+                  href={`/api/export/pdf/${candidate.id}/one-pager`}
+                  filename={`${candidate.firstName}_${candidate.lastName}_OnePager.pdf`}
+                  disabled={pdfExportDisabled}
+                  disabledReason={pdfBlockReason}
+                  marginTop
+                />
+                <PdfExportButton
+                  Icon={ClipboardList}
+                  label="Interview Kit PDF"
+                  href={`/api/export/pdf/${candidate.id}/interview-kit`}
+                  filename={`${candidate.firstName}_${candidate.lastName}_InterviewKit.pdf`}
+                  disabled={pdfExportDisabled}
+                  disabledReason={pdfBlockReason}
+                  marginTop
+                />
+              </TooltipProvider>
+            )}
             {showConvertButton && (
               <button
                 onClick={() => setConvertModalOpen(true)}
@@ -272,6 +296,7 @@ export function ProfileClient({ candidate, allRoles, cutlines, userRole, suggest
               </button>
             )}
           </div>
+          )}
         </div>
 
         {/* Center Column */}
@@ -446,5 +471,67 @@ export function ProfileClient({ candidate, allRoles, cutlines, userRole, suggest
         />
       )}
     </div>
+  );
+}
+
+// PRO-201: each of the three PDF export buttons shares the same disabled
+// state, tooltip wiring, and styling. Extracted to keep the parent JSX
+// readable and the tooltip + disabled-button wrapper pattern in one
+// place. Wrapping the disabled button in a span is required because
+// browsers don't dispatch pointer events on disabled buttons, which
+// would otherwise prevent the Radix Tooltip from triggering on hover.
+function PdfExportButton({
+  Icon,
+  label,
+  href,
+  filename,
+  disabled,
+  disabledReason,
+  marginTop = false,
+}: {
+  Icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  href: string;
+  filename: string;
+  disabled: boolean;
+  disabledReason: string;
+  marginTop?: boolean;
+}) {
+  // mt-2 stays on the outer element only — the button when not
+  // wrapped, the span wrapper when disabled. Avoids doubling.
+  const buttonClasses = `flex items-center gap-2 w-full px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-aci-gold border border-aci-gold/30 transition-colors ${
+    disabled ? "opacity-50 cursor-not-allowed" : "hover:bg-aci-gold/10"
+  }`;
+
+  if (!disabled) {
+    return (
+      <button
+        onClick={() => {
+          const a = document.createElement("a");
+          a.href = href;
+          a.download = filename;
+          a.click();
+        }}
+        className={`${buttonClasses} ${marginTop ? "mt-2" : ""}`}
+      >
+        <Icon className="w-3.5 h-3.5" />
+        {label}
+      </button>
+    );
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {/* span wrapper catches hover events the disabled <button> won't dispatch */}
+        <span className={`block ${marginTop ? "mt-2" : ""}`}>
+          <button disabled className={buttonClasses}>
+            <Icon className="w-3.5 h-3.5" />
+            {label}
+          </button>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{disabledReason}</TooltipContent>
+    </Tooltip>
   );
 }
