@@ -3,7 +3,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { CognitiveSignature } from "./cognitive-signature";
 import { ConstructMapEmployee } from "./construct-map-employee";
 import { EvidenceLayer } from "./evidence-layer";
-import { RoleFitDeltaPanel } from "./role-fit-delta-panel";
+import { FitPanels } from "./fit-panels";
 import { TrajectoryReadinessPanel } from "./trajectory-readiness-panel";
 import { UnderLeverageChip, underLeverageDescription } from "./under-leverage-chip";
 import type { EvidenceLayerEntry, OrgConstructDistribution } from "@/lib/data";
@@ -32,6 +32,10 @@ interface EmployeeDossierProps {
   /** PRO-135: optional radar overlay. `undefined` means no role demand profile
    *  resolved for this employee's roleFamily — the radar renders a single polygon. */
   roleDemandProfile?: RoleDemandProfileEntry[];
+  /** PRO-139: next-level demand profile for the Promotion Fit tab. Resolver
+   *  follows `RoleDemandProfile.nextLevelProfileId` in PR#1; until then this
+   *  is always `undefined` and the Promotion Fit tab shows the empty state. */
+  nextLevelDemand?: RoleDemandProfileEntry[];
   /** PRO-137: under-leverage score, 0-100 or null. Page component does the
    *  lazy-on-read recompute against the resolved demand profile before
    *  passing the fresh value down. */
@@ -47,6 +51,7 @@ export function EmployeeDossier({
   initialEvidence,
   orgDistributions,
   roleDemandProfile,
+  nextLevelDemand,
   underLeverageScore,
   trajectory,
 }: EmployeeDossierProps) {
@@ -125,14 +130,18 @@ export function EmployeeDossier({
         />
       </section>
 
-      {/* PRO-136: Role Fit Delta — P0 insight, per-construct shape comparison */}
+      {/* PRO-139 (Layer 4): Fit Panels — tabbed container holding Role Fit
+          (PRO-136 reused), Promotion Fit (this ticket), and Mission Fit
+          (Phase 3 placeholder). Replaces the previous standalone Role Fit
+          Delta section. */}
       <section className="bg-card border border-border p-6">
         <h2 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-4">
-          Role Fit Delta
+          Fit Panels
         </h2>
-        <RoleFitDeltaPanel
+        <FitPanels
           subtestResults={assessment.subtestResults}
           roleDemandProfile={roleDemandProfile}
+          nextLevelDemand={nextLevelDemand}
         />
       </section>
 
