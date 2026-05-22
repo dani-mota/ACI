@@ -42,10 +42,16 @@ const EMPLOYEE_MODE_SURFACES = [
   // truth strings live in this file (employee-dossier.tsx imports the
   // description helper); guard the strings at the source.
   "src/components/dashboard/under-leverage-chip.tsx",
+  // PRO-138: trajectory readiness panel. Renders archetype names +
+  // descriptions read from the library file (also audited below).
+  "src/components/dashboard/trajectory-readiness-panel.tsx",
 
   // Server-side data shaping (text that flows into the UI)
   "src/lib/data.ts",
   "src/lib/assessment/insights/role-fit-delta.ts",
+  // PRO-138: archetype library — source of truth for archetype names and
+  // one-sentence descriptions surfaced by the panel.
+  "src/lib/assessment/archetypes.ts",
 
   // Mode-aware shared UI
   "src/components/ui/status-badge.tsx",

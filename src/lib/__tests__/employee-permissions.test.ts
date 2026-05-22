@@ -42,6 +42,7 @@ const ALL_DATA_LAYERS: EmployeeDataLayer[] = [
   "evidence",
   "cognitiveSignature",
   "roleFitRadar",
+  "trajectoryReadiness",
 ];
 
 // ────────────────────────────────────────────────────────────────

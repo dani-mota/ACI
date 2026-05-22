@@ -11,6 +11,8 @@ import { getEmployeeDataVisibility } from "@/lib/employee-permissions";
 import { EmployeeDossier } from "@/components/dashboard/employee-dossier";
 import { CURRENT_PROMPT_VERSION as EVIDENCE_PROMPT_VERSION } from "@/lib/assessment/prompts/evidence-annotation";
 import { recomputeUnderLeverageForAssessment } from "@/lib/assessment/insights/employee-insights-persistence";
+import { computeTrajectoryReadiness } from "@/lib/assessment/insights/trajectory-readiness";
+import { ARCHETYPE_LIBRARY } from "@/lib/assessment/archetypes";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -81,6 +83,21 @@ export default async function EmployeeDossierPage({ params }: PageProps) {
     );
   }
 
+  // PRO-138: trajectory readiness, gated by visibility. Compute returns null
+  // until commit 3 lands the real metric (held pending Dani confirmation of
+  // Euclidean vs cosine). Page-level gate also returns null for EXECUTIVE
+  // (visibility "aggregated") since no individual panel is shipped for that
+  // role in PRO-138 — PRO-145 owns the aggregated-executive view.
+  const trajectoryVisibility = getEmployeeDataVisibility("trajectoryReadiness", {
+    session,
+    targetEmployeeUserId: data.user?.id ?? null,
+    targetEmployeeManagerId: data.user?.managerId ?? null,
+  });
+  const trajectory =
+    trajectoryVisibility === "full"
+      ? computeTrajectoryReadiness(data.assessment.subtestResults, ARCHETYPE_LIBRARY)
+      : null;
+
   // PRO-135: pass `undefined` (NOT `[]`) when no profile resolves — empty
   // arrays would render a degenerate collapsed overlay polygon at radius zero.
   return (
@@ -90,6 +107,7 @@ export default async function EmployeeDossierPage({ params }: PageProps) {
       orgDistributions={orgDistributions}
       roleDemandProfile={resolvedDemand?.demands}
       underLeverageScore={underLeverageScore}
+      trajectory={trajectory}
     />
   );
 }

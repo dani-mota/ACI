@@ -4,9 +4,11 @@ import { CognitiveSignature } from "./cognitive-signature";
 import { ConstructMapEmployee } from "./construct-map-employee";
 import { EvidenceLayer } from "./evidence-layer";
 import { RoleFitDeltaPanel } from "./role-fit-delta-panel";
+import { TrajectoryReadinessPanel } from "./trajectory-readiness-panel";
 import { UnderLeverageChip, underLeverageDescription } from "./under-leverage-chip";
 import type { EvidenceLayerEntry, OrgConstructDistribution } from "@/lib/data";
 import type { RoleDemandProfileEntry } from "@/lib/assessment/role-demand-resolution";
+import type { TrajectoryReadiness } from "@/lib/assessment/insights/trajectory-readiness";
 
 interface EmployeeDossierProps {
   candidate: {
@@ -34,6 +36,10 @@ interface EmployeeDossierProps {
    *  lazy-on-read recompute against the resolved demand profile before
    *  passing the fresh value down. */
   underLeverageScore: number | null;
+  /** PRO-138: trajectory readiness data, computed on read. null when the
+   *  employee has incomplete subtest results (compute fn guards) OR when
+   *  the page-level visibility gate blocks the panel (EXECUTIVE). */
+  trajectory: TrajectoryReadiness | null;
 }
 
 export function EmployeeDossier({
@@ -42,6 +48,7 @@ export function EmployeeDossier({
   orgDistributions,
   roleDemandProfile,
   underLeverageScore,
+  trajectory,
 }: EmployeeDossierProps) {
   const { firstName, lastName, email, primaryRole, assessment } = candidate;
   const completed = assessment.completedAt
@@ -128,6 +135,12 @@ export function EmployeeDossier({
           roleDemandProfile={roleDemandProfile}
         />
       </section>
+
+      {/* PRO-138: Trajectory Readiness — archetype-fit ranking (forward-looking).
+          Placed after Role Fit Delta (current-role view) and before Evidence
+          (per-construct supporting quotes). Reads developmentally: where you
+          are → where you trend → why. */}
+      <TrajectoryReadinessPanel data={trajectory} />
 
       {/* Layer 3: Evidence */}
       <section className="bg-card border border-border p-6">
