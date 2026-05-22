@@ -100,12 +100,18 @@ export default async function EmployeeDossierPage({ params }: PageProps) {
 
   // PRO-135: pass `undefined` (NOT `[]`) when no profile resolves — empty
   // arrays would render a degenerate collapsed overlay polygon at radius zero.
+  // PRO-139 PR#2: `nextLevelDemand` is wired through as `undefined` until
+  // PR#1's schema + resolver extension land. Once `RoleDemandProfile.nextLevelProfileId`
+  // exists and `resolveRoleDemandProfileForEmployee` eager-loads it via
+  // Prisma `include`, this becomes `resolvedDemand?.nextLevel?.demands`. The
+  // Promotion Fit tab renders the empty-state copy in the meantime.
   return (
     <EmployeeDossier
       candidate={data}
       initialEvidence={evidence}
       orgDistributions={orgDistributions}
       roleDemandProfile={resolvedDemand?.demands}
+      nextLevelDemand={undefined}
       underLeverageScore={underLeverageScore}
       trajectory={trajectory}
     />
