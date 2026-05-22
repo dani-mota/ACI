@@ -210,7 +210,19 @@ export function SpiderChart({ subtestResults, roleWeights, cutline, roleSlug, ro
     const pulseColor = diff > 0 ? "rgba(5, 150, 105, 0.6)" : diff < 0 ? "rgba(217, 119, 6, 0.6)" : null;
 
     return (
-      <g>
+      <g
+        onMouseEnter={(e) => {
+          setHoveredLabel(payload.construct);
+          setLabelPos({ x: e.clientX, y: e.clientY });
+        }}
+        onMouseLeave={() => setHoveredLabel(null)}
+        style={{ cursor: "help" }}
+      >
+        {/* PRO-199: transparent hit-circle (24px diameter) for a
+            generous hover target — the visual diamond is only 8px
+            wide, so precise-on-the-polygon hover would feel
+            unresponsive. Mirrors CustomTick's r=12 hit pattern. */}
+        <circle cx={cx} cy={cy} r={12} fill="transparent" />
         {pulseColor && (
           <circle cx={cx} cy={cy} r={10} fill="none" stroke={pulseColor} strokeWidth={2}>
             <animate attributeName="r" from="4" to="14" dur="0.6s" repeatCount="2" />
